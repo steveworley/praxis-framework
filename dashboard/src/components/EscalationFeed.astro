@@ -1,0 +1,55 @@
+---
+import type { EscalationEntry, EscalationsResult } from '@/lib/escalations-loader';
+
+import EscalationCard from './EscalationCard.astro';
+
+/** Section: filterable escalation queue. Renders all entries server-side and
+ * lets a small inline script toggle which status filter is active without a
+ * page round-trip. */
+interface Props {
+  result: EscalationsResult | null;
+  error: string | null;
+}
+
+const { result, error } = Astro.props;
+const entries: EscalationEntry[] = result?.entries ?? [];
+const counts = result?.countsByStatus ?? { open: 0, resolved: 0, accepted: 0, declined: 0 };
+const filters: Array<{ key: string; label: string }> = [
+  { key: 'all', label: `All (${entries.length})` },
+  { key: 'open', label: `Open (${counts.open})` },
+  { key: 'resolved', label: `Resolved (${counts.resolved})` },
+  { key: 'accepted', label: `Accepted (${counts.accepted})` },
+  { key: 'declined', label: `Declined (${counts.declined})` },
+];
+---
+
+<div class="section">
+  <div class="section-title section-title-row">
+    <span>Escalations</span>
+    <span class="meta-text">{entries.length} {entries.length === 1 ? 'entry' : 'entries'}</span>
+  </div>
+  {error ? (
+    <div class="empty-state">Failed to load escalations: {error}</div>
+  ) : entries.length === 0 ? (
+    <div class="empty-state">
+      No escalations on file. Help requests, process improvements, and proposed skills will surface here.
+    </div>
+  ) : (
+    <>
+      <div class="filters" data-filter-group="escalation">
+        {filters.map((f) => (
+          <button
+            class={`filter-btn${f.key === 'all' ? ' active' : ''}`}
+            data-filter={f.key}
+            type="button"
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+      <div class="escalation-feed" data-filter-feed="escalation">
+        {entries.map((e) => <EscalationCard escalation={e} />)}
+      </div>
+    </>
+  )}
+</div>

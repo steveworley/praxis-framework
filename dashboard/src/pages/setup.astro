@@ -1,0 +1,42 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import SetupWizard from '@/components/wizard/SetupWizard.astro';
+import { detectMode, getRoleHome } from '@/lib/role-home';
+
+export const prerender = false;
+
+const roleHome = getRoleHome();
+const mode = detectMode(roleHome);
+const alreadySeeded = mode === 'role';
+---
+
+<BaseLayout title="Set up role — Praxis">
+  <header class="header">
+    <div>
+      <span class="header-title">Set up role <em>praxis-framework</em></span>
+    </div>
+    <div class="header-right">
+      <span class="meta-text mono">{roleHome}</span>
+    </div>
+  </header>
+
+  <main class="container">
+    {alreadySeeded ? (
+      <div class="wizard">
+        <div class="wizard-card">
+          <h1>This role is already set up</h1>
+          <p>
+            <code>agents/persona.md</code> exists at this role's home, so the wizard has nothing to do.
+            Open the role-watcher to see the populated dashboard.
+          </p>
+          <div class="wizard-actions">
+            <span></span>
+            <a class="btn btn-primary" href="/interior">Go to interior</a>
+          </div>
+        </div>
+      </div>
+    ) : (
+      <SetupWizard />
+    )}
+  </main>
+</BaseLayout>

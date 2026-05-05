@@ -1,0 +1,108 @@
+---
+import type { ActivityEntry } from '@/lib/activity-loader';
+
+/** Section: recent activity (jsonl-derived) grouped by day. */
+interface Props {
+  entries: ActivityEntry[] | null;
+  error: string | null;
+}
+
+const { entries, error } = Astro.props;
+const list = entries ?? [];
+
+function isoDay(ts: string | undefined): string {
+  if (!ts) return 'unknown';
+  try {
+    return new Date(ts).toLocaleDateString('en-AU', {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    });
+  } catch {
+    return ts.slice(0, 10);
+  }
+}
+function isoTime(ts: string | undefined): string {
+  if (!ts) return '';
+  try {
+    return new Date(ts).toLocaleTimeString('en-AU', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+  } catch {
+    return ts.slice(11, 16);
+  }
+}
+
+interface Group {
+  day: string;
+  items: ActivityEntry[];
+}
+
+const groups: Group[] = [];
+let current: Group | null = null;
+for (const entry of list) {
+  const day = isoDay(typeof entry.timestamp === 'string' ? entry.timestamp : undefined);
+  if (!current || current.day !== day) {
+    current = { day, items: [] };
+    groups.push(current);
+  }
+  current.items.push(entry);
+}
+
+function buildHeadline(e: ActivityEntry): string {
+  const headline = typeof e.headline === 'string' ? e.headline : '';
+  if (headline.length > 0) return headline;
+  if (typeof e.notes === 'string' && e.notes.length > 0) return e.notes;
+  const keep = ['outcome', 'company', 'domain', 'result', 'next_step', 'classification', 'channel', 'kind'] as const;
+  const bits: string[] = [];
+  for (const k of keep) {
+    const v = e[k];
+    if (typeof v === 'string' && v.length > 0) bits.push(`${k}=${v}`);
+  }
+  return bits.join(', ');
+}
+---
+
+<div class="section">
+  <div class="section-title section-title-row">
+    <span>Recent activity</span>
+    <span class="meta-text">{list.length} {list.length === 1 ? 'entry' : 'entries'}</span>
+  </div>
+  {error ? (
+    <div class="empty-state">Failed to load activity: {error}</div>
+  ) : list.length === 0 ? (
+    <div class="empty-state">No activity logged yet.</div>
+  ) : (
+    <div class="activity-feed">
+      {groups.map((g) => (
+        <>
+          <div class="day-divider">{g.day}</div>
+          {g.items.map((e) => {
+            const time = isoTime(typeof e.timestamp === 'string' ? e.timestamp : undefined);
+            const action = typeof e.action === 'string' ? e.action : '—';
+            const headline = buildHeadline(e) || '(no detail)';
+            const agent = typeof e.agent === 'string' ? e.agent : '';
+            return (
+              <div class="activity-card">
+                <div class="activity-row">
+                  <div class="activity-time">{time}</div>
+                  <div><span class="activity-tag">{action}</span></div>
+                  <div class="activity-content">
+                    <div class="activity-headline">
+                      {headline}
+                      {agent && <span class="activity-agent">{agent}</span>}
+                    </div>
+                    <div class="activity-detail mono">{e._log_path}</div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </>
+      ))}
+    </div>
+  )}
+</div>

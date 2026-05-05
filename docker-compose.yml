@@ -1,0 +1,41 @@
+# Phase 1: Run the Praxis dashboard against a host-mounted clone of the
+# framework (or an already-seeded role).
+#
+# Default usage from the repo root:
+#
+#   docker compose up
+#
+# This mounts the current directory as /role and runs the dashboard from
+# /role/dashboard against it. The wizard can write back to the host through
+# the volume mount.
+#
+# To run against a different role checkout, set PRAXIS_REPO:
+#
+#   PRAXIS_REPO=/path/to/some-role docker compose up
+#
+# Open http://localhost:4321/ — / redirects to /setup if the role isn't
+# seeded yet, /interior once it is.
+
+services:
+  dashboard:
+    build:
+      context: .
+      dockerfile: dashboard/Dockerfile
+    image: praxis-dashboard:latest
+    container_name: praxis-dashboard
+    ports:
+      - "127.0.0.1:4321:4321"
+    volumes:
+      # The framework/role repo. The wizard writes here; git operations
+      # happen on the host clone via the mount.
+      - "${PRAXIS_REPO:-./}:/role"
+      # Keep node_modules out of the host clone — they live in a named volume
+      # so the container's dependency tree doesn't leak onto the host.
+      - praxis-node-modules:/role/dashboard/node_modules
+    environment:
+      PRAXIS_ROLE_HOME: /role
+      PRAXIS_LOG_GLOB: "${PRAXIS_LOG_GLOB:-*/logs/*.jsonl}"
+    restart: unless-stopped
+
+volumes:
+  praxis-node-modules:

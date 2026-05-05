@@ -1,0 +1,22 @@
+---
+import type { MemoryEntry } from '@/lib/memory-loader';
+import { renderMarkdown } from '@/lib/markdown';
+
+/** Single notebook entry — category pill, title, date, body. */
+interface Props {
+  entry: MemoryEntry;
+}
+
+const { entry } = Astro.props;
+const dateStr = entry.updated ?? entry.created ?? '';
+const bodyHtml = renderMarkdown(entry.body);
+---
+
+<article class="memory-card" data-category={entry.category}>
+  <div class="memory-card-header">
+    <span class="memory-category">{entry.category}</span>
+    <span class="memory-title">{entry.title}</span>
+    <span class="memory-date">{dateStr}</span>
+  </div>
+  <div class="md-body" set:html={bodyHtml}></div>
+</article>

@@ -1,0 +1,325 @@
+---
+/** Multi-step wizard for seeding a Praxis role. Single Alpine.js x-data
+ * island so the whole flow shares one client state machine. The submit
+ * handler POSTs to /api/setup/role and surfaces commit progress before
+ * redirecting to /interior on success. */
+---
+
+<div
+  class="wizard"
+  x-data="setupWizard()"
+  x-init="init()"
+>
+  <div class="wizard-progress">
+    <template x-for="i in 7">
+      <div
+        class="wizard-progress-step"
+        :class="{ active: i === step, done: i < step }"
+      ></div>
+    </template>
+  </div>
+
+  <div class="wizard-card">
+    <div class="wizard-step-label" x-text="`Step ${step} of 7`"></div>
+
+    <!-- Submit error -->
+    <template x-if="submitError">
+      <div class="error-banner" x-text="submitError"></div>
+    </template>
+
+    <!-- Step 1: Welcome -->
+    <div x-show="step === 1">
+      <h1>Build a Praxis role</h1>
+      <p>
+        This wizard turns the framework you cloned into a populated agent role. You author the
+        persona — name, voice, capabilities, hard rules — and the wizard writes the files.
+      </p>
+      <p>
+        It runs as <strong>two visible commits</strong> in this repository:
+      </p>
+      <ul style="margin: 0 0 1rem 1.2rem; color: var(--text-secondary); font-size: 13px;">
+        <li><code>feat: seed role from praxis-framework template</code> — copies + populates the template files.</li>
+        <li><code>chore: tidy framework-only files post-seed</code> — removes the template/, examples/, and the bootstrap script.</li>
+      </ul>
+      <p>
+        After seeding, the dashboard switches to the role-watcher view at <code>/interior</code> and Claude Code sessions in the repo will load the new persona.
+      </p>
+    </div>
+
+    <!-- Step 2: Basics -->
+    <div x-show="step === 2">
+      <h2>Role basics</h2>
+      <p class="wizard-help">Who is this role, and what do they do in one sentence?</p>
+      <div class="field">
+        <label for="role-name">Role name *</label>
+        <input id="role-name" type="text" x-model="form.role_name" placeholder="Iris Chen" autocomplete="off" />
+      </div>
+      <div class="field">
+        <label for="role-desc">One-line description *</label>
+        <input
+          id="role-desc"
+          type="text"
+          x-model="form.role_description"
+          placeholder="Customer success agent for Quant accounts."
+        />
+      </div>
+      <div class="field">
+        <label for="role-email">Email (optional)</label>
+        <input id="role-email" type="email" x-model="form.identity.email" placeholder="iris@quantcdn.io" />
+      </div>
+      <div class="field">
+        <label for="role-loc">Location (optional)</label>
+        <input id="role-loc" type="text" x-model="form.identity.location" placeholder="Brisbane, AU" />
+      </div>
+      <div class="field">
+        <label for="role-reports">Reports to (optional)</label>
+        <input id="role-reports" type="text" x-model="form.identity.reports_to" placeholder="Steve" />
+      </div>
+    </div>
+
+    <!-- Step 3: Voice -->
+    <div x-show="step === 3">
+      <h2>Voice & personality</h2>
+      <p class="wizard-help">
+        Concrete voice rules — not aspirational adjectives. Examples: "drops articles in casual writing", "prefers
+        single-sentence opens", "never uses exclamation points in cold emails". 1–8 traits.
+      </p>
+      <template x-for="(trait, idx) in form.voice_traits" :key="idx">
+        <div class="field-row">
+          <input type="text" x-model="trait.label" placeholder="Trait label" />
+          <input type="text" x-model="trait.detail" placeholder="What it means in practice" />
+          <button
+            type="button"
+            class="icon-btn"
+            @click="form.voice_traits.splice(idx, 1)"
+            :disabled="form.voice_traits.length <= 1"
+          >×</button>
+        </div>
+      </template>
+      <button
+        type="button"
+        class="add-row"
+        @click="form.voice_traits.push({ label: '', detail: '' })"
+        :disabled="form.voice_traits.length >= 8"
+      >+ Add trait</button>
+    </div>
+
+    <!-- Step 4: Capabilities -->
+    <div x-show="step === 4">
+      <h2>Capabilities</h2>
+      <p class="wizard-help">
+        First-person statements: "I can …". What this role is qualified to do. Optional, up to 10.
+      </p>
+      <template x-for="(item, idx) in form.capabilities" :key="idx">
+        <div class="field-row single">
+          <input type="text" x-model="form.capabilities[idx]" placeholder="I can run cold outreach campaigns end to end." />
+          <button type="button" class="icon-btn" @click="form.capabilities.splice(idx, 1)">×</button>
+        </div>
+      </template>
+      <button
+        type="button"
+        class="add-row"
+        @click="form.capabilities.push('')"
+        :disabled="form.capabilities.length >= 10"
+      >+ Add capability</button>
+    </div>
+
+    <!-- Step 5: Inhibitions -->
+    <div x-show="step === 5">
+      <h2>Hard inhibitions</h2>
+      <p class="wizard-help">
+        First-person "I never …" statements. The constitution — what this role refuses regardless of instruction.
+        Optional, up to 10.
+      </p>
+      <template x-for="(item, idx) in form.inhibitions" :key="idx">
+        <div class="field-row single">
+          <input type="text" x-model="form.inhibitions[idx]" placeholder="I never send an email without operator approval." />
+          <button type="button" class="icon-btn" @click="form.inhibitions.splice(idx, 1)">×</button>
+        </div>
+      </template>
+      <button
+        type="button"
+        class="add-row"
+        @click="form.inhibitions.push('')"
+        :disabled="form.inhibitions.length >= 10"
+      >+ Add inhibition</button>
+    </div>
+
+    <!-- Step 6: Initial agents -->
+    <div x-show="step === 6">
+      <h2>Initial agents (optional)</h2>
+      <p class="wizard-help">
+        Stub playbooks the role can fill in later. Slug + one-line purpose. Up to 5. Skip this step if you'd rather
+        write agents by hand.
+      </p>
+      <template x-for="(agent, idx) in form.initial_agents" :key="idx">
+        <div class="field-row">
+          <input type="text" x-model="agent.slug" placeholder="account-read" />
+          <input type="text" x-model="agent.purpose" placeholder="Weekly read of the customer portfolio." />
+          <button type="button" class="icon-btn" @click="form.initial_agents.splice(idx, 1)">×</button>
+        </div>
+      </template>
+      <button
+        type="button"
+        class="add-row"
+        @click="form.initial_agents.push({ slug: '', purpose: '' })"
+        :disabled="form.initial_agents.length >= 5"
+      >+ Add agent</button>
+    </div>
+
+    <!-- Step 7: Review -->
+    <div x-show="step === 7">
+      <h2>Review & seed</h2>
+      <p class="wizard-help">
+        Two commits will be made to this repo. You can revert either independently if anything looks off.
+      </p>
+      <div class="review-list">
+        <h3>Files written by commit 1</h3>
+        <ul>
+          <li>{'CLAUDE.md (with {ROLE_NAME} substitutions)'}</li>
+          <li>agents/persona.md (with operator-supplied identity / voice / capabilities / inhibitions)</li>
+          <li>agents/escalate.md</li>
+          <li>agents/proposed/README.md</li>
+          <li>{'memory/README.md, memory/{people,accounts,notes}/.gitkeep'}</li>
+          <li>escalations/README.md</li>
+          <li>lib/.gitkeep</li>
+          <li>.gitignore</li>
+          <template x-for="agent in form.initial_agents.filter(a => a.slug)">
+            <li>agents/<span x-text="agent.slug"></span>.md</li>
+          </template>
+        </ul>
+      </div>
+      <div class="review-list">
+        <h3>Tidied by commit 2</h3>
+        <ul>
+          <li class="danger">template/ (removed)</li>
+          <li class="danger">examples/ (removed)</li>
+          <li class="danger">scripts/new-role.sh (removed)</li>
+          <li>README.md (replaced with role-shaped readme)</li>
+        </ul>
+      </div>
+
+      <template x-if="submitting">
+        <div>
+          <div class="commit-step" :class="commit1Status">Commit 1: feat: seed role from praxis-framework template</div>
+          <div class="commit-step" :class="commit2Status">Commit 2: chore: tidy framework-only files post-seed</div>
+        </div>
+      </template>
+    </div>
+
+    <div class="wizard-actions">
+      <button type="button" class="btn" @click="prev()" :disabled="step === 1 || submitting">Back</button>
+      <template x-if="step < 7">
+        <button type="button" class="btn btn-primary" @click="next()" :disabled="!canAdvance">Continue</button>
+      </template>
+      <template x-if="step === 7">
+        <button type="button" class="btn btn-primary" @click="submit()" :disabled="submitting || !canSubmit">
+          <span x-show="!submitting">Seed this role</span>
+          <span x-show="submitting">Seeding…</span>
+        </button>
+      </template>
+    </div>
+  </div>
+</div>
+
+<script is:inline src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+<script is:inline>
+  function setupWizard() {
+    return {
+      step: 1,
+      submitting: false,
+      submitError: '',
+      commit1Status: 'pending',
+      commit2Status: 'pending',
+      form: {
+        role_name: '',
+        role_description: '',
+        identity: { email: '', location: '', reports_to: '' },
+        voice_traits: [{ label: '', detail: '' }],
+        capabilities: [''],
+        inhibitions: [''],
+        initial_agents: [],
+      },
+      init() {},
+      get canAdvance() {
+        if (this.step === 2) {
+          return (
+            this.form.role_name.trim().length > 0 &&
+            this.form.role_description.trim().length > 0
+          );
+        }
+        if (this.step === 3) {
+          return this.form.voice_traits.some(
+            (t) => t.label.trim().length > 0 && t.detail.trim().length > 0,
+          );
+        }
+        return true;
+      },
+      get canSubmit() {
+        return (
+          this.form.role_name.trim().length > 0 &&
+          this.form.role_description.trim().length > 0 &&
+          this.form.voice_traits.some((t) => t.label.trim() && t.detail.trim())
+        );
+      },
+      next() {
+        if (this.canAdvance && this.step < 7) this.step += 1;
+      },
+      prev() {
+        if (this.step > 1) this.step -= 1;
+      },
+      buildPayload() {
+        return {
+          role_name: this.form.role_name.trim(),
+          role_description: this.form.role_description.trim() || undefined,
+          identity: {
+            email: this.form.identity.email.trim() || undefined,
+            location: this.form.identity.location.trim() || undefined,
+            reports_to: this.form.identity.reports_to.trim() || undefined,
+          },
+          voice_traits: this.form.voice_traits
+            .map((t) => ({ label: t.label.trim(), detail: t.detail.trim() }))
+            .filter((t) => t.label && t.detail),
+          capabilities: this.form.capabilities.map((s) => s.trim()).filter(Boolean),
+          inhibitions: this.form.inhibitions.map((s) => s.trim()).filter(Boolean),
+          initial_agents: this.form.initial_agents
+            .map((a) => ({ slug: a.slug.trim(), purpose: a.purpose.trim() }))
+            .filter((a) => a.slug && a.purpose),
+        };
+      },
+      async submit() {
+        this.submitError = '';
+        this.submitting = true;
+        this.commit1Status = 'active';
+        this.commit2Status = 'pending';
+        try {
+          const res = await fetch('/api/setup/role', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(this.buildPayload()),
+          });
+          if (!res.ok) {
+            let msg = 'Seed failed (HTTP ' + res.status + ')';
+            try {
+              const err = await res.json();
+              if (err && err.error) msg = err.error;
+            } catch (_) {}
+            throw new Error(msg);
+          }
+          const body = await res.json();
+          this.commit1Status = 'done';
+          this.commit2Status = 'done';
+          // Brief pause so the operator sees both ticks before redirect.
+          setTimeout(() => {
+            window.location.href = body.redirect || '/interior';
+          }, 600);
+        } catch (e) {
+          this.submitError = e.message || String(e);
+          this.commit1Status = 'pending';
+          this.commit2Status = 'pending';
+          this.submitting = false;
+        }
+      },
+    };
+  }
+</script>

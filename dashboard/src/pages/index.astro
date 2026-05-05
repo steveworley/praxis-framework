@@ -1,0 +1,7 @@
+---
+import { detectMode, getRoleHome } from '@/lib/role-home';
+
+export const prerender = false;
+
+return Astro.redirect(detectMode(getRoleHome()) === 'role' ? '/interior' : '/setup');
+---
