@@ -1,0 +1,19 @@
+# Local tooling
+.claude/
+.playwright-mcp/
+
+# Secrets — never commit
+.env
+*.env
+**/secrets.yaml
+**/credentials.json
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# OS
+.DS_Store
+
+# Add role-specific gitignores below — e.g. work-product subdirectories
+# that contain raw external data (prospects/*.json, tickets/*.json, etc.)
