@@ -1,6 +1,7 @@
 # Local tooling
 .claude/
 .playwright-mcp/
+.praxis/
 
 # Secrets — never commit
 .env

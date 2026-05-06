@@ -6,11 +6,21 @@ export interface VoiceTrait {
   detail: string;
 }
 
+export interface PersonaInitialAgent {
+  slug: string;
+  purpose: string;
+}
+
 export interface Persona {
   identity: Record<string, string>;
   voice: VoiceTrait[];
   capabilities: string[];
   inhibitions: string[];
+  /**
+   * Stub agents — only emitted by the research-engine handoff draft, not the
+   * standard `agents/persona.md`. Empty array for normal seeded roles.
+   */
+  initial_agents: PersonaInitialAgent[];
 }
 
 /**
@@ -20,13 +30,22 @@ export interface Persona {
  */
 export async function parsePersona(roleHome: string): Promise<Persona> {
   const personaPath = path.join(roleHome, 'agents', 'persona.md');
-  const out: Persona = { identity: {}, voice: [], capabilities: [], inhibitions: [] };
   let text: string;
   try {
     text = await fs.readFile(personaPath, 'utf-8');
   } catch {
-    return out;
+    return emptyPersona();
   }
+  return parsePersonaText(text);
+}
+
+/**
+ * Parse persona-shaped markdown directly. Used by the research-engine draft
+ * loader so it can reuse the same parser without staging the draft on disk
+ * under `agents/persona.md`.
+ */
+export function parsePersonaText(text: string): Persona {
+  const out = emptyPersona();
   if (text.length === 0) return out;
 
   const identitySection = extractSection(text, 'Identity');
@@ -65,12 +84,30 @@ export async function parsePersona(roleHome: string): Promise<Persona> {
     }
   }
 
+  // Optional draft-only section: `## Initial agents` with `- **slug** -- purpose`.
+  const agentsSection = extractSection(text, 'Initial agents');
+  if (agentsSection) {
+    for (const rawLine of agentsSection.split('\n')) {
+      const line = rawLine.trim();
+      const m = /^-\s+\*\*([^*]+)\*\*\s*--\s*(.+)$/.exec(line);
+      if (m) {
+        const slug = (m[1] ?? '').trim();
+        const purpose = (m[2] ?? '').trim();
+        if (slug && purpose) out.initial_agents.push({ slug, purpose });
+      }
+    }
+  }
+
   return out;
+}
+
+function emptyPersona(): Persona {
+  return { identity: {}, voice: [], capabilities: [], inhibitions: [], initial_agents: [] };
 }
 
 function extractSection(text: string, heading: string): string | null {
   const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const re = new RegExp(`## ${escaped}\\s*\\n([\\s\\S]*?)(?=\\n## |$)`);
+  const re = new RegExp(`## ${escaped}\\s*\\n([\\s\\S]*?)(?=\\n## |\\n# |$)`);
   const m = re.exec(text);
   return m ? (m[1] ?? null) : null;
 }

@@ -4,7 +4,7 @@ import path from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { parsePersona } from './persona-parser.ts';
+import { parsePersona, parsePersonaText } from './persona-parser.ts';
 
 let tempDir: string;
 
@@ -20,7 +20,13 @@ afterEach(async () => {
 describe('parsePersona', () => {
   it('returns empty structures when persona.md is missing', async () => {
     const persona = await parsePersona(tempDir);
-    expect(persona).toEqual({ identity: {}, voice: [], capabilities: [], inhibitions: [] });
+    expect(persona).toEqual({
+      identity: {},
+      voice: [],
+      capabilities: [],
+      inhibitions: [],
+      initial_agents: [],
+    });
   });
 
   it('parses identity, voice, capabilities, and inhibitions', async () => {
@@ -38,5 +44,33 @@ describe('parsePersona', () => {
     ]);
     expect(persona.capabilities).toEqual(['I can read accounts weekly', 'I can summarise threads']);
     expect(persona.inhibitions).toEqual(['I never send emails without approval']);
+    expect(persona.initial_agents).toEqual([]);
+  });
+});
+
+describe('parsePersonaText', () => {
+  it('parses an Initial agents section with slug + purpose bullets', () => {
+    const text = `# Persona — Iris\n\n## Identity\n\n- **Full name**: Iris Chen\n\n## Voice & Personality\n\n- **Direct** -- single-sentence opens\n\n## Capabilities\n\n- I can run weekly account reads\n\n## Hard inhibitions\n\n- I never send without approval\n\n## Initial agents\n\n- **account-read** -- weekly read of the customer portfolio\n- **thread-summarise** -- pulls a one-paragraph summary from a Slack thread\n\n# Notes for the operator\n\nSources: their pricing page.\n`;
+    const persona = parsePersonaText(text);
+    expect(persona.initial_agents).toEqual([
+      { slug: 'account-read', purpose: 'weekly read of the customer portfolio' },
+      { slug: 'thread-summarise', purpose: 'pulls a one-paragraph summary from a Slack thread' },
+    ]);
+    expect(persona.voice).toEqual([
+      { label: 'Direct', detail: 'single-sentence opens' },
+    ]);
+    expect(persona.capabilities).toEqual(['I can run weekly account reads']);
+    expect(persona.inhibitions).toEqual(['I never send without approval']);
+  });
+
+  it('treats absent sections as empty without throwing', () => {
+    const persona = parsePersonaText('# Persona — Empty\n');
+    expect(persona).toEqual({
+      identity: {},
+      voice: [],
+      capabilities: [],
+      inhibitions: [],
+      initial_agents: [],
+    });
   });
 });
