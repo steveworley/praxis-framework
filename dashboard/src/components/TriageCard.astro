@@ -1,0 +1,55 @@
+---
+import type { EscalationEntry } from '@/lib/escalations-loader';
+
+/** Compact escalation card for the home-page "Waiting on you" list. Shows
+ * one-line title + body preview, lab pills, and supervisor verbs. The
+ * `urgent` and `stale` modifiers are computed by the caller — this component
+ * just renders the visual treatment. */
+interface Props {
+  escalation: EscalationEntry;
+  urgent?: boolean;
+  stale?: boolean;
+  staleDays?: number | null;
+}
+
+const { escalation: e, urgent = false, stale = false, staleDays = null } = Astro.props;
+
+const isProposed = e.kind === 'proposed_skill';
+const whenBits: string[] = [];
+if (e.created) whenBits.push(e.created);
+if (e.agent_context) whenBits.push(e.agent_context);
+const when = whenBits.join(' · ');
+const previewSource = e.body.replace(/^#+\s+.+$/gm, '').trim();
+const preview = previewSource.split('\n').find((line) => line.trim().length > 0) ?? '';
+---
+
+<article class:list={['triage-card', urgent && 'urgent', stale && 'stale']}>
+  <div class="badges">
+    <span class="badge">
+      <span class:list={['lab', e.kind]}>{isProposed ? 'proposed' : e.kind}</span>
+      {e.urgency === 'high' && <span class="lab urg-high">high</span>}
+    </span>
+    <span class="badge">
+      <span class:list={['lab', `st-${e.status}`]}>{e.status}</span>
+    </span>
+    {when && <span class="when">{when}</span>}
+  </div>
+  <div>
+    <h4>{e.title}</h4>
+    {preview && <p>{preview}</p>}
+    {stale && staleDays !== null && (
+      <span class="stale-flag">⏱ open {staleDays}d</span>
+    )}
+  </div>
+  <div class="actions">
+    <a class="verb" href="/escalations">{isProposed ? 'review →' : 'open →'}</a>
+    {isProposed ? (
+      <>
+        <a class="verb" href="#">accept</a>
+        <a class="verb danger" href="#">decline</a>
+      </>
+    ) : (
+      <a class="verb" href="#">mark resolved</a>
+    )}
+  </div>
+</article>

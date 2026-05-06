@@ -1,0 +1,45 @@
+---
+/** Top app head + nav, rendered identically on every route. The `current`
+ * prop drives the active-tab underline; `escalationOpenCount` (when > 0)
+ * surfaces the red badge next to the escalations tab. */
+export type RouteName = 'home' | 'escalations' | 'notebook' | 'activity' | 'role';
+
+interface Props {
+  current: RouteName;
+  personaName?: string;
+  escalationOpenCount?: number;
+  updatedAt?: string;
+}
+
+const { current, personaName, escalationOpenCount = 0, updatedAt } = Astro.props;
+
+const tabs: Array<{ key: RouteName; href: string; label: string }> = [
+  { key: 'home', href: '/', label: 'home' },
+  { key: 'escalations', href: '/escalations', label: 'escalations' },
+  { key: 'notebook', href: '/notebook', label: 'notebook' },
+  { key: 'activity', href: '/activity', label: 'activity' },
+  { key: 'role', href: '/role', label: 'role' },
+];
+---
+
+<div class="app-head">
+  <div>
+    <span class="app-brand">
+      PRAXIS{personaName && <span class="name">{personaName}</span>}
+    </span>
+  </div>
+  <div class="app-head-meta">
+    {updatedAt && <span>updated {updatedAt}</span>}
+    <button type="button" onclick="window.location.reload()">refresh</button>
+  </div>
+</div>
+<nav class="app-nav">
+  {tabs.map((t) => (
+    <a class:list={[t.key === current && 'current']} href={t.href}>
+      {t.label}
+      {t.key === 'escalations' && escalationOpenCount > 0 && (
+        <span class="open-count"> {escalationOpenCount}</span>
+      )}
+    </a>
+  ))}
+</nav>

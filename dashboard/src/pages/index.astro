@@ -1,7 +1,207 @@
 ---
-import { detectMode, getRoleHome } from '@/lib/role-home';
+import IdentityStrip from '@/components/IdentityStrip.astro';
+import RouteHeader from '@/components/RouteHeader.astro';
+import SummaryCard from '@/components/SummaryCard.astro';
+import TriageCard from '@/components/TriageCard.astro';
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import { assembleActivity, type ActivityEntry } from '@/lib/activity-loader';
+import { countLiveAgents } from '@/lib/agents-loader';
+import {
+  assembleEscalations,
+  type EscalationEntry,
+  type EscalationsResult,
+} from '@/lib/escalations-loader';
+import { assembleMemory, type MemoryEntry } from '@/lib/memory-loader';
+import { parsePersona, type Persona } from '@/lib/persona-parser';
+import {
+  daysSince,
+  isStale,
+  recentActivityBreakdown,
+  recentActivityCount,
+  recentMemoryBreakdown,
+  recentMemoryCount,
+} from '@/lib/recent-stats';
+import { detectMode, getLogGlob, getRoleHome, nowIso } from '@/lib/role-home';
+import simpleGit from 'simple-git';
 
 export const prerender = false;
 
-return Astro.redirect(detectMode(getRoleHome()) === 'role' ? '/interior' : '/setup');
+const roleHome = getRoleHome();
+const mode = detectMode(roleHome);
+if (mode === 'seed') {
+  return Astro.redirect('/setup');
+}
+
+const logGlob = getLogGlob();
+
+// Section-by-section error handling: one failed loader shouldn't blank the
+// page. We surface per-section errors below.
+const [personaRes, memoryRes, escalationsRes, activityRes, agentCountRes, recentRoleRes] = await Promise.allSettled([
+  parsePersona(roleHome),
+  assembleMemory(roleHome),
+  assembleEscalations(roleHome),
+  assembleActivity(roleHome, logGlob, 200),
+  countLiveAgents(roleHome),
+  collectRoleEdits(roleHome),
+]);
+
+const persona: Persona | null = personaRes.status === 'fulfilled' ? personaRes.value : null;
+const memoryEntries: MemoryEntry[] = memoryRes.status === 'fulfilled' ? memoryRes.value : [];
+const escalations: EscalationsResult | null =
+  escalationsRes.status === 'fulfilled' ? escalationsRes.value : null;
+const activity: ActivityEntry[] = activityRes.status === 'fulfilled' ? activityRes.value : [];
+const agentCount: number = agentCountRes.status === 'fulfilled' ? agentCountRes.value : 0;
+const recentRoleEdits: RoleEditsSummary =
+  recentRoleRes.status === 'fulfilled' ? recentRoleRes.value : { count: 0, lastFile: null, lastDays: null };
+
+const updatedAt = nowIso();
+const fullName = persona?.identity['full_name'] ?? persona?.identity['name'] ?? '';
+
+const now = Date.now();
+const openEscalations: EscalationEntry[] = (escalations?.entries ?? []).filter(
+  (e) => e.status === 'open',
+);
+const urgentCount = openEscalations.filter((e) => e.urgency === 'high').length;
+const staleCount = openEscalations.filter((e) => isStale(e, now)).length;
+const openCount = openEscalations.length;
+
+const memoryBreakdown = recentMemoryBreakdown(memoryEntries, 7, now);
+const memoryRecent = recentMemoryCount(memoryEntries, 7, now);
+const activityBreakdown = recentActivityBreakdown(activity, 1, now);
+const activityToday = recentActivityCount(activity, 1, now);
+
+function memoryBreakdownLines(): string[] {
+  const keys = Object.keys(memoryBreakdown).sort();
+  if (keys.length === 0) return ['no recent entries'];
+  return keys.map((k) => {
+    const n = memoryBreakdown[k] ?? 0;
+    return `${n} ${k}`;
+  });
+}
+function activityBreakdownLines(): string[] {
+  const keys = Object.keys(activityBreakdown).sort();
+  if (keys.length === 0) return ['no activity today'];
+  return keys.map((k) => {
+    const n = activityBreakdown[k] ?? 0;
+    return `${n} ${k}`;
+  });
+}
+function roleEditsLines(): string[] {
+  if (recentRoleEdits.count === 0) return ['no recent edits'];
+  const lines: string[] = [];
+  if (recentRoleEdits.lastDays !== null) {
+    lines.push(`last: ${recentRoleEdits.lastDays === 0 ? 'today' : `${recentRoleEdits.lastDays} ${recentRoleEdits.lastDays === 1 ? 'day' : 'days'} ago`}`);
+  }
+  if (recentRoleEdits.lastFile) lines.push(recentRoleEdits.lastFile);
+  return lines;
+}
+
+interface RoleEditsSummary {
+  count: number;
+  lastFile: string | null;
+  lastDays: number | null;
+}
+
+/**
+ * Count git commits touching `agents/` over the last 7 days. Uses simple-git
+ * which is already a dep. If the role home isn't a git repo, returns zero.
+ */
+async function collectRoleEdits(home: string): Promise<RoleEditsSummary> {
+  try {
+    const git = simpleGit(home);
+    const isRepo = await git.checkIsRepo();
+    if (!isRepo) return { count: 0, lastFile: null, lastDays: null };
+    const log = await git.log({
+      '--since': '7 days ago',
+      '--name-only': null,
+      file: 'agents',
+      maxCount: 50,
+    });
+    const all = log.all ?? [];
+    if (all.length === 0) return { count: 0, lastFile: null, lastDays: null };
+    const head = all[0];
+    const lastDays = head?.date ? daysSince(head.date) : null;
+    // simple-git returns each commit's diff in `diff` only when configured;
+    // pulling first changed agent file out of the body would require a
+    // second pass. Surface the agents/ marker filename instead so the user
+    // gets a hint without us walking diffs.
+    const lastFile = 'agents/';
+    return { count: all.length, lastFile, lastDays };
+  } catch {
+    return { count: 0, lastFile: null, lastDays: null };
+  }
+}
 ---
+
+<BaseLayout title={fullName ? `Praxis · ${fullName}` : 'Praxis'}>
+  <main class="container">
+    <RouteHeader
+      current="home"
+      personaName={fullName}
+      escalationOpenCount={openCount}
+      updatedAt={updatedAt}
+    />
+
+    <div class="group" style="margin-top: 2rem;">
+      <div class="group-head">
+        <span class="group-title">Waiting on you</span>
+        <span class="group-counter">
+          {openCount} open
+          {urgentCount > 0 && ` · ${urgentCount} urgent`}
+          {staleCount > 0 && ` · ${staleCount} stale`}
+        </span>
+      </div>
+      {openEscalations.length === 0 ? (
+        <div class="empty">Nothing waiting. Open escalations will surface here.</div>
+      ) : (
+        openEscalations.map((e) => (
+          <TriageCard
+            escalation={e}
+            urgent={e.urgency === 'high'}
+            stale={isStale(e, now)}
+            staleDays={daysSince(e.created, now)}
+          />
+        ))
+      )}
+    </div>
+
+    {persona && (
+      <IdentityStrip
+        persona={persona}
+        showCounts={true}
+        agentCount={agentCount}
+        link={{ href: '/role', label: 'view role →' }}
+      />
+    )}
+
+    <div class="group">
+      <div class="group-head">
+        <span class="group-title">Recently</span>
+        <span class="group-counter">last 7 days</span>
+      </div>
+      <div class="summary">
+        <SummaryCard
+          heading="Notebook"
+          num={memoryRecent === 0 ? '0' : `+${memoryRecent}`}
+          breakdownLines={memoryBreakdownLines()}
+          deepLinkHref="/notebook"
+          deepLinkLabel="all entries →"
+        />
+        <SummaryCard
+          heading="Activity (today)"
+          num={String(activityToday)}
+          breakdownLines={activityBreakdownLines()}
+          deepLinkHref="/activity"
+          deepLinkLabel="full log →"
+        />
+        <SummaryCard
+          heading="Role edits (by you)"
+          num={String(recentRoleEdits.count)}
+          breakdownLines={roleEditsLines()}
+          deepLinkHref="/role"
+          deepLinkLabel="view role →"
+        />
+      </div>
+    </div>
+  </main>
+</BaseLayout>

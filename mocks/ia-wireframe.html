@@ -1,0 +1,941 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Praxis · IA Wireframe</title>
+<style>
+:root{
+  --bg:#fafaf9; --surface:#ffffff; --surface-mute:#f4f4f3; --surface-deep:#ececea;
+  --rule:#dcdbd8; --rule-strong:#c0bfbb;
+  --ink:#1c1c1c; --ink-soft:#444444; --ink-muted:#777775; --ink-faint:#a4a3a0;
+  --link:#1f5fbf; --warn:#a85f1c; --danger:#a82c1c; --good:#1f6e3c; --info:#5d3a7e;
+  --note:#fcf6dd; --note-rule:#e3d7a4;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+  background:var(--bg);color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+  font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased
+}
+a{color:var(--link);text-decoration:none}
+a:hover{text-decoration:underline}
+code{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:.85em;color:var(--ink-soft);background:var(--surface-mute);padding:1px 5px;border-radius:3px}
+
+/* Sticky nav */
+nav.toc{position:sticky;top:0;z-index:50;background:var(--surface);border-bottom:1px solid var(--rule);padding:.7rem 2rem;display:flex;gap:1.4rem;align-items:baseline;flex-wrap:wrap}
+nav.toc strong{font-size:13px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-muted);margin-right:.5rem}
+nav.toc a{font-size:13px;color:var(--ink-soft)}
+nav.toc a:hover{color:var(--link)}
+nav.toc .meta{margin-left:auto;font-size:12px;color:var(--ink-faint)}
+
+/* Page-section wrapper (one per IA route) */
+.page-section{padding:3rem 2rem 5rem;border-bottom:2px dashed var(--rule-strong);max-width:1200px;margin:0 auto}
+.page-section:last-child{border-bottom:none}
+.page-section > .section-banner{
+  display:flex;align-items:baseline;gap:1rem;flex-wrap:wrap;
+  padding:.7rem 1rem;background:var(--surface-deep);border:1px solid var(--rule-strong);border-radius:4px;
+  margin-bottom:2rem;font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:13px
+}
+.section-banner strong{font-size:14px;color:var(--ink)}
+.section-banner span.purpose{color:var(--ink-muted);font-style:italic;font-family:-apple-system,system-ui,sans-serif}
+.section-banner span.tag{margin-left:auto;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-muted)}
+
+/* Annotation boxes — IA decisions made visible */
+.note{
+  background:var(--note);border:1px solid var(--note-rule);border-radius:4px;
+  padding:.5rem .75rem;margin:.5rem 0;font-size:12.5px;color:#5a4d1a;
+  display:flex;gap:.5rem;align-items:flex-start
+}
+.note::before{content:"›";font-family:ui-monospace,monospace;font-weight:bold}
+.note.right{margin-left:1rem}
+
+/* Faux browser chrome to make it feel like a real page */
+.chrome{
+  background:var(--surface);border:1px solid var(--rule);border-radius:6px;overflow:hidden;
+  box-shadow:0 1px 3px rgba(0,0,0,.04)
+}
+.chrome-bar{
+  background:var(--surface-mute);border-bottom:1px solid var(--rule);
+  padding:.5rem .9rem;font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:12px;color:var(--ink-muted);
+  display:flex;align-items:center;gap:.6rem
+}
+.chrome-bar::before{content:"";width:8px;height:8px;border-radius:50%;background:#dcdbd8;box-shadow:14px 0 0 #dcdbd8,28px 0 0 #dcdbd8}
+.chrome-bar .url{margin-left:3.5rem}
+.chrome-body{padding:1.5rem 1.75rem}
+.chrome-body.wide{padding:2rem 2.5rem}
+
+/* Generic header inside a page (the dashboard's own header) */
+.app-head{display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid var(--rule);padding-bottom:.7rem;margin-bottom:1.5rem}
+.app-brand{font-family:ui-monospace,monospace;font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--ink)}
+.app-brand .name{font-family:-apple-system,system-ui,sans-serif;font-size:14px;font-weight:500;letter-spacing:0;text-transform:none;margin-left:.6rem;color:var(--ink)}
+.app-head-meta{font-size:12px;color:var(--ink-faint)}
+.app-head-meta a{margin-left:.8rem}
+.app-nav{display:flex;gap:1rem;font-size:13px;margin-top:1rem}
+.app-nav a{color:var(--ink-muted)}
+.app-nav a.current{color:var(--ink);font-weight:600;border-bottom:2px solid var(--ink);padding-bottom:.25rem}
+
+/* Group titles inside a page */
+.group{margin-bottom:2.5rem}
+.group-head{display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid var(--rule);padding-bottom:.4rem;margin-bottom:1rem}
+.group-title{font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink)}
+.group-counter{font-size:12px;color:var(--ink-muted)}
+.group-action{font-size:12px}
+
+/* Triage card (used on /home and /escalations) */
+.triage-card{display:grid;grid-template-columns:200px 1fr auto;gap:1.25rem;padding:1rem 1.1rem;border:1px solid var(--rule);border-radius:4px;background:var(--surface);margin-bottom:.6rem;align-items:start}
+.triage-card.urgent{border-left:3px solid var(--danger)}
+.triage-card.stale{border-left:3px solid var(--warn);background:#fdf6e9}
+.triage-card .badges{display:flex;flex-direction:column;gap:.25rem;font-size:11px;font-family:ui-monospace,monospace}
+.triage-card .badge{display:inline-flex;gap:.4rem;align-items:baseline}
+.triage-card .badge .lab{padding:1px 5px;border-radius:2px;text-transform:uppercase;letter-spacing:.06em}
+.lab.help{background:#fbe2dc;color:var(--danger)}
+.lab.improvement{background:#fbeed4;color:var(--warn)}
+.lab.proposed_skill{background:#ece1f3;color:var(--info)}
+.lab.urg-high{background:#fbe2dc;color:var(--danger);font-weight:600}
+.lab.st-open{background:#dcefe2;color:var(--good)}
+.lab.st-resolved{background:var(--surface-deep);color:var(--ink-muted)}
+.lab.st-accepted{background:#dcefe2;color:var(--good)}
+.lab.st-declined{background:#fbe2dc;color:var(--danger)}
+.triage-card .when{font-size:11px;color:var(--ink-muted);font-family:ui-monospace,monospace;margin-top:.3rem}
+.triage-card h4{font-size:14px;font-weight:600;margin-bottom:.25rem;color:var(--ink)}
+.triage-card p{font-size:13px;color:var(--ink-soft)}
+.triage-card .actions{display:flex;flex-direction:column;gap:.4rem;font-size:12px;align-items:flex-end}
+.triage-card .actions .verb{color:var(--link)}
+.triage-card .actions .verb.danger{color:var(--danger)}
+.triage-card .actions .stale-flag{font-size:11px;color:var(--warn);font-weight:600}
+
+/* Identity strip */
+.id-strip{display:grid;grid-template-columns:auto 1fr auto;gap:1.5rem;padding:1rem 1.1rem;background:var(--surface-mute);border-radius:4px;margin-bottom:1.5rem;align-items:baseline}
+.id-strip .name{font-size:18px;font-weight:600}
+.id-strip .meta{font-size:13px;color:var(--ink-muted);font-family:ui-monospace,monospace}
+.id-strip .meta span{margin-right:1.2rem}
+.id-strip a{font-size:12px}
+
+/* Recent / summary block */
+.summary{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem}
+.summary-card{padding:1rem;background:var(--surface);border:1px solid var(--rule);border-radius:4px}
+.summary-card h5{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-muted);margin-bottom:.5rem}
+.summary-card .num{font-size:24px;font-weight:600;line-height:1;margin-bottom:.4rem}
+.summary-card .breakdown{font-size:12px;color:var(--ink-soft);font-family:ui-monospace,monospace;line-height:1.5}
+.summary-card .deep-link{font-size:12px;margin-top:.6rem;display:block}
+
+/* Full escalation view (escalations page, expanded) */
+.full-esc{padding:1.5rem 0;border-top:1px solid var(--rule)}
+.full-esc:last-child{border-bottom:1px solid var(--rule)}
+.full-esc .top-row{display:flex;justify-content:space-between;align-items:baseline;font-family:ui-monospace,monospace;font-size:11px;color:var(--ink-muted);margin-bottom:.4rem}
+.full-esc .top-row .badges{display:flex;gap:.4rem;align-items:baseline}
+.full-esc h3{font-size:18px;font-weight:600;margin-bottom:.8rem}
+.full-esc .body p{margin-bottom:.5rem;color:var(--ink-soft)}
+.full-esc .body h5{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-muted);margin:1rem 0 .25rem}
+.full-esc .draft-block{margin-top:1rem;padding:1rem;background:var(--surface-mute);border:1px solid var(--rule);border-radius:4px;font-family:ui-monospace,monospace;font-size:12px;line-height:1.55;white-space:pre-wrap;color:var(--ink-soft)}
+.full-esc .draft-block .draft-meta{color:var(--ink-muted);font-size:11px;margin-bottom:.5rem;font-family:-apple-system,system-ui,sans-serif;font-style:italic}
+.full-esc .draft-block .draft-actions{margin-top:.8rem;display:flex;gap:.8rem;font-family:-apple-system,system-ui,sans-serif;font-style:normal;font-size:12px}
+.full-esc .resolution-actions{margin-top:1rem;padding-top:.7rem;border-top:1px dashed var(--rule);display:flex;gap:1rem;font-size:12px}
+
+/* Filter row (used multiple places) */
+.filter-row{display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1.4rem}
+.filter{padding:.3rem .8rem;background:var(--surface);border:1px solid var(--rule);border-radius:14px;font-size:12px;color:var(--ink-soft);cursor:pointer}
+.filter.active{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.filter .ct{font-family:ui-monospace,monospace;font-size:10.5px;margin-left:.3rem;opacity:.75}
+
+/* Memory card (notebook page) */
+.memo{padding:1.2rem 0;border-top:1px solid var(--rule);display:grid;grid-template-columns:160px 1fr;gap:1.5rem}
+.memo:last-child{border-bottom:1px solid var(--rule)}
+.memo .meta{font-family:ui-monospace,monospace;font-size:11px;color:var(--ink-muted);line-height:1.6}
+.memo .meta .cat{padding:1px 5px;background:var(--surface-mute);border-radius:2px;display:inline-block;margin-bottom:.4rem;text-transform:lowercase}
+.memo h4{font-size:15px;font-weight:600;margin-bottom:.4rem}
+.memo p{font-size:13px;color:var(--ink-soft)}
+
+/* Activity row */
+.day-band{padding:.4rem 0;border-bottom:1px solid var(--rule);font-size:12px;font-weight:600;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.06em;margin-top:1.2rem}
+.act-row{display:grid;grid-template-columns:80px 130px 1fr;gap:1.2rem;padding:.6rem 0;border-bottom:1px solid var(--rule);font-size:13px;align-items:baseline}
+.act-row .time{font-family:ui-monospace,monospace;font-size:11.5px;color:var(--ink-muted)}
+.act-row .verb{font-family:ui-monospace,monospace;font-size:11.5px;text-transform:lowercase;color:var(--ink)}
+.act-row .verb.intake{color:var(--info)}
+.act-row .verb.qualified{color:var(--good)}
+.act-row .verb.drafted{color:var(--warn)}
+.act-row .verb.sent{color:var(--link)}
+.act-row .what{color:var(--ink)}
+.act-row .what em{font-style:normal;font-family:ui-monospace,monospace;font-size:.92em;color:var(--ink-soft)}
+.act-row .what .meta{display:block;font-size:11.5px;color:var(--ink-muted);margin-top:.1rem;font-family:ui-monospace,monospace}
+
+/* Role page — persona block + agents list */
+.persona-block{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-bottom:2rem}
+.persona-pane{padding:1.2rem 1.4rem;background:var(--surface);border:1px solid var(--rule);border-radius:4px}
+.persona-pane.constitution{border-left:3px solid var(--danger);background:#fdf2f0}
+.persona-pane h5{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-muted);margin-bottom:.6rem}
+.persona-pane h5 .src{font-family:ui-monospace,monospace;font-size:10.5px;text-transform:none;letter-spacing:0;font-weight:400;margin-left:.5rem}
+.persona-pane ul{list-style:none;padding:0}
+.persona-pane li{padding:.4rem 0;border-bottom:1px dashed var(--rule);font-size:13px}
+.persona-pane li:last-child{border-bottom:none}
+.persona-pane li strong{display:block;color:var(--ink);font-weight:600}
+.persona-pane li em{display:block;font-style:normal;color:var(--ink-muted);font-size:12.5px;margin-top:.1rem}
+.persona-pane.constitution li::before{content:"⊘ ";color:var(--danger);font-family:ui-monospace,monospace}
+
+.agents-list{display:grid;grid-template-columns:1fr 1fr;gap:.4rem .8rem}
+.agent-row{display:grid;grid-template-columns:160px 1fr auto;gap:1rem;padding:.5rem .7rem;background:var(--surface);border:1px solid var(--rule);border-radius:3px;font-size:12.5px;align-items:baseline}
+.agent-row.proposed{background:#f3eef9;border-color:#dccfe6}
+.agent-row .file{font-family:ui-monospace,monospace;color:var(--ink-muted)}
+.agent-row .verb{color:var(--ink)}
+.agent-row .verb-tag{font-family:ui-monospace,monospace;font-size:10.5px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.06em}
+.agent-row.proposed .verb-tag{color:var(--info)}
+
+.lib-list{display:flex;gap:.5rem;flex-wrap:wrap;margin-top:1rem}
+.lib-list code{font-size:12px}
+
+/* Mobile preview */
+.mobile-preview{display:flex;gap:1.5rem;align-items:flex-start;margin-top:2rem}
+.mobile-frame{flex:0 0 320px;background:#222;padding:8px 8px 24px;border-radius:24px;box-shadow:0 6px 24px rgba(0,0,0,.18)}
+.mobile-screen{background:var(--surface);border-radius:18px;overflow:hidden;height:560px;overflow-y:auto;font-size:13px}
+.mobile-screen .chrome-body{padding:1rem}
+.mobile-note{flex:1;padding-top:1rem;font-size:13px;color:var(--ink-soft)}
+
+/* Empty state */
+.empty{padding:2rem;text-align:center;color:var(--ink-muted);font-size:13px;background:var(--surface-mute);border:1px dashed var(--rule-strong);border-radius:4px}
+
+/* Diagram of full IA */
+.ia-diagram{padding:2rem;background:var(--surface);border:1px solid var(--rule);border-radius:4px;font-family:ui-monospace,monospace;font-size:12.5px;color:var(--ink-soft);white-space:pre;line-height:1.7;overflow-x:auto}
+
+/* Rough headers for the doc itself (not page content) */
+.doc-header{padding:3rem 2rem 1rem;max-width:1200px;margin:0 auto}
+.doc-header h1{font-size:28px;font-weight:600;letter-spacing:-.01em;margin-bottom:.4rem}
+.doc-header .lede{color:var(--ink-muted);font-size:14.5px;max-width:60ch}
+.doc-header .meta-row{margin-top:1rem;font-size:12px;color:var(--ink-faint);font-family:ui-monospace,monospace}
+
+@media(max-width:900px){
+  .summary{grid-template-columns:1fr}
+  .triage-card{grid-template-columns:1fr;gap:.5rem}
+  .triage-card .actions{flex-direction:row}
+  .persona-block{grid-template-columns:1fr}
+  .agents-list{grid-template-columns:1fr}
+  .agent-row{grid-template-columns:1fr;gap:.2rem}
+  .memo{grid-template-columns:1fr;gap:.4rem}
+  .act-row{grid-template-columns:60px 100px 1fr;gap:.7rem}
+  .mobile-preview{flex-direction:column}
+}
+</style>
+</head>
+<body>
+
+<nav class="toc">
+  <strong>Praxis IA</strong>
+  <a href="#diagram">Map</a>
+  <a href="#home">/</a>
+  <a href="#escalations">/escalations</a>
+  <a href="#notebook">/notebook</a>
+  <a href="#activity">/activity</a>
+  <a href="#role">/role</a>
+  <span class="meta">wireframe — not themed</span>
+</nav>
+
+<div class="doc-header">
+  <h1>Praxis dashboard — IA wireframe</h1>
+  <p class="lede">Six routes, each with a single purpose. Triage-first home aggregates and surfaces priority; deep views give the full set with filters. Visuals are deliberately neutral — system fonts, plain surfaces — so this read is about <em>structure</em>, not look.</p>
+  <div class="meta-row">decisions baked in: writes are anticipated · stale-escalation flagged at /home · drafts inline in escalations · single /role page</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- IA MAP -->
+<!-- ============================================================ -->
+<section class="page-section" id="diagram">
+  <div class="section-banner">
+    <strong>The map</strong>
+    <span class="purpose">six routes, three roles</span>
+    <span class="tag">overview</span>
+  </div>
+
+  <div class="ia-diagram">
+                  ┌─────────────────────┐
+                  │   /  (home)         │  triage + situation
+                  │   ─────────         │
+                  │   waiting on you    │  ← open + urgent escalations
+                  │   identity strip    │  ← who is this role?
+                  │   recently summary  │  ← what changed lately?
+                  └──────────┬──────────┘
+                             │
+       ┌─────────────────────┼─────────────────────────┐
+       ▼                     ▼                         ▼
+ ┌─────────────┐      ┌─────────────┐           ┌─────────────┐
+ │ /escalations │      │ /notebook   │           │ /activity   │
+ │ ──────────── │      │ ─────────── │           │ ─────────── │
+ │ full triage  │      │ memory feed │           │ chronological│
+ │ + filters    │      │ + categories│           │ log + filters│
+ │ + actions    │      │ recency-sort│           │ day-grouped  │
+ │ drafts inline│      │             │           │              │
+ └─────────────┘      └─────────────┘           └─────────────┘
+
+                  ┌─────────────────────┐
+                  │   /role             │  persona + voice + inhibitions
+                  │   ─────────         │  + live agents + drafts pending
+                  │   constitution view │  + lib references
+                  └─────────────────────┘
+
+                  ┌─────────────────────┐
+                  │   /setup            │  one-time wizard
+                  │   ─────────         │  redirects to /home once seeded
+                  └─────────────────────┘
+
+  read-only by default · narrow writes designed in:
+    · escalation status (open → resolved / accepted / declined)
+    · proposed-skill accept (moves agents/proposed/foo.md → agents/foo.md, commits)
+    · proposed-skill decline (sets status, leaves draft as record)
+  </div>
+</section>
+
+
+<!-- ============================================================ -->
+<!-- HOME -->
+<!-- ============================================================ -->
+<section class="page-section" id="home">
+  <div class="section-banner">
+    <strong>/</strong>
+    <span class="purpose">the supervisor's landing — answer "what needs me?" first</span>
+    <span class="tag">page 1 of 5</span>
+  </div>
+
+  <div class="chrome">
+    <div class="chrome-bar"><span class="url">localhost:4321/</span></div>
+    <div class="chrome-body wide">
+
+      <div class="app-head">
+        <div>
+          <span class="app-brand">PRAXIS<span class="name">Sam Parker</span></span>
+        </div>
+        <div class="app-head-meta">updated 16m ago<a href="#">refresh</a></div>
+      </div>
+      <div class="app-nav">
+        <a class="current" href="#home">home</a>
+        <a href="#escalations">escalations <span style="color:var(--danger)">3</span></a>
+        <a href="#notebook">notebook</a>
+        <a href="#activity">activity</a>
+        <a href="#role">role</a>
+      </div>
+
+      <div class="group" style="margin-top:2rem">
+        <div class="group-head">
+          <span class="group-title">Waiting on you</span>
+          <span class="group-counter">3 open · 1 urgent · 1 stale</span>
+        </div>
+
+        <div class="triage-card urgent">
+          <div class="badges">
+            <span class="badge"><span class="lab help">help</span><span class="lab urg-high">high</span></span>
+            <span class="badge"><span class="lab st-open">open</span></span>
+            <span class="when">2026-05-05 · find-contacts</span>
+          </div>
+          <div>
+            <h4>Stuck on bounce-rate spike for media-cdn</h4>
+            <p>Three of four sends bounced 550 5.4.1 on shared-inbox addresses. Asking to promote the heuristic into <code>lib/research-strategies.yaml</code>.</p>
+          </div>
+          <div class="actions">
+            <a class="verb" href="#escalations">open →</a>
+            <a class="verb" href="#">mark resolved</a>
+          </div>
+        </div>
+
+        <div class="triage-card stale">
+          <div class="badges">
+            <span class="badge"><span class="lab improvement">improvement</span></span>
+            <span class="badge"><span class="lab st-open">open</span></span>
+            <span class="when">2026-04-28 · end-of-run</span>
+          </div>
+          <div>
+            <h4>Account-read should treat parental-leave OOOs as soft signal</h4>
+            <p>Three customers' primaries came back with parental-leave autoresponders this week. Suggest <code>signal_type: oop_leave</code>.</p>
+            <span class="stale-flag" style="font-size:11px;color:var(--warn);font-weight:600">⏱ open 7 days</span>
+          </div>
+          <div class="actions">
+            <a class="verb" href="#escalations">open →</a>
+            <a class="verb" href="#">mark resolved</a>
+          </div>
+        </div>
+
+        <div class="triage-card">
+          <div class="badges">
+            <span class="badge"><span class="lab proposed_skill">proposed</span></span>
+            <span class="badge"><span class="lab st-open">open</span></span>
+            <span class="when">2026-04-28 · monitor-channels</span>
+          </div>
+          <div>
+            <h4>New agent: tender-to-prospect promoter</h4>
+            <p>Drafted at <code>agents/proposed/intake-from-tender.md</code> · 6-step playbook · awaiting accept/decline.</p>
+          </div>
+          <div class="actions">
+            <a class="verb" href="#escalations">review →</a>
+            <a class="verb" href="#">accept</a>
+            <a class="verb danger" href="#">decline</a>
+          </div>
+        </div>
+
+        <div class="note">
+          <span><strong>Stale flag</strong> appears on cards where <code>open</code> + <code>created &gt; 7 days ago</code>. Visual: amber left-rule + tinted background + duration badge. Helps trigger the "should I either fix this or revisit my priorities" reflex.</span>
+        </div>
+      </div>
+
+      <div class="id-strip">
+        <div class="name">Sam Parker</div>
+        <div class="meta">
+          <span>Quant BD</span>
+          <span>Brisbane</span>
+          <span>since 2026-05-01</span>
+          <span>3 voice rules · 3 inhibitions · 18 agents</span>
+        </div>
+        <div><a href="#role">view role →</a></div>
+      </div>
+
+      <div class="group">
+        <div class="group-head">
+          <span class="group-title">Recently</span>
+          <span class="group-counter">last 7 days</span>
+        </div>
+        <div class="summary">
+          <div class="summary-card">
+            <h5>Notebook</h5>
+            <div class="num">+4</div>
+            <div class="breakdown">3 people · 1 notes</div>
+            <a class="deep-link" href="#notebook">all entries →</a>
+          </div>
+          <div class="summary-card">
+            <h5>Activity (today)</h5>
+            <div class="num">12</div>
+            <div class="breakdown">3 intakes · 1 qualified<br>4 drafted · 2 sent · 2 monitor</div>
+            <a class="deep-link" href="#activity">full log →</a>
+          </div>
+          <div class="summary-card">
+            <h5>Role edits (by you)</h5>
+            <div class="num">2</div>
+            <div class="breakdown">last: 6 days ago<br>agents/find-contacts.md</div>
+            <a class="deep-link" href="#role">view role →</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="note">
+        <span><strong>The "Recently" cards</strong> are summaries — they exist to give the supervisor situational awareness without browsing. Each card answers one question, with a deep-link if they want detail. Cards stay fixed-shape so they read at a glance.</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="mobile-preview">
+    <div class="mobile-frame">
+      <div class="mobile-screen">
+        <div class="chrome-body">
+          <div class="app-head" style="display:block;border:none;padding:0;margin:0 0 .8rem">
+            <div><span class="app-brand">PRAXIS<span class="name">Sam Parker</span></span></div>
+          </div>
+          <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-muted);margin-bottom:.5rem">Waiting · 3 open</div>
+          <div class="triage-card urgent" style="grid-template-columns:1fr;padding:.8rem;gap:.4rem;font-size:12px">
+            <div class="badges" style="flex-direction:row">
+              <span class="lab help">help</span><span class="lab urg-high">high</span>
+            </div>
+            <h4 style="font-size:13px">Stuck on bounce-rate spike for media-cdn</h4>
+            <span class="when">2026-05-05 · find-contacts</span>
+          </div>
+          <div class="triage-card stale" style="grid-template-columns:1fr;padding:.8rem;gap:.4rem;font-size:12px">
+            <div class="badges" style="flex-direction:row">
+              <span class="lab improvement">improvement</span>
+            </div>
+            <h4 style="font-size:13px">Parental-leave OOOs as soft signal</h4>
+            <span class="when">⏱ 7 days · end-of-run</span>
+          </div>
+          <div class="triage-card" style="grid-template-columns:1fr;padding:.8rem;gap:.4rem;font-size:12px">
+            <div class="badges" style="flex-direction:row">
+              <span class="lab proposed_skill">proposed</span>
+            </div>
+            <h4 style="font-size:13px">tender-to-prospect promoter</h4>
+            <span class="when">2026-04-28 · monitor-channels</span>
+          </div>
+          <div style="margin-top:1rem;font-size:11px;color:var(--ink-faint);text-align:center"><a href="#">all escalations →</a></div>
+        </div>
+      </div>
+    </div>
+    <div class="mobile-note">
+      <strong>Mobile glance</strong> · the home page collapses to a single-column triage list. Identity strip, summary cards, and deep-links all fit one above the next. The supervisor can pull out a phone, see whether anything is urgent, and go back to whatever they were doing.<br><br>
+      Deep views are still mobile-readable but desktop-optimised.
+    </div>
+  </div>
+</section>
+
+
+<!-- ============================================================ -->
+<!-- ESCALATIONS -->
+<!-- ============================================================ -->
+<section class="page-section" id="escalations">
+  <div class="section-banner">
+    <strong>/escalations</strong>
+    <span class="purpose">full triage queue · review proposed skills · close the loop</span>
+    <span class="tag">page 2 of 5</span>
+  </div>
+
+  <div class="chrome">
+    <div class="chrome-bar"><span class="url">localhost:4321/escalations</span></div>
+    <div class="chrome-body wide">
+
+      <div class="app-head">
+        <div><span class="app-brand">PRAXIS<span class="name">Sam Parker</span></span></div>
+        <div class="app-head-meta">updated 16m ago<a href="#">refresh</a></div>
+      </div>
+      <div class="app-nav">
+        <a href="#home">home</a>
+        <a class="current" href="#escalations">escalations <span style="color:var(--danger)">3</span></a>
+        <a href="#notebook">notebook</a>
+        <a href="#activity">activity</a>
+        <a href="#role">role</a>
+      </div>
+
+      <div style="margin-top:2rem">
+        <div class="group-head">
+          <span class="group-title">Escalations</span>
+          <span class="group-counter">12 total · 3 open</span>
+        </div>
+
+        <div class="filter-row" style="margin-top:.8rem">
+          <span class="filter active">all <span class="ct">12</span></span>
+          <span class="filter">open <span class="ct">3</span></span>
+          <span class="filter">resolved <span class="ct">7</span></span>
+          <span class="filter">accepted <span class="ct">1</span></span>
+          <span class="filter">declined <span class="ct">1</span></span>
+        </div>
+
+        <div class="filter-row">
+          <span class="filter active">all kinds</span>
+          <span class="filter">help</span>
+          <span class="filter">improvement</span>
+          <span class="filter">proposed_skill</span>
+        </div>
+
+        <article class="full-esc">
+          <div class="top-row">
+            <div class="badges">
+              <span class="lab help">help</span>
+              <span class="lab urg-high">high</span>
+              <span class="lab st-open">open</span>
+            </div>
+            <div>2026-05-05 · from find-contacts · <code>escalations/2026-05-05-bounce-rate-spike.md</code></div>
+          </div>
+          <h3>Stuck on bounce-rate spike for media-cdn</h3>
+          <div class="body">
+            <h5>What I was doing</h5>
+            <p>Working through the search-portals-au campaign and hit a bounce wall on shared-inbox addresses. Three of four sends bounced 550 5.4.1.</p>
+            <h5>What I tried</h5>
+            <p>Captured the pattern in <code>memory/notes/email-verification-shared-inbox-risk.md</code>. The heuristic isn't applied automatically by find-contacts.</p>
+            <h5>What I'm asking for</h5>
+            <p>Promote the heuristic into <code>lib/research-strategies.yaml</code> so find-contacts reads it as a routine check before sending.</p>
+          </div>
+          <div class="resolution-actions">
+            <a href="#" class="verb">mark resolved</a>
+            <a href="#" class="verb">edit file (in editor)</a>
+            <span style="margin-left:auto;color:var(--ink-faint);font-size:11.5px">resolution will append a note to the file + commit</span>
+          </div>
+        </article>
+
+        <article class="full-esc">
+          <div class="top-row">
+            <div class="badges">
+              <span class="lab proposed_skill">proposed</span>
+              <span class="lab st-open">open</span>
+            </div>
+            <div>2026-04-28 · from monitor-channels · <code>escalations/2026-04-28-tender-promotion.md</code></div>
+          </div>
+          <h3>New agent: tender-to-prospect promoter</h3>
+          <div class="body">
+            <h5>What I tried</h5>
+            <p>Tender-watch flagged a real procurement opportunity at NSW Health and I had nowhere to send it. Drafted an agent that promotes a confirmed tender hit into manual-leads with the right deal_type.</p>
+            <h5>What I'm asking for</h5>
+            <p>Review the draft below. Accept moves <code>agents/proposed/intake-from-tender.md → agents/intake-from-tender.md</code> and commits.</p>
+          </div>
+          <div class="draft-block">
+            <div class="draft-meta">draft · agents/proposed/intake-from-tender.md · 84 lines</div># Intake From Tender Agent
+
+You are Sam Parker. Convert a confirmed tender match into a manual-leads
+prospect rather than a watching-list entry.
+
+## When to run
+After tender-watch surfaces a tender that maps to a real opportunity (not
+just a watchlist hit) — the operator promotes it explicitly.
+
+## What you do
+1. Read the tender record under lib/tenders/{ref}.json
+2. Create a manual-leads prospect with source.deal_type: "tender" and ref
+3. Skip cold-email research; tender hits are warm by definition
+4. Hand off to find-contacts for procurement contact details
+... [+ 4 more sections]
+            <div class="draft-actions">
+              <a href="#" class="verb">accept (move + commit)</a>
+              <a href="#" class="verb danger">decline</a>
+              <a href="#" class="verb">open in editor</a>
+            </div>
+          </div>
+        </article>
+
+        <article class="full-esc">
+          <div class="top-row">
+            <div class="badges">
+              <span class="lab improvement">improvement</span>
+              <span class="lab st-resolved">resolved</span>
+            </div>
+            <div>2026-04-21 · from review · resolved 2026-04-23</div>
+          </div>
+          <h3>Drafts often miss the campaign-specific footer</h3>
+          <div class="body">
+            <p>...</p>
+            <p style="font-style:italic;color:var(--ink-muted);border-left:2px solid var(--rule);padding-left:.8rem;margin-top:.8rem">resolution (2026-04-23): added footer template to draft-emails.md step 4. confirmed in next batch.</p>
+          </div>
+        </article>
+
+        <div class="note">
+          <span><strong>The full escalation view is the supervisor's working surface.</strong> Each entry shows: full body, all metadata, the decline/resolve/accept actions, and (for proposed_skill) the inlined draft with file-move action. Resolved entries dim and show their resolution note appended.</span>
+        </div>
+        <div class="note">
+          <span><strong>Writes from this page</strong> · "mark resolved" appends a resolution note + flips frontmatter status, commits. "Accept" moves the proposed file out of <code>agents/proposed/</code> and commits. "Decline" sets status, doesn't move the file. "Edit in editor" is a deep link (URL scheme: <code>vscode://file/...</code>) for cases the supervisor wants direct file access.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ============================================================ -->
+<!-- NOTEBOOK -->
+<!-- ============================================================ -->
+<section class="page-section" id="notebook">
+  <div class="section-banner">
+    <strong>/notebook</strong>
+    <span class="purpose">memory feed · read for patterns and texture</span>
+    <span class="tag">page 3 of 5</span>
+  </div>
+
+  <div class="chrome">
+    <div class="chrome-bar"><span class="url">localhost:4321/notebook</span></div>
+    <div class="chrome-body wide">
+
+      <div class="app-head">
+        <div><span class="app-brand">PRAXIS<span class="name">Sam Parker</span></span></div>
+        <div class="app-head-meta">updated 16m ago<a href="#">refresh</a></div>
+      </div>
+      <div class="app-nav">
+        <a href="#home">home</a>
+        <a href="#escalations">escalations <span style="color:var(--danger)">3</span></a>
+        <a class="current" href="#notebook">notebook</a>
+        <a href="#activity">activity</a>
+        <a href="#role">role</a>
+      </div>
+
+      <div style="margin-top:2rem">
+        <div class="group-head">
+          <span class="group-title">Notebook</span>
+          <span class="group-counter">14 entries · last update today</span>
+        </div>
+
+        <div class="filter-row" style="margin-top:.8rem">
+          <span class="filter active">all <span class="ct">14</span></span>
+          <span class="filter">people <span class="ct">5</span></span>
+          <span class="filter">accounts <span class="ct">3</span></span>
+          <span class="filter">notes <span class="ct">6</span></span>
+        </div>
+
+        <article class="memo">
+          <div class="meta">
+            <span class="cat">people</span><br>
+            written 2026-05-04<br>
+            updated 2026-05-05
+          </div>
+          <div>
+            <h4>Stu — sec-related forwards land without commentary</h4>
+            <p>Stu prefers Slack DMs over email for sec-related forwards. The forwards usually arrive with no commentary at all — treat the forward itself as the brief and don't ask clarifying questions unless the artefact is clearly missing context.</p>
+          </div>
+        </article>
+        <article class="memo">
+          <div class="meta">
+            <span class="cat">notes</span><br>
+            written 2026-04-28
+          </div>
+          <div>
+            <h4>Single-sentence opens beat two-paragraph context dumps</h4>
+            <p>Reply rate on the search-portals batch was 4× higher when I led with the ask in one line vs. opening with two paragraphs of context. The supervisor's instinct on this was right.</p>
+          </div>
+        </article>
+        <article class="memo">
+          <div class="meta">
+            <span class="cat">accounts</span><br>
+            written 2026-04-21
+          </div>
+          <div>
+            <h4>NSW Health — three contacts on parental leave through Q3</h4>
+            <p>Marked their account-read as paused, not cooling. Return dates 2026-08, 2026-09. Reset cadence to "monthly check" until at least one returns.</p>
+          </div>
+        </article>
+
+        <div class="note">
+          <span><strong>The notebook is read for context, not action.</strong> No filter for "open"; no resolve/decline. Just chronological browsing with category filters. Entries that the agent writes here surface here naturally; the supervisor reads them when they want to interpret behavior or look for patterns.</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+
+<!-- ============================================================ -->
+<!-- ACTIVITY -->
+<!-- ============================================================ -->
+<section class="page-section" id="activity">
+  <div class="section-banner">
+    <strong>/activity</strong>
+    <span class="purpose">chronological log · trace + verify</span>
+    <span class="tag">page 4 of 5</span>
+  </div>
+
+  <div class="chrome">
+    <div class="chrome-bar"><span class="url">localhost:4321/activity</span></div>
+    <div class="chrome-body wide">
+
+      <div class="app-head">
+        <div><span class="app-brand">PRAXIS<span class="name">Sam Parker</span></span></div>
+        <div class="app-head-meta">updated 16m ago<a href="#">refresh</a></div>
+      </div>
+      <div class="app-nav">
+        <a href="#home">home</a>
+        <a href="#escalations">escalations <span style="color:var(--danger)">3</span></a>
+        <a href="#notebook">notebook</a>
+        <a class="current" href="#activity">activity</a>
+        <a href="#role">role</a>
+      </div>
+
+      <div style="margin-top:2rem">
+        <div class="group-head">
+          <span class="group-title">Activity</span>
+          <span class="group-counter">last 200 entries · 12 today</span>
+        </div>
+
+        <div class="filter-row" style="margin-top:.8rem">
+          <span class="filter active">all <span class="ct">200</span></span>
+          <span class="filter">intake</span>
+          <span class="filter">qualified</span>
+          <span class="filter">drafted</span>
+          <span class="filter">sent</span>
+          <span class="filter">monitor</span>
+          <span class="filter">escalation</span>
+        </div>
+
+        <div class="day-band">Mon, 5 May · 12 entries</div>
+        <div class="act-row">
+          <span class="time">08:43</span>
+          <span class="verb intake">intake</span>
+          <div class="what">added prospect: <em>media-cdn.com.au</em><span class="meta">from monitor-channels · domain=media-cdn.com.au · campaign=search-portals</span></div>
+        </div>
+        <div class="act-row">
+          <span class="time">09:12</span>
+          <span class="verb qualified">qualified</span>
+          <div class="what">manually qualified: <em>hyper-co</em><span class="meta">from intake-leads · slack via @steve</span></div>
+        </div>
+        <div class="act-row">
+          <span class="time">10:01</span>
+          <span class="verb drafted">drafted</span>
+          <div class="what">cold opener for <em>media-cdn</em><span class="meta">from draft-emails · 2 retries</span></div>
+        </div>
+        <div class="act-row">
+          <span class="time">10:34</span>
+          <span class="verb" style="color:var(--danger)">escalation</span>
+          <div class="what">filed: stuck on bounce-rate spike for media-cdn<span class="meta">from find-contacts · kind=help · urgency=high</span></div>
+        </div>
+        <div class="act-row">
+          <span class="time">12:30</span>
+          <span class="verb sent">sent</span>
+          <div class="what">cold opener · <em>media-cdn</em><span class="meta">1 prospect · campaign=search-portals · message=&lt;subject="Quant + AU search-portals"&gt;</span></div>
+        </div>
+
+        <div class="day-band">Sun, 4 May · 6 entries</div>
+        <div class="act-row">
+          <span class="time">14:02</span>
+          <span class="verb" style="color:var(--info)">memory</span>
+          <div class="what">wrote: Stu — sec-related forwards land without commentary<span class="meta">memory/people/stu.md</span></div>
+        </div>
+
+        <div class="note">
+          <span><strong>Activity is forensic, not actionable.</strong> The supervisor visits this when they want to verify "did Sam actually send to media-cdn at 12:30?" or trace a chain of decisions. Filter by action type to scope; day-band groupings give a sense of cadence.</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+
+<!-- ============================================================ -->
+<!-- ROLE -->
+<!-- ============================================================ -->
+<section class="page-section" id="role">
+  <div class="section-banner">
+    <strong>/role</strong>
+    <span class="purpose">the constitution — persona + voice + inhibitions + agents + lib</span>
+    <span class="tag">page 5 of 5</span>
+  </div>
+
+  <div class="chrome">
+    <div class="chrome-bar"><span class="url">localhost:4321/role</span></div>
+    <div class="chrome-body wide">
+
+      <div class="app-head">
+        <div><span class="app-brand">PRAXIS<span class="name">Sam Parker</span></span></div>
+        <div class="app-head-meta">updated 16m ago<a href="#">refresh</a></div>
+      </div>
+      <div class="app-nav">
+        <a href="#home">home</a>
+        <a href="#escalations">escalations <span style="color:var(--danger)">3</span></a>
+        <a href="#notebook">notebook</a>
+        <a href="#activity">activity</a>
+        <a class="current" href="#role">role</a>
+      </div>
+
+      <div style="margin-top:2rem">
+
+        <div class="id-strip">
+          <div class="name">Sam Parker</div>
+          <div class="meta">
+            <span>Quant BD</span>
+            <span>Brisbane, QLD</span>
+            <span>reports to Steve Worley</span>
+            <span>sam.parker@quantcdn.io</span>
+          </div>
+          <div><a href="#">edit persona →</a></div>
+        </div>
+
+        <div class="group">
+          <div class="group-head">
+            <span class="group-title">Constitution</span>
+            <span class="group-counter">authored · agents/persona.md</span>
+          </div>
+          <div class="persona-block">
+            <div class="persona-pane">
+              <h5>Voice <span class="src">3 rules</span></h5>
+              <ul>
+                <li><strong>warm but not chatty</strong><em>drops articles in casual writing</em></li>
+                <li><strong>considered but quick</strong><em>prefers single-sentence opens to two-paragraph context dumps</em></li>
+                <li><strong>declarative</strong><em>leads with the ask, not the prelude</em></li>
+              </ul>
+            </div>
+            <div class="persona-pane constitution">
+              <h5>Hard inhibitions <span class="src">3 rules</span></h5>
+              <ul>
+                <li>I never claim "IRAP-assessed" or "OFFICIAL: Sensitive"</li>
+                <li>I never cold-email existing Quant customers</li>
+                <li>I never name customers as references in cold outreach</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="group">
+          <div class="group-head">
+            <span class="group-title">Agents</span>
+            <span class="group-counter">18 live · 1 pending review</span>
+          </div>
+          <div class="agents-list">
+            <div class="agent-row">
+              <span class="file">discover.md</span>
+              <span class="verb">find new prospects</span>
+              <span class="verb-tag">intake</span>
+            </div>
+            <div class="agent-row">
+              <span class="file">research.md</span>
+              <span class="verb">build context on a prospect</span>
+              <span class="verb-tag">research</span>
+            </div>
+            <div class="agent-row">
+              <span class="file">find-contacts.md</span>
+              <span class="verb">locate the right contact</span>
+              <span class="verb-tag">research</span>
+            </div>
+            <div class="agent-row">
+              <span class="file">draft-emails.md</span>
+              <span class="verb">draft cold openers</span>
+              <span class="verb-tag">produce</span>
+            </div>
+            <div class="agent-row">
+              <span class="file">review.md</span>
+              <span class="verb">review own drafts</span>
+              <span class="verb-tag">review</span>
+            </div>
+            <div class="agent-row">
+              <span class="file">send-emails.md</span>
+              <span class="verb">send approved drafts</span>
+              <span class="verb-tag">act</span>
+            </div>
+            <div class="agent-row">
+              <span class="file">monitor.md</span>
+              <span class="verb">watch sent threads for replies</span>
+              <span class="verb-tag">monitor</span>
+            </div>
+            <div class="agent-row">
+              <span class="file">respond.md</span>
+              <span class="verb">handle warm replies</span>
+              <span class="verb-tag">respond</span>
+            </div>
+            <div class="agent-row">
+              <span class="file">escalate.md</span>
+              <span class="verb">raise hand to operator</span>
+              <span class="verb-tag">reflect</span>
+            </div>
+            <div class="agent-row">
+              <span class="file">... +9 more</span>
+              <span class="verb"></span>
+              <span class="verb-tag"></span>
+            </div>
+            <div class="agent-row proposed" style="grid-column:1 / -1">
+              <span class="file">proposed/intake-from-tender.md</span>
+              <span class="verb">promote a tender hit into manual-leads</span>
+              <span class="verb-tag">awaiting review · <a href="#escalations">open →</a></span>
+            </div>
+          </div>
+          <div class="note">
+            <span><strong>Drafts pending review</strong> appear at the bottom of the agents list with a tinted background and link to their escalation. Same data as <code>/escalations</code>, surfaced here so a supervisor reviewing the role's <em>capabilities</em> sees what's queued to change them.</span>
+          </div>
+        </div>
+
+        <div class="group">
+          <div class="group-head">
+            <span class="group-title">Reference data</span>
+            <span class="group-counter">authored · lib/</span>
+          </div>
+          <div class="lib-list">
+            <code>lib/customers.yaml</code>
+            <code>lib/team.yaml</code>
+            <code>lib/compliance.yaml</code>
+            <code>lib/quant-capabilities.yaml</code>
+            <code>lib/research-strategies.yaml</code>
+            <code>lib/intake-channels.yaml</code>
+          </div>
+          <div class="note">
+            <span><strong>Reference data isn't rendered in the dashboard</strong> — it's role-specific config the supervisor edits in their editor. Listing the files here gives the supervisor a sense of what the role anchors on without reading the YAML itself. (For v1 this is a flat file list; future could surface key facts e.g. "12 customers, 3 team members".)</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ============================================================ -->
+<!-- WHAT'S DELIBERATELY OUT -->
+<!-- ============================================================ -->
+<section class="page-section">
+  <div class="section-banner">
+    <strong>What's deliberately out</strong>
+    <span class="purpose">ideas considered and shelved</span>
+    <span class="tag">scope</span>
+  </div>
+
+  <ul style="line-height:1.9;font-size:14px;color:var(--ink-soft);max-width:60ch;list-style:none">
+    <li><strong>Search.</strong> Page-level filters cover roles up to ~100 artifacts in any one category. Add later if a role outgrows that.</li>
+    <li><strong>Multi-role view.</strong> Praxis is one repo per role; multi-role = multiple clones. No role-switcher in the UI.</li>
+    <li><strong>Rule-violation detection.</strong> Auto-comparing actual behavior against persona inhibitions is hard and error-prone. Defer.</li>
+    <li><strong>A separate <code>/proposed</code> page.</strong> Drafts surface in escalations (where review happens) and in <code>/role</code> (where the supervisor sees the role's evolving capability set). No third surface.</li>
+    <li><strong>Charts / dashboards-of-charts.</strong> The summary cards on home are textual, not graphical. Praxis is reading-shaped, not BI-shaped.</li>
+  </ul>
+</section>
+
+</body>
+</html>

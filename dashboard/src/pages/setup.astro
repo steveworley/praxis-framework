@@ -11,27 +11,24 @@ const alreadySeeded = mode === 'role';
 ---
 
 <BaseLayout title="Set up role — Praxis">
-  <header class="header">
-    <div>
-      <span class="header-title">Set up role <em>praxis-framework</em></span>
-    </div>
-    <div class="header-right">
-      <span class="meta-text mono">{roleHome}</span>
-    </div>
-  </header>
-
   <main class="container">
+    <div class="app-head">
+      <div>
+        <span class="app-brand">PRAXIS<span class="name">setup</span></span>
+      </div>
+      <div class="app-head-meta"><code>{roleHome}</code></div>
+    </div>
     {alreadySeeded ? (
       <div class="wizard">
         <div class="wizard-card">
           <h1>This role is already set up</h1>
           <p>
             <code>agents/persona.md</code> exists at this role's home, so the wizard has nothing to do.
-            Open the role-watcher to see the populated dashboard.
+            Open the dashboard to see the populated role.
           </p>
           <div class="wizard-actions">
             <span></span>
-            <a class="btn btn-primary" href="/interior">Go to interior</a>
+            <a class="btn btn-primary" href="/">Go to dashboard</a>
           </div>
         </div>
       </div>

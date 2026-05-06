@@ -1,0 +1,28 @@
+---
+/** A "Recently" card on the /home page. Single num + small breakdown lines
+ * + deep-link. Cards are textual only — Praxis is reading-shaped, not
+ * BI-shaped, so we don't add charts here. */
+interface Props {
+  heading: string;
+  num: string;
+  breakdownLines: string[];
+  deepLinkHref: string;
+  deepLinkLabel: string;
+}
+
+const { heading, num, breakdownLines, deepLinkHref, deepLinkLabel } = Astro.props;
+---
+
+<div class="summary-card">
+  <h5>{heading}</h5>
+  <div class="num">{num}</div>
+  <div class="breakdown">
+    {breakdownLines.map((line, i) => (
+      <>
+        {i > 0 && <br />}
+        {line}
+      </>
+    ))}
+  </div>
+  <a class="deep-link" href={deepLinkHref}>{deepLinkLabel}</a>
+</div>

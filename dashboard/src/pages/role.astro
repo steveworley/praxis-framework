@@ -1,0 +1,112 @@
+---
+import AgentRow from '@/components/AgentRow.astro';
+import IdentityStrip from '@/components/IdentityStrip.astro';
+import PersonaPane from '@/components/PersonaPane.astro';
+import RouteHeader from '@/components/RouteHeader.astro';
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import { type AgentsResult, listLibFiles, loadAgents } from '@/lib/agents-loader';
+import { assembleEscalations } from '@/lib/escalations-loader';
+import { parsePersona, type Persona } from '@/lib/persona-parser';
+import { detectMode, getRoleHome, nowIso } from '@/lib/role-home';
+
+export const prerender = false;
+
+const roleHome = getRoleHome();
+const mode = detectMode(roleHome);
+if (mode === 'seed') {
+  return Astro.redirect('/setup');
+}
+
+const [personaRes, agentsRes, libRes, escalationsRes] = await Promise.allSettled([
+  parsePersona(roleHome),
+  loadAgents(roleHome),
+  listLibFiles(roleHome),
+  assembleEscalations(roleHome),
+]);
+
+const persona: Persona | null = personaRes.status === 'fulfilled' ? personaRes.value : null;
+const personaError = personaRes.status === 'rejected' ? String(personaRes.reason) : null;
+const agents: AgentsResult = agentsRes.status === 'fulfilled' ? agentsRes.value : { live: [], proposed: [] };
+const libFiles: string[] = libRes.status === 'fulfilled' ? libRes.value : [];
+const openCount =
+  escalationsRes.status === 'fulfilled' ? escalationsRes.value.countsByStatus.open : 0;
+
+const fullName = persona?.identity['full_name'] ?? persona?.identity['name'] ?? '';
+const updatedAt = nowIso();
+---
+
+<BaseLayout title={fullName ? `Role · ${fullName}` : 'Role · Praxis'}>
+  <main class="container">
+    <RouteHeader
+      current="role"
+      personaName={fullName}
+      escalationOpenCount={openCount}
+      updatedAt={updatedAt}
+    />
+
+    <div style="margin-top: 2rem;">
+      {persona ? (
+        <IdentityStrip persona={persona} showEmail={true} />
+      ) : (
+        <div class="empty">
+          Failed to parse persona: {personaError ?? 'no agents/persona.md found'}
+        </div>
+      )}
+
+      <div class="group">
+        <div class="group-head">
+          <span class="group-title">Constitution</span>
+          <span class="group-counter">authored · agents/persona.md</span>
+        </div>
+        <div class="persona-block">
+          <PersonaPane
+            variant="voice"
+            heading="Voice"
+            source={`${persona?.voice.length ?? 0} ${(persona?.voice.length ?? 0) === 1 ? 'rule' : 'rules'}`}
+            empty='Add a "## Voice & Personality" section to agents/persona.md with bulleted "- **Label** -- detail" entries.'
+            items={persona?.voice ?? []}
+          />
+          <PersonaPane
+            variant="constitution"
+            heading="Hard inhibitions"
+            source={`${persona?.inhibitions.length ?? 0} ${(persona?.inhibitions.length ?? 0) === 1 ? 'rule' : 'rules'}`}
+            empty='Add a "## Hard inhibitions" section to agents/persona.md.'
+            items={persona?.inhibitions ?? []}
+          />
+        </div>
+      </div>
+
+      <div class="group">
+        <div class="group-head">
+          <span class="group-title">Agents</span>
+          <span class="group-counter">
+            {agents.live.length} live
+            {agents.proposed.length > 0 && ` · ${agents.proposed.length} pending review`}
+          </span>
+        </div>
+        {agents.live.length === 0 && agents.proposed.length === 0 ? (
+          <div class="empty">No agents authored yet. Add `.md` files under `agents/`.</div>
+        ) : (
+          <div class="agents-list">
+            {agents.live.map((a) => <AgentRow agent={a} />)}
+            {agents.proposed.map((a) => <AgentRow agent={a} proposed={true} />)}
+          </div>
+        )}
+      </div>
+
+      <div class="group">
+        <div class="group-head">
+          <span class="group-title">Reference data</span>
+          <span class="group-counter">authored · lib/</span>
+        </div>
+        {libFiles.length === 0 ? (
+          <div class="empty">No reference data. Add YAML files to `lib/` to anchor the role's facts.</div>
+        ) : (
+          <div class="lib-list">
+            {libFiles.map((f) => <code>{f}</code>)}
+          </div>
+        )}
+      </div>
+    </div>
+  </main>
+</BaseLayout>

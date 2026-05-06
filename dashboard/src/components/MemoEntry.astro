@@ -1,0 +1,27 @@
+---
+import type { MemoryEntry } from '@/lib/memory-loader';
+import { renderMarkdown } from '@/lib/markdown';
+
+/** Single notebook entry — left rail with category pill + dates, right column
+ * with title + rendered markdown body. The data-category attribute drives
+ * /notebook's category filter. */
+interface Props {
+  entry: MemoryEntry;
+}
+
+const { entry } = Astro.props;
+const bodyHtml = renderMarkdown(entry.body);
+const showUpdated = entry.updated && entry.updated !== entry.created;
+---
+
+<article class="memo" data-category={entry.category}>
+  <div class="meta">
+    <span class="cat">{entry.category}</span>
+    {entry.created && <><br />written {entry.created}</>}
+    {showUpdated && <><br />updated {entry.updated}</>}
+  </div>
+  <div>
+    <h4>{entry.title}</h4>
+    <div class="body" set:html={bodyHtml}></div>
+  </div>
+</article>

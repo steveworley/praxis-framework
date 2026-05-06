@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Praxis · Mock C · Letterpress</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400;1,6..72,500&family=Lora:ital,wght@0,400;0,500;0,600;1,400;1,500&family=JetBrains+Mono:ital,wght@0,400;0,500;1,400&display=swap">
+<style>
+:root{
+  --paper:#f3e9d0; --paper-deeper:#ead9b3; --vellum:#fbf3df; --vellum-shade:#f0e2bd;
+  --rule:#cdbf99; --rule-strong:#a89673;
+  --ink:#1d160d; --ink-soft:#3a2f1f; --ink-muted:#5d4f37; --ink-faint:#8a7a59;
+  --marginalia:#a08c66;
+  --cobalt:#264c64; --cobalt-deep:#163346; --vermilion:#7a2120; --marigold:#9c6914; --sage:#264e2c; --violet:#503972;
+  --display:'Newsreader',Georgia,serif;
+  --body:'Lora',Georgia,serif;
+  --mono:'JetBrains Mono','SF Mono',Menlo,monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{background:var(--paper);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.62;-webkit-font-smoothing:antialiased}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='320' height='320'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.35 0 0 0 0 0.27 0 0 0 0 0.16 0 0 0 0.07 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  mix-blend-mode:multiply;opacity:.85}
+main,header{position:relative;z-index:1}
+a{color:inherit;text-decoration:none}
+.page{max-width:920px;margin:0 auto;padding:0 4rem 8rem}
+@media(max-width:900px){.page{padding:0 1.5rem 4rem}}
+
+/* HEADER */
+.head{display:flex;justify-content:space-between;align-items:baseline;padding:1.5rem 4rem;border-bottom:2px double var(--rule-strong);background:var(--paper);position:sticky;top:0;z-index:10}
+.brand{font-family:var(--mono);font-size:.7rem;letter-spacing:.24em;text-transform:uppercase;color:var(--ink)}
+.brand .sep{color:var(--marginalia);margin:0 .8rem;font-style:normal}
+.brand .name{font-family:var(--display);font-size:1.0625rem;font-style:italic;font-weight:400;letter-spacing:0;text-transform:none;color:var(--ink)}
+.head-meta{font-family:var(--display);font-style:italic;font-size:.85rem;color:var(--marginalia)}
+.head-meta a{color:var(--cobalt);font-style:italic;margin-left:1rem}
+.head-meta a:hover{text-decoration:underline}
+@media(max-width:900px){.head{padding:1rem 1.5rem}}
+
+/* PERSONA HERO — full title page treatment */
+.hero{padding:6rem 0 4rem;position:relative;text-align:center;border-bottom:2px double var(--rule-strong)}
+.hero-frame{display:inline-block;padding:0 4rem;position:relative}
+.hero-eyebrow{font-family:var(--mono);font-size:.7rem;letter-spacing:.32em;text-transform:uppercase;color:var(--marginalia);margin-bottom:2rem}
+.hero-eyebrow::before,.hero-eyebrow::after{content:"❦";color:var(--rule-strong);margin:0 .8rem;font-style:normal;font-family:var(--display);letter-spacing:0}
+.hero-name{font-family:var(--display);font-weight:500;font-size:4.5rem;line-height:.95;color:var(--ink);font-variation-settings:"opsz" 72;letter-spacing:-.01em}
+.hero-name .first{display:block;font-style:italic}
+.hero-name .last{display:block;letter-spacing:.04em;font-variant:small-caps;font-size:3.5rem;font-weight:600;margin-top:.2rem}
+.hero-rule{display:flex;align-items:center;gap:1rem;justify-content:center;margin:2rem auto;color:var(--rule-strong);max-width:18rem}
+.hero-rule::before,.hero-rule::after{content:"";flex:1;height:1px;background:var(--rule-strong)}
+.hero-rule span{font-family:var(--display);font-style:italic;font-size:1rem;color:var(--marginalia)}
+.hero-lede{font-family:var(--display);font-size:1.25rem;line-height:1.6;color:var(--ink-soft);max-width:36rem;margin:0 auto;text-align:left;font-variation-settings:"opsz" 24}
+.hero-lede.dropcap::first-letter{font-family:var(--display);font-variation-settings:"opsz" 72;font-weight:600;font-size:4.5em;float:left;line-height:.85;margin:.04em .4rem 0 0;color:var(--cobalt)}
+.hero-meta{display:flex;justify-content:center;gap:3rem;flex-wrap:wrap;margin-top:3rem;font-family:var(--mono);font-size:.7rem;color:var(--ink-faint);letter-spacing:.06em}
+.hero-meta span strong{color:var(--marginalia);font-weight:400;letter-spacing:.18em;text-transform:uppercase;display:block;font-size:.6rem;margin-bottom:.2rem}
+@media(max-width:900px){.hero-name{font-size:3rem}.hero-name .last{font-size:2.4rem}.hero-frame{padding:0 1rem}.hero-lede{font-size:1.0625rem}}
+
+/* SECTION TITLE — two ornamental rules */
+.section{padding:6rem 0 0}
+.section-head{text-align:center;margin-bottom:3rem;position:relative}
+.section-num{font-family:var(--mono);font-size:.7rem;letter-spacing:.3em;color:var(--marginalia);display:block;margin-bottom:.5rem}
+.section-label{font-family:var(--display);font-style:italic;font-weight:500;font-size:2rem;color:var(--ink);font-variation-settings:"opsz" 36}
+.section-flourish{display:flex;align-items:center;justify-content:center;gap:1rem;margin-top:1rem;color:var(--rule-strong)}
+.section-flourish::before,.section-flourish::after{content:"";flex:0 0 4em;height:1px;background:var(--rule-strong)}
+.section-flourish span{font-family:var(--display);font-style:italic;font-size:1rem;color:var(--marginalia)}
+.section-count{font-family:var(--display);font-style:italic;font-size:.95rem;color:var(--marginalia);text-align:center;display:block;margin-top:.6rem}
+
+/* ANCHORS */
+.anchors{display:grid;grid-template-columns:1fr 1fr;gap:3rem;align-items:start}
+@media(max-width:900px){.anchors{grid-template-columns:1fr;gap:2rem}}
+.anchor{padding:1.6rem;background:var(--vellum);border:1px solid var(--rule);position:relative}
+.anchor::before{content:"";position:absolute;inset:.4rem;border:1px solid var(--rule);pointer-events:none}
+.anchor-inner{position:relative}
+.anchor h3{font-family:var(--display);font-style:italic;font-weight:500;font-size:1.25rem;color:var(--ink);margin-bottom:.2rem;text-align:center;font-variation-settings:"opsz" 24}
+.anchor .src{font-family:var(--mono);font-size:.65rem;color:var(--marginalia);letter-spacing:.06em;text-align:center;display:block;margin-bottom:1rem}
+.anchor-rule{height:1px;background:var(--rule-strong);width:3rem;margin:0 auto 1.2rem}
+.anchor .item{font-size:.95rem;line-height:1.55;color:var(--ink-soft);padding:.6rem 0;border-bottom:1px dashed var(--rule)}
+.anchor .item:last-child{border-bottom:none}
+.anchor .item-label{font-family:var(--body);font-weight:600;color:var(--ink);display:block;font-size:.95rem}
+.anchor .item-detail{font-family:var(--display);font-style:italic;color:var(--ink-muted);margin-top:.05rem;font-size:1rem;line-height:1.45}
+.anchor.inhibit{background:#fbf0e2;border-color:#d8b8a0}
+.anchor.inhibit::before{border-color:#d8b8a0}
+.anchor.inhibit h3{color:var(--vermilion)}
+.anchor.inhibit .item{font-family:var(--body);color:var(--ink);position:relative;padding-left:1.4rem}
+.anchor.inhibit .item::before{content:"⊘";position:absolute;left:0;top:.6rem;color:var(--vermilion);font-family:var(--mono);font-style:italic;font-size:1rem}
+
+/* FILTERS */
+.filters{display:flex;justify-content:center;gap:1.4rem;align-items:baseline;flex-wrap:wrap;margin-bottom:3rem;padding:1rem 0;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule)}
+.filter{font-family:var(--display);font-style:italic;font-size:.95rem;color:var(--ink-faint);cursor:pointer}
+.filter.active{color:var(--ink);font-weight:500;font-style:normal;font-family:var(--body)}
+.filter.active::before{content:"¶ ";color:var(--cobalt);font-style:normal;font-family:var(--display);font-weight:500;margin-right:.1rem}
+.filter .ct{font-family:var(--mono);font-style:normal;font-size:.7rem;color:var(--marginalia);margin-left:.3rem}
+.filter-sep{color:var(--rule-strong);font-family:var(--display)}
+
+/* ESCALATION CARD */
+.esc{padding:3rem 0;border-top:1px solid var(--rule);position:relative}
+.esc:last-child{border-bottom:1px solid var(--rule)}
+.esc-meta-row{display:flex;align-items:baseline;justify-content:center;gap:1rem;margin-bottom:1rem;font-family:var(--mono);font-size:.7rem;letter-spacing:.16em;text-transform:uppercase}
+.esc-date{color:var(--marginalia)}
+.esc-from{font-family:var(--display);font-style:italic;font-size:.875rem;text-transform:none;letter-spacing:0;color:var(--ink-muted)}
+.esc-from::before{content:"❦ ";color:var(--rule-strong);font-style:normal}
+.esc-status{display:flex;gap:.6rem;align-items:baseline}
+.esc-status .lab{font-weight:500}
+.esc-status .lab.help{color:var(--vermilion)}
+.esc-status .lab.improvement{color:var(--marigold)}
+.esc-status .lab.proposed_skill{color:var(--violet)}
+.esc-status .lab.urg-high{color:var(--vermilion)}
+.esc-status .lab.st-open{color:var(--sage)}
+.esc-status .lab.st-accepted{color:var(--sage)}
+.esc-status .sep{color:var(--ink-faint)}
+.esc-title{font-family:var(--display);font-weight:500;font-size:2rem;line-height:1.2;color:var(--ink);text-align:center;max-width:36rem;margin:0 auto 1.5rem;font-variation-settings:"opsz" 36}
+.esc-title.with-dropcap::first-letter{font-family:var(--display);font-variation-settings:"opsz" 72;font-weight:600;font-size:2.6em;float:left;line-height:.85;margin:.04em .3rem 0 0;color:var(--cobalt)}
+.esc.urgency-high{background:linear-gradient(to right,rgba(126,33,32,.04),transparent 30%)}
+.esc.urgency-high::before{content:"";position:absolute;left:-2rem;top:3rem;bottom:3rem;width:3px;background:var(--vermilion)}
+.esc-body{max-width:36rem;margin:0 auto}
+.esc-body h4{font-family:var(--display);font-style:italic;font-weight:500;font-size:1rem;color:var(--ink-muted);margin:1.6rem 0 .4rem;font-variation-settings:"opsz" 18}
+.esc-body h4::before{content:"¶ ";color:var(--rule-strong);font-style:normal;font-weight:400;margin-right:.2rem}
+.esc-body p{font-size:1rem;line-height:1.65;color:var(--ink-soft);margin-bottom:.5rem}
+.esc-body p code{font-family:var(--mono);font-size:.82em;color:var(--cobalt);background:transparent}
+.esc.resolved{opacity:.55}
+.esc.resolved .esc-title{text-decoration:line-through;text-decoration-color:var(--rule-strong);text-decoration-thickness:1px}
+.esc-draft{margin:1.6rem auto 0;max-width:36rem;padding-top:1rem;border-top:1px dashed var(--rule);text-align:center}
+.esc-draft-label{font-family:var(--mono);font-size:.7rem;color:var(--marginalia);margin-bottom:.5rem;letter-spacing:.1em}
+.esc-draft-toggle{font-family:var(--display);font-style:italic;font-size:1rem;color:var(--cobalt);cursor:pointer}
+.esc-draft-toggle:hover{text-decoration:underline}
+
+/* MEMORY */
+.mem{padding:2.4rem 0;border-top:1px solid var(--rule);text-align:center}
+.mem:last-child{border-bottom:1px solid var(--rule)}
+.mem-meta-row{display:flex;align-items:baseline;justify-content:center;gap:1.2rem;margin-bottom:.8rem;font-family:var(--mono);font-size:.7rem;color:var(--marginalia);letter-spacing:.06em}
+.mem-cat{font-family:var(--display);font-style:italic;font-weight:400;font-size:.95rem;text-transform:lowercase;letter-spacing:0;color:var(--ink-muted)}
+.mem-cat::before{content:"§ ";color:var(--rule-strong);font-style:normal}
+.mem-updated{font-family:var(--display);font-style:italic;font-size:.85rem;letter-spacing:0;color:var(--ink-faint)}
+.mem-title{font-family:var(--display);font-weight:500;font-size:1.5rem;line-height:1.25;color:var(--ink);max-width:32rem;margin:0 auto .8rem;font-variation-settings:"opsz" 24}
+.mem-body{font-size:1rem;line-height:1.62;color:var(--ink-soft);max-width:32rem;margin:0 auto;text-align:left}
+
+/* ACTIVITY */
+.day{font-family:var(--display);font-weight:500;font-size:1.125rem;font-style:italic;color:var(--ink);padding:1.4rem 0 .6rem;text-align:center;font-variation-settings:"opsz" 18}
+.day::before,.day::after{content:"❦";color:var(--rule-strong);margin:0 .8rem;font-style:normal}
+.act{padding:.9rem 0;border-bottom:1px solid var(--rule);display:grid;grid-template-columns:80px 130px 1fr;gap:1.4rem;align-items:baseline}
+.act:last-child{border-bottom:none}
+.act-time{font-family:var(--mono);font-size:.75rem;color:var(--marginalia);letter-spacing:.04em}
+.act-tag{font-family:var(--display);font-style:italic;font-size:.95rem;color:var(--ink-muted)}
+.act-tag.intake{color:var(--violet)}
+.act-tag.qualified{color:var(--sage)}
+.act-tag.drafted{color:var(--marigold)}
+.act-tag.sent{color:var(--cobalt)}
+.act-headline{font-size:.95rem;color:var(--ink);line-height:1.4}
+.act-meta{font-family:var(--display);font-style:italic;font-size:.85rem;color:var(--ink-faint);margin-top:.1rem}
+@media(max-width:900px){.act{grid-template-columns:60px 100px 1fr;gap:.8rem}}
+
+/* CLOSER */
+.end{font-family:var(--display);font-style:italic;font-size:1.5rem;color:var(--marginalia);text-align:center;padding:6rem 0 0}
+.end::before,.end::after{content:"";display:inline-block;width:3rem;height:1px;background:var(--rule-strong);vertical-align:middle;margin:0 1rem}
+</style>
+</head>
+<body>
+
+<header class="head">
+  <div class="brand">PRAXIS<span class="sep">·</span><span class="name">Sam Parker</span></div>
+  <div class="head-meta">updated 16 minutes ago<a href="#">refresh</a></div>
+</header>
+
+<main class="page">
+
+  <section class="hero">
+    <div class="hero-frame">
+      <div class="hero-eyebrow">A role, in residence</div>
+      <h1 class="hero-name"><span class="first">Sam</span><span class="last">Parker</span></h1>
+      <div class="hero-rule"><span>—  Quant BD  —</span></div>
+      <p class="hero-lede dropcap">Cold campaigns, manual lead intake, and weekly account reads on existing customers. Voice is warm but not chatty; prefers single-sentence opens to two-paragraph context dumps. Authenticates as <code style="font-family:var(--mono);font-size:.85em;color:var(--cobalt)">sam.parker@quantcdn.io</code> via the sam-workspace MCP.</p>
+      <div class="hero-meta">
+        <span><strong>In residence since</strong>2026-05-01</span>
+        <span><strong>Reports to</strong>Steve Worley</span>
+        <span><strong>Where</strong>Brisbane, QLD</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-head">
+      <span class="section-num">§ 01</span>
+      <span class="section-label">What this role anchors on</span>
+      <div class="section-flourish"><span>—</span></div>
+    </div>
+    <div class="anchors">
+      <div class="anchor">
+        <div class="anchor-inner">
+          <h3>Voice</h3>
+          <span class="src">agents/persona.md</span>
+          <div class="anchor-rule"></div>
+          <div class="item">
+            <span class="item-label">warm but not chatty</span>
+            <span class="item-detail">drops articles in casual writing</span>
+          </div>
+          <div class="item">
+            <span class="item-label">considered but quick</span>
+            <span class="item-detail">prefers single-sentence opens to two-paragraph context dumps</span>
+          </div>
+          <div class="item">
+            <span class="item-label">declarative</span>
+            <span class="item-detail">leads with the ask, not the prelude</span>
+          </div>
+        </div>
+      </div>
+      <div class="anchor inhibit">
+        <div class="anchor-inner">
+          <h3>Hard inhibitions</h3>
+          <span class="src">agents/persona.md</span>
+          <div class="anchor-rule"></div>
+          <div class="item">claim "IRAP-assessed" or "OFFICIAL: Sensitive"</div>
+          <div class="item">cold-email existing Quant customers</div>
+          <div class="item">name customers as references in cold outreach</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-head">
+      <span class="section-num">§ 02</span>
+      <span class="section-label">Escalations</span>
+      <div class="section-flourish"><span>—</span></div>
+      <span class="section-count">three entries · two open</span>
+    </div>
+    <div class="filters">
+      <span class="filter active">all <span class="ct">3</span></span>
+      <span class="filter-sep">·</span>
+      <span class="filter">open <span class="ct">2</span></span>
+      <span class="filter-sep">·</span>
+      <span class="filter">resolved <span class="ct">0</span></span>
+      <span class="filter-sep">·</span>
+      <span class="filter">accepted <span class="ct">1</span></span>
+      <span class="filter-sep">·</span>
+      <span class="filter">declined <span class="ct">0</span></span>
+    </div>
+
+    <article class="esc urgency-high">
+      <div class="esc-meta-row">
+        <span class="esc-date">2026-05-05</span>
+        <span class="esc-from">from find-contacts</span>
+        <span class="esc-status">
+          <span class="lab help">help</span><span class="sep">·</span><span class="lab urg-high">high</span><span class="sep">·</span><span class="lab st-open">open</span>
+        </span>
+      </div>
+      <h2 class="esc-title with-dropcap">Stuck on bounce-rate spike for media-cdn</h2>
+      <div class="esc-body">
+        <h4>What I was doing</h4>
+        <p>Working through the search-portals-au campaign and hit a bounce wall on shared-inbox addresses. Three of four sends bounced 550 5.4.1 — unusual for the otherwise-warm domain set.</p>
+        <h4>What I tried</h4>
+        <p>Captured the pattern in <code>memory/notes/email-verification-shared-inbox-risk.md</code>. The heuristic isn't applied automatically by find-contacts.</p>
+        <h4>What I'm asking for</h4>
+        <p>Promote the heuristic into <code>lib/research-strategies.yaml</code> so find-contacts reads it as a routine check before sending.</p>
+      </div>
+    </article>
+
+    <article class="esc">
+      <div class="esc-meta-row">
+        <span class="esc-date">2026-05-04</span>
+        <span class="esc-from">from end-of-run</span>
+        <span class="esc-status">
+          <span class="lab improvement">improvement</span><span class="sep">·</span><span class="lab st-open">open</span>
+        </span>
+      </div>
+      <h2 class="esc-title with-dropcap">Account-read should treat parental-leave OOOs as a soft signal</h2>
+      <div class="esc-body">
+        <p>Three customers' primary contacts came back with parental-leave autoresponders this week. Currently I record them as "no signal" but they're actually a strong signal that the relationship is paused, not cooling. Suggest: a new <em>signal_type: oop_leave</em> with a return-date field so we don't false-positive churn risk.</p>
+      </div>
+    </article>
+
+    <article class="esc">
+      <div class="esc-meta-row">
+        <span class="esc-date">2026-04-28</span>
+        <span class="esc-from">from monitor-channels</span>
+        <span class="esc-status">
+          <span class="lab proposed_skill">proposed</span><span class="sep">·</span><span class="lab st-accepted">accepted</span>
+        </span>
+      </div>
+      <h2 class="esc-title with-dropcap">New agent: tender-to-prospect promoter</h2>
+      <div class="esc-body">
+        <p>Tender-watch flagged a real procurement opportunity at NSW Health and I had nowhere to send it. Drafted an agent that promotes a confirmed tender hit into manual-leads with the right deal_type. Six-step playbook; same review gate as everything else.</p>
+      </div>
+      <div class="esc-draft">
+        <div class="esc-draft-label">PROPOSED AGENT · agents/proposed/intake-from-tender.md</div>
+        <span class="esc-draft-toggle">unfold draft</span>
+      </div>
+    </article>
+  </section>
+
+  <section class="section">
+    <div class="section-head">
+      <span class="section-num">§ 03</span>
+      <span class="section-label">Notebook</span>
+      <div class="section-flourish"><span>—</span></div>
+      <span class="section-count">one entry</span>
+    </div>
+    <article class="mem">
+      <div class="mem-meta-row">
+        <span class="mem-cat">people</span>
+        <span class="mem-updated">written 4 May, last touched 5 May</span>
+      </div>
+      <h2 class="mem-title">Stu — sec-related forwards land without commentary</h2>
+      <p class="mem-body">Stu prefers Slack DMs over email for sec-related forwards. The forwards usually arrive with no commentary at all — treat the forward itself as the brief and don't ask clarifying questions unless the artefact is clearly missing context. He'll add what's needed in a follow-up if it matters.</p>
+    </article>
+  </section>
+
+  <section class="section">
+    <div class="section-head">
+      <span class="section-num">§ 04</span>
+      <span class="section-label">Logbook</span>
+      <div class="section-flourish"><span>—</span></div>
+    </div>
+    <div class="day">Monday, 5 May</div>
+    <div class="act">
+      <span class="act-time">08:43</span>
+      <span class="act-tag intake">intake</span>
+      <div>
+        <div class="act-headline">added prospect: <em>media-cdn.com.au</em></div>
+        <div class="act-meta">from monitor-channels · domain=media-cdn.com.au</div>
+      </div>
+    </div>
+    <div class="act">
+      <span class="act-time">09:12</span>
+      <span class="act-tag qualified">qualified</span>
+      <div>
+        <div class="act-headline">manually qualified: <em>hyper-co</em></div>
+        <div class="act-meta">from intake-leads · slack via @steve</div>
+      </div>
+    </div>
+    <div class="act">
+      <span class="act-time">10:01</span>
+      <span class="act-tag drafted">drafted</span>
+      <div>
+        <div class="act-headline">cold opener for <em>media-cdn</em></div>
+        <div class="act-meta">from draft-emails</div>
+      </div>
+    </div>
+    <div class="act">
+      <span class="act-time">12:30</span>
+      <span class="act-tag sent">sent</span>
+      <div>
+        <div class="act-headline">cold opener · <em>media-cdn</em></div>
+        <div class="act-meta">1 prospect · campaign=search-portals</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="end">finis</div>
+
+</main>
+</body>
+</html>

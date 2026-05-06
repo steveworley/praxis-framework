@@ -1,0 +1,112 @@
+---
+import MemoEntry from '@/components/MemoEntry.astro';
+import RouteHeader from '@/components/RouteHeader.astro';
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import { assembleEscalations } from '@/lib/escalations-loader';
+import { assembleMemory, type MemoryEntry } from '@/lib/memory-loader';
+import { parsePersona, type Persona } from '@/lib/persona-parser';
+import { detectMode, getRoleHome, nowIso } from '@/lib/role-home';
+
+export const prerender = false;
+
+const roleHome = getRoleHome();
+const mode = detectMode(roleHome);
+if (mode === 'seed') {
+  return Astro.redirect('/setup');
+}
+
+const [personaRes, memoryRes, escalationsRes] = await Promise.allSettled([
+  parsePersona(roleHome),
+  assembleMemory(roleHome),
+  assembleEscalations(roleHome),
+]);
+
+const persona: Persona | null = personaRes.status === 'fulfilled' ? personaRes.value : null;
+const memoryEntries: MemoryEntry[] = memoryRes.status === 'fulfilled' ? memoryRes.value : [];
+const memoryError = memoryRes.status === 'rejected' ? String(memoryRes.reason) : null;
+const openCount =
+  escalationsRes.status === 'fulfilled' ? escalationsRes.value.countsByStatus.open : 0;
+
+const fullName = persona?.identity['full_name'] ?? persona?.identity['name'] ?? '';
+const updatedAt = nowIso();
+
+const categoryCounts: Record<string, number> = {};
+for (const e of memoryEntries) {
+  categoryCounts[e.category] = (categoryCounts[e.category] ?? 0) + 1;
+}
+const categoryKeys = Object.keys(categoryCounts).sort();
+const filters: Array<{ key: string; label: string; count: number }> = [
+  { key: 'all', label: 'all', count: memoryEntries.length },
+  ...categoryKeys.map((k) => ({ key: k, label: k, count: categoryCounts[k] ?? 0 })),
+];
+const lastUpdate = memoryEntries[0]?.updated ?? memoryEntries[0]?.created ?? 'never';
+---
+
+<BaseLayout title={fullName ? `Notebook · ${fullName}` : 'Notebook · Praxis'}>
+  <main class="container">
+    <RouteHeader
+      current="notebook"
+      personaName={fullName}
+      escalationOpenCount={openCount}
+      updatedAt={updatedAt}
+    />
+
+    <div style="margin-top: 2rem;">
+      <div class="group-head">
+        <span class="group-title">Notebook</span>
+        <span class="group-counter">
+          {memoryEntries.length} {memoryEntries.length === 1 ? 'entry' : 'entries'} · last update {lastUpdate}
+        </span>
+      </div>
+
+      {memoryError ? (
+        <div class="empty">Failed to load notebook: {memoryError}</div>
+      ) : memoryEntries.length === 0 ? (
+        <div class="empty">
+          Notebook is empty. As the role works, observations about people, accounts, and patterns will land here.
+        </div>
+      ) : (
+        <>
+          <div class="filter-row" data-filter-group="category" style="margin-top: 0.8rem;">
+            {filters.map((f) => (
+              <span
+                class:list={['filter', f.key === 'all' && 'active']}
+                data-filter={f.key}
+              >
+                {f.label}<span class="ct">{f.count}</span>
+              </span>
+            ))}
+          </div>
+
+          <div data-filter-feed>
+            {memoryEntries.map((entry) => <MemoEntry entry={entry} />)}
+          </div>
+        </>
+      )}
+    </div>
+  </main>
+
+  <script is:inline>
+    (function () {
+      const feed = document.querySelector('[data-filter-feed]');
+      const group = document.querySelector('[data-filter-group="category"]');
+      if (!(feed instanceof HTMLElement) || !(group instanceof HTMLElement)) return;
+      let active = 'all';
+      group.addEventListener('click', (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) return;
+        const filter = target.closest('[data-filter]');
+        if (!(filter instanceof HTMLElement)) return;
+        const value = filter.dataset.filter;
+        if (!value) return;
+        group.querySelectorAll('[data-filter]').forEach((b) => b.classList.remove('active'));
+        filter.classList.add('active');
+        active = value;
+        for (const card of feed.children) {
+          if (!(card instanceof HTMLElement)) continue;
+          card.style.display = active === 'all' || card.dataset.category === active ? '' : 'none';
+        }
+      });
+    })();
+  </script>
+</BaseLayout>

@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Praxis · Mock B · Quiet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Manrope:wght@400;500;600&family=JetBrains+Mono:ital,wght@0,400;0,500;1,400&display=swap">
+<style>
+:root{
+  --paper:#f8f6ed; --vellum:#fcfaf2; --vellum-shade:#f3efde;
+  --rule:#e0d8c1; --rule-strong:#b8ad8e;
+  --ink:#1d1b15; --ink-soft:#3a3729; --ink-muted:#5e5a48; --ink-faint:#8c8773;
+  --marginalia:#a39d85;
+  --primary:#324a52; --primary-deep:#22343b; --vermilion:#7e2622; --marigold:#9f6f1a; --sage:#2a5132; --violet:#564480;
+  --serif:'EB Garamond',Georgia,serif;
+  --sans:'Manrope',system-ui,sans-serif;
+  --mono:'JetBrains Mono','SF Mono',Menlo,monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.65;-webkit-font-smoothing:antialiased;font-feature-settings:"ss01","kern","liga"}
+a{color:inherit;text-decoration:none}
+.page{max-width:680px;margin:0 auto;padding:0 2rem 8rem}
+@media(max-width:900px){.page{padding:0 1.5rem 4rem}}
+
+/* HEADER — the quietest */
+.head{display:flex;justify-content:space-between;align-items:baseline;padding:2rem 2rem 1.4rem;border-bottom:1px solid var(--rule);max-width:680px;margin:0 auto;width:100%}
+.brand{font-family:var(--mono);font-size:.7rem;letter-spacing:.22em;text-transform:uppercase;color:var(--ink-muted)}
+.brand .name{font-family:var(--serif);font-size:1rem;font-style:italic;letter-spacing:0;text-transform:none;color:var(--ink);margin-left:.8rem}
+.head-meta{font-family:var(--serif);font-style:italic;font-size:.85rem;color:var(--marginalia)}
+.head-meta a{color:var(--primary);font-style:italic;margin-left:1rem}
+.head-meta a:hover{text-decoration:underline}
+
+/* PERSONA HERO — one column, generous, the title page */
+.hero{padding:6rem 0 3rem;border-bottom:1px solid var(--rule);text-align:left}
+.hero-eyebrow{font-family:var(--mono);font-size:.7rem;letter-spacing:.18em;text-transform:uppercase;color:var(--marginalia);margin-bottom:1.4rem}
+.hero-name{font-family:var(--serif);font-style:italic;font-weight:500;font-size:3.5rem;line-height:1.05;color:var(--ink);margin-bottom:1rem;letter-spacing:-.01em}
+.hero-byline{font-family:var(--sans);font-weight:500;font-size:.875rem;color:var(--ink-muted);margin-bottom:2rem;letter-spacing:.02em}
+.hero-byline .by{font-family:var(--serif);font-style:italic;font-weight:400;color:var(--marginalia);margin:0 .2rem}
+.hero-lede{font-family:var(--serif);font-size:1.25rem;line-height:1.55;color:var(--ink-soft);max-width:30em}
+.hero-lede em{color:var(--primary);font-style:italic}
+.hero-meta{display:flex;gap:2.5rem;flex-wrap:wrap;font-family:var(--mono);font-size:.7rem;color:var(--ink-faint);margin-top:2.4rem;letter-spacing:.04em}
+.hero-meta span strong{color:var(--ink-muted);font-weight:400;letter-spacing:.16em;text-transform:uppercase;display:block;font-size:.65rem;margin-bottom:.2rem}
+@media(max-width:900px){.hero-name{font-size:2.4rem}.hero-lede{font-size:1.0625rem}}
+
+/* SECTION — minimal: just a small word and a long rule */
+.section{padding:5rem 0 0}
+.section-head{display:flex;align-items:baseline;gap:1.4rem;margin-bottom:2.5rem}
+.section-label{font-family:var(--sans);font-weight:600;font-size:.7rem;text-transform:uppercase;letter-spacing:.2em;color:var(--ink-muted);flex:0 0 auto}
+.section-rule{flex:1;height:1px;background:var(--rule)}
+.section-count{font-family:var(--serif);font-style:italic;font-size:.85rem;color:var(--marginalia);flex:0 0 auto}
+
+/* ANCHORS — single column, vertically stacked, separated by rules */
+.anchor{padding:1.6rem 0;border-bottom:1px solid var(--rule)}
+.anchor:last-child{border-bottom:none}
+.anchor h3{font-family:var(--serif);font-style:italic;font-weight:500;font-size:1.0625rem;color:var(--ink);margin-bottom:.4rem}
+.anchor h3 .src{font-family:var(--mono);font-style:normal;font-size:.7rem;color:var(--marginalia);margin-left:.6rem;letter-spacing:.04em}
+.anchor .item{font-size:.9375rem;line-height:1.6;color:var(--ink-soft);padding:.5rem 0}
+.anchor .item-label{font-weight:500;color:var(--ink);font-family:var(--sans)}
+.anchor .item-detail{display:block;font-family:var(--serif);font-style:italic;color:var(--ink-muted);margin-top:.05rem;font-size:1.0625rem;line-height:1.45}
+.anchor.inhibit h3{color:var(--vermilion)}
+.anchor.inhibit .item{color:var(--ink);position:relative;padding-left:1.2rem}
+.anchor.inhibit .item::before{content:"never";position:absolute;left:0;top:.6rem;font-family:var(--mono);font-size:.65rem;letter-spacing:.16em;text-transform:uppercase;color:var(--vermilion);font-weight:500}
+
+/* FILTERS — quietest possible */
+.filters{display:flex;gap:1.6rem;align-items:baseline;flex-wrap:wrap;margin-bottom:3rem;font-family:var(--serif);font-style:italic;font-size:1rem}
+.filter{color:var(--ink-faint);cursor:pointer}
+.filter.active{color:var(--ink);font-weight:500;font-style:normal;font-family:var(--sans);font-size:.875rem;letter-spacing:.02em}
+.filter .ct{font-family:var(--mono);font-style:normal;font-size:.7rem;color:var(--marginalia);margin-left:.2rem;letter-spacing:.04em}
+
+/* ESCALATION — entry-shaped, no gutter, just typography hierarchy */
+.esc{padding:3rem 0;border-top:1px solid var(--rule)}
+.esc:last-child{border-bottom:1px solid var(--rule)}
+.esc-meta-row{display:flex;align-items:baseline;gap:1.4rem;margin-bottom:1rem;font-family:var(--mono);font-size:.7rem;letter-spacing:.06em;color:var(--ink-faint)}
+.esc-date{color:var(--marginalia)}
+.esc-from{font-family:var(--serif);font-style:italic;font-size:.875rem;letter-spacing:0;color:var(--ink-muted)}
+.esc-status{margin-left:auto;display:flex;gap:.6rem;align-items:baseline;font-family:var(--sans);font-size:.7rem;text-transform:uppercase;letter-spacing:.16em;font-weight:500}
+.esc-status .lab{color:var(--ink-muted)}
+.esc-status .lab.help{color:var(--vermilion)}
+.esc-status .lab.improvement{color:var(--marigold)}
+.esc-status .lab.proposed_skill{color:var(--violet)}
+.esc-status .lab.urg-high{color:var(--vermilion)}
+.esc-status .lab.st-open{color:var(--sage)}
+.esc-status .lab.st-accepted{color:var(--sage)}
+.esc-title{font-family:var(--serif);font-weight:500;font-size:1.875rem;line-height:1.15;color:var(--ink);margin-bottom:1.6rem;letter-spacing:-.005em}
+.esc.urgency-high{position:relative}
+.esc.urgency-high::before{content:"";position:absolute;left:-1.4rem;top:3rem;bottom:3rem;width:2px;background:var(--vermilion)}
+.esc-body h4{font-family:var(--sans);font-weight:500;font-size:.7rem;text-transform:uppercase;letter-spacing:.18em;color:var(--ink-muted);margin:1.6rem 0 .4rem}
+.esc-body p{font-family:var(--serif);font-size:1.125rem;line-height:1.55;color:var(--ink-soft);margin-bottom:.4rem}
+.esc-body p code{font-family:var(--mono);font-size:.85em;color:var(--primary);background:transparent}
+.esc.resolved{opacity:.55}
+.esc.resolved .esc-title{text-decoration:line-through;text-decoration-color:var(--rule-strong);text-decoration-thickness:1px}
+.esc-draft{margin-top:1.6rem;padding-top:1rem;border-top:1px solid var(--rule)}
+.esc-draft-label{font-family:var(--mono);font-size:.7rem;color:var(--marginalia);margin-bottom:.4rem;letter-spacing:.06em}
+.esc-draft-toggle{font-family:var(--serif);font-style:italic;font-size:1rem;color:var(--primary);cursor:pointer}
+.esc-draft-toggle:hover{text-decoration:underline}
+
+/* MEMORY — same shape, just smaller */
+.mem{padding:2.4rem 0;border-top:1px solid var(--rule)}
+.mem:last-child{border-bottom:1px solid var(--rule)}
+.mem-meta-row{display:flex;align-items:baseline;gap:1.4rem;margin-bottom:.8rem;font-family:var(--mono);font-size:.7rem;color:var(--marginalia);letter-spacing:.06em}
+.mem-cat{font-family:var(--sans);font-weight:500;font-size:.7rem;text-transform:uppercase;letter-spacing:.18em;color:var(--ink-muted)}
+.mem-updated{font-family:var(--serif);font-style:italic;font-size:.85rem;letter-spacing:0;color:var(--ink-faint)}
+.mem-title{font-family:var(--serif);font-weight:500;font-size:1.375rem;line-height:1.25;color:var(--ink);margin-bottom:.6rem}
+.mem-body{font-family:var(--serif);font-size:1.0625rem;line-height:1.55;color:var(--ink-soft)}
+
+/* ACTIVITY — a chronicle, single column, not a grid */
+.day{font-family:var(--serif);font-style:italic;font-weight:500;font-size:1.0625rem;color:var(--ink);padding:1.4rem 0 .6rem;border-bottom:1px solid var(--rule)}
+.act{padding:.9rem 0;border-bottom:1px solid var(--rule);display:flex;gap:1.4rem;align-items:baseline}
+.act:last-child{border-bottom:none}
+.act-time{font-family:var(--mono);font-size:.75rem;color:var(--marginalia);flex:0 0 3.5rem;letter-spacing:.04em}
+.act-content{flex:1}
+.act-headline{font-family:var(--serif);font-size:1.0625rem;line-height:1.4;color:var(--ink)}
+.act-headline .verb{font-family:var(--sans);font-weight:500;font-size:.7rem;text-transform:uppercase;letter-spacing:.18em;margin-right:.6rem;color:var(--ink-muted)}
+.act-headline .verb.intake{color:var(--violet)}
+.act-headline .verb.qualified{color:var(--sage)}
+.act-headline .verb.drafted{color:var(--marigold)}
+.act-headline .verb.sent{color:var(--primary)}
+.act-meta{font-family:var(--mono);font-size:.7rem;color:var(--ink-faint);margin-top:.2rem;letter-spacing:.04em}
+
+/* CLOSER */
+.end{font-family:var(--serif);font-style:italic;font-size:1rem;color:var(--marginalia);text-align:center;padding:6rem 0 0}
+</style>
+</head>
+<body>
+
+<header class="head">
+  <div class="brand">PRAXIS<span class="name">Sam Parker</span></div>
+  <div class="head-meta">updated 16 minutes ago<a href="#">refresh</a></div>
+</header>
+
+<main class="page">
+
+  <section class="hero">
+    <div class="hero-eyebrow">A role, in residence</div>
+    <h1 class="hero-name">Sam Parker</h1>
+    <div class="hero-byline">a role <span class="by">— authored by</span> Steve Worley <span class="by">— in residence since</span> 2026-05-01</div>
+    <p class="hero-lede">Quant's BD person. Cold campaigns, manual lead intake, weekly account reads on existing customers. Voice is <em>warm but not chatty</em>; prefers single-sentence opens to two-paragraph context dumps.</p>
+    <div class="hero-meta">
+      <span><strong>Email</strong>sam.parker@quantcdn.io</span>
+      <span><strong>Where</strong>Brisbane, QLD</span>
+      <span><strong>Reports to</strong>Steve</span>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-head">
+      <span class="section-label">Anchors</span>
+      <span class="section-rule"></span>
+    </div>
+    <div class="anchor">
+      <h3>Voice<span class="src">agents/persona.md</span></h3>
+      <div class="item">
+        <span class="item-label">warm but not chatty</span>
+        <span class="item-detail">drops articles in casual writing</span>
+      </div>
+      <div class="item">
+        <span class="item-label">considered but quick</span>
+        <span class="item-detail">prefers single-sentence opens to two-paragraph context dumps</span>
+      </div>
+      <div class="item">
+        <span class="item-label">declarative</span>
+        <span class="item-detail">leads with the ask, not the prelude</span>
+      </div>
+    </div>
+    <div class="anchor inhibit">
+      <h3>Hard inhibitions<span class="src">agents/persona.md</span></h3>
+      <div class="item">claim "IRAP-assessed" or "OFFICIAL: Sensitive"</div>
+      <div class="item">cold-email existing Quant customers</div>
+      <div class="item">name customers as references in cold outreach</div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-head">
+      <span class="section-label">Escalations</span>
+      <span class="section-rule"></span>
+      <span class="section-count">3 entries · 2 open</span>
+    </div>
+    <div class="filters">
+      <span class="filter active">all <span class="ct">3</span></span>
+      <span class="filter">open <span class="ct">2</span></span>
+      <span class="filter">resolved <span class="ct">0</span></span>
+      <span class="filter">accepted <span class="ct">1</span></span>
+      <span class="filter">declined <span class="ct">0</span></span>
+    </div>
+
+    <article class="esc urgency-high">
+      <div class="esc-meta-row">
+        <span class="esc-date">2026-05-05</span>
+        <span class="esc-from">from <em>find-contacts</em></span>
+        <span class="esc-status">
+          <span class="lab help">help</span>·<span class="lab urg-high">high</span>·<span class="lab st-open">open</span>
+        </span>
+      </div>
+      <h2 class="esc-title">Stuck on bounce-rate spike for media-cdn</h2>
+      <div class="esc-body">
+        <h4>What I was doing</h4>
+        <p>Working through the search-portals-au campaign and hit a bounce wall on shared-inbox addresses. Three of four sends bounced 550 5.4.1 — unusual for the otherwise-warm domain set.</p>
+        <h4>What I tried</h4>
+        <p>Captured the pattern in <code>memory/notes/email-verification-shared-inbox-risk.md</code>. The heuristic isn't applied automatically by find-contacts.</p>
+        <h4>What I'm asking for</h4>
+        <p>Promote the heuristic into <code>lib/research-strategies.yaml</code> so find-contacts reads it as a routine check before sending.</p>
+      </div>
+    </article>
+
+    <article class="esc">
+      <div class="esc-meta-row">
+        <span class="esc-date">2026-05-04</span>
+        <span class="esc-from">from <em>end-of-run</em></span>
+        <span class="esc-status">
+          <span class="lab improvement">improvement</span>·<span class="lab st-open">open</span>
+        </span>
+      </div>
+      <h2 class="esc-title">Account-read should treat parental-leave OOOs as a soft signal</h2>
+      <div class="esc-body">
+        <p>Three customers' primary contacts came back with parental-leave autoresponders this week. Currently I record them as "no signal" but they're actually a strong signal that the relationship is paused, not cooling. Suggest: a new <em>signal_type: oop_leave</em> with a return-date field so we don't false-positive churn risk.</p>
+      </div>
+    </article>
+
+    <article class="esc">
+      <div class="esc-meta-row">
+        <span class="esc-date">2026-04-28</span>
+        <span class="esc-from">from <em>monitor-channels</em></span>
+        <span class="esc-status">
+          <span class="lab proposed_skill">proposed</span>·<span class="lab st-accepted">accepted</span>
+        </span>
+      </div>
+      <h2 class="esc-title">New agent: tender-to-prospect promoter</h2>
+      <div class="esc-body">
+        <p>Tender-watch flagged a real procurement opportunity at NSW Health and I had nowhere to send it. Drafted an agent that promotes a confirmed tender hit into manual-leads with the right deal_type. Six-step playbook; same review gate as everything else.</p>
+      </div>
+      <div class="esc-draft">
+        <div class="esc-draft-label">PROPOSED AGENT · agents/proposed/intake-from-tender.md</div>
+        <span class="esc-draft-toggle">unfold draft</span>
+      </div>
+    </article>
+  </section>
+
+  <section class="section">
+    <div class="section-head">
+      <span class="section-label">Notebook</span>
+      <span class="section-rule"></span>
+      <span class="section-count">1 entry</span>
+    </div>
+    <article class="mem">
+      <div class="mem-meta-row">
+        <span class="mem-cat">people</span>
+        <span class="mem-updated">written 4 May, last touched 5 May</span>
+      </div>
+      <h2 class="mem-title">Stu — sec-related forwards land without commentary</h2>
+      <p class="mem-body">Stu prefers Slack DMs over email for sec-related forwards. The forwards usually arrive with no commentary at all — treat the forward itself as the brief and don't ask clarifying questions unless the artefact is clearly missing context. He'll add what's needed in a follow-up if it matters.</p>
+    </article>
+  </section>
+
+  <section class="section">
+    <div class="section-head">
+      <span class="section-label">Logbook</span>
+      <span class="section-rule"></span>
+    </div>
+    <div class="day">Monday — 5 May</div>
+    <div class="act">
+      <span class="act-time">08:43</span>
+      <div class="act-content">
+        <div class="act-headline"><span class="verb intake">intake</span>added prospect: <em>media-cdn.com.au</em></div>
+        <div class="act-meta">from monitor-channels · domain=media-cdn.com.au</div>
+      </div>
+    </div>
+    <div class="act">
+      <span class="act-time">09:12</span>
+      <div class="act-content">
+        <div class="act-headline"><span class="verb qualified">qualified</span>manually qualified: <em>hyper-co</em></div>
+        <div class="act-meta">from intake-leads · slack via @steve</div>
+      </div>
+    </div>
+    <div class="act">
+      <span class="act-time">10:01</span>
+      <div class="act-content">
+        <div class="act-headline"><span class="verb drafted">drafted</span>cold opener for <em>media-cdn</em></div>
+        <div class="act-meta">from draft-emails</div>
+      </div>
+    </div>
+    <div class="act">
+      <span class="act-time">12:30</span>
+      <div class="act-content">
+        <div class="act-headline"><span class="verb sent">sent</span>cold opener · <em>media-cdn</em></div>
+        <div class="act-meta">1 prospect · campaign=search-portals</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="end">~ ~ ~</div>
+
+</main>
+</body>
+</html>

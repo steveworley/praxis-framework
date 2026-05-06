@@ -1,0 +1,167 @@
+---
+import RouteHeader from '@/components/RouteHeader.astro';
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import { assembleActivity, type ActivityEntry } from '@/lib/activity-loader';
+import { assembleEscalations } from '@/lib/escalations-loader';
+import { parsePersona, type Persona } from '@/lib/persona-parser';
+import { bucketByDay, recentActivityCount } from '@/lib/recent-stats';
+import { detectMode, getLogGlob, getRoleHome, nowIso } from '@/lib/role-home';
+
+export const prerender = false;
+
+const roleHome = getRoleHome();
+const mode = detectMode(roleHome);
+if (mode === 'seed') {
+  return Astro.redirect('/setup');
+}
+
+const logGlob = getLogGlob();
+const [personaRes, activityRes, escalationsRes] = await Promise.allSettled([
+  parsePersona(roleHome),
+  assembleActivity(roleHome, logGlob, 200),
+  assembleEscalations(roleHome),
+]);
+
+const persona: Persona | null = personaRes.status === 'fulfilled' ? personaRes.value : null;
+const activity: ActivityEntry[] = activityRes.status === 'fulfilled' ? activityRes.value : [];
+const activityError = activityRes.status === 'rejected' ? String(activityRes.reason) : null;
+const openCount =
+  escalationsRes.status === 'fulfilled' ? escalationsRes.value.countsByStatus.open : 0;
+
+const fullName = persona?.identity['full_name'] ?? persona?.identity['name'] ?? '';
+const updatedAt = nowIso();
+
+const actionCounts: Record<string, number> = {};
+for (const e of activity) {
+  const action = typeof e.action === 'string' && e.action.length > 0 ? e.action : 'other';
+  actionCounts[action] = (actionCounts[action] ?? 0) + 1;
+}
+const actionKeys = Object.keys(actionCounts).sort();
+const filters: Array<{ key: string; label: string; count: number }> = [
+  { key: 'all', label: 'all', count: activity.length },
+  ...actionKeys.map((k) => ({ key: k, label: k, count: actionCounts[k] ?? 0 })),
+];
+
+const buckets = bucketByDay(activity);
+const todayCount = recentActivityCount(activity, 1);
+
+function isoTime(ts: string | undefined): string {
+  if (!ts) return '';
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return ts.slice(11, 16);
+  return d.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false });
+}
+
+function buildHeadline(e: ActivityEntry): string {
+  const headline = typeof e.headline === 'string' ? e.headline : '';
+  if (headline.length > 0) return headline;
+  if (typeof e.notes === 'string' && e.notes.length > 0) return e.notes;
+  const action = typeof e.action === 'string' ? e.action : '';
+  return action || '(no detail)';
+}
+
+function metaLine(e: ActivityEntry): string {
+  const bits: string[] = [];
+  if (typeof e.agent === 'string' && e.agent.length > 0) bits.push(`from ${e.agent}`);
+  const keep = ['domain', 'company', 'campaign', 'channel', 'kind', 'urgency', 'next_step', 'outcome'] as const;
+  for (const k of keep) {
+    const v = e[k];
+    if (typeof v === 'string' && v.length > 0) bits.push(`${k}=${v}`);
+  }
+  return bits.join(' · ');
+}
+---
+
+<BaseLayout title={fullName ? `Activity · ${fullName}` : 'Activity · Praxis'}>
+  <main class="container">
+    <RouteHeader
+      current="activity"
+      personaName={fullName}
+      escalationOpenCount={openCount}
+      updatedAt={updatedAt}
+    />
+
+    <div style="margin-top: 2rem;">
+      <div class="group-head">
+        <span class="group-title">Activity</span>
+        <span class="group-counter">last {activity.length} entries · {todayCount} today</span>
+      </div>
+
+      {activityError ? (
+        <div class="empty">Failed to load activity: {activityError}</div>
+      ) : activity.length === 0 ? (
+        <div class="empty">No activity logged yet.</div>
+      ) : (
+        <>
+          <div class="filter-row" data-filter-group="action" style="margin-top: 0.8rem;">
+            {filters.map((f) => (
+              <span
+                class:list={['filter', f.key === 'all' && 'active']}
+                data-filter={f.key}
+              >
+                {f.label}<span class="ct">{f.count}</span>
+              </span>
+            ))}
+          </div>
+
+          <div data-filter-feed>
+            {buckets.map((bucket) => (
+              <div class="day-group" data-bucket={bucket.day}>
+                <div class="day-band">{bucket.label} · {bucket.items.length} {bucket.items.length === 1 ? 'entry' : 'entries'}</div>
+                {bucket.items.map((e) => {
+                  const action = typeof e.action === 'string' && e.action.length > 0 ? e.action : 'other';
+                  const time = isoTime(typeof e.timestamp === 'string' ? e.timestamp : undefined);
+                  const headline = buildHeadline(e);
+                  const meta = metaLine(e);
+                  return (
+                    <div class="act-row" data-action={action}>
+                      <span class="time">{time}</span>
+                      <span class:list={['verb', action]}>{action}</span>
+                      <div class="what">
+                        {headline}
+                        {meta && <span class="meta">{meta}</span>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  </main>
+
+  <script is:inline>
+    (function () {
+      const feed = document.querySelector('[data-filter-feed]');
+      const group = document.querySelector('[data-filter-group="action"]');
+      if (!(feed instanceof HTMLElement) || !(group instanceof HTMLElement)) return;
+      let active = 'all';
+      group.addEventListener('click', (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) return;
+        const filter = target.closest('[data-filter]');
+        if (!(filter instanceof HTMLElement)) return;
+        const value = filter.dataset.filter;
+        if (!value) return;
+        group.querySelectorAll('[data-filter]').forEach((b) => b.classList.remove('active'));
+        filter.classList.add('active');
+        active = value;
+        const dayGroups = feed.querySelectorAll('[data-bucket]');
+        dayGroups.forEach((dg) => {
+          if (!(dg instanceof HTMLElement)) return;
+          const rows = dg.querySelectorAll('[data-action]');
+          let visible = 0;
+          rows.forEach((row) => {
+            if (!(row instanceof HTMLElement)) return;
+            const match = active === 'all' || row.dataset.action === active;
+            row.style.display = match ? '' : 'none';
+            if (match) visible += 1;
+          });
+          dg.style.display = visible > 0 ? '' : 'none';
+        });
+      });
+    })();
+  </script>
+</BaseLayout>

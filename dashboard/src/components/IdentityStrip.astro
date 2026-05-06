@@ -1,0 +1,49 @@
+---
+import type { Persona } from '@/lib/persona-parser';
+
+/** Identity bar shown at the top of /home and /role. Pulls from the parsed
+ * persona.md identity section; supports an optional counts row (3 voice
+ * rules · 3 inhibitions · 18 agents) used on /home but not /role. */
+interface Props {
+  persona: Persona | null;
+  /** When truthy, render the voice/inhibition/agents counts row. */
+  showCounts?: boolean;
+  agentCount?: number;
+  /** Anchor target — `/role` from /home, blank/edit-link from /role. */
+  link?: { href: string; label: string };
+  /** When false, omit the email field — useful on /home where the strip is brief. */
+  showEmail?: boolean;
+}
+
+const { persona, showCounts = false, agentCount = 0, link, showEmail = false } = Astro.props;
+const ident = persona?.identity ?? {};
+const fullName = ident['full_name'] ?? ident['name'] ?? 'Unnamed role';
+const role = ident['role'] ?? '';
+const location = ident['location'] ?? '';
+const reportsTo = ident['reports_to'] ?? '';
+const since = ident['started'] ?? ident['since'] ?? '';
+const email = ident['email'] ?? '';
+
+const metaBits: string[] = [];
+if (role) metaBits.push(role);
+if (location) metaBits.push(location);
+if (reportsTo) metaBits.push(`reports to ${reportsTo}`);
+if (since) metaBits.push(`since ${since}`);
+if (showEmail && email) metaBits.push(email);
+
+const voiceCount = persona?.voice.length ?? 0;
+const inhibitionCount = persona?.inhibitions.length ?? 0;
+---
+
+<div class="id-strip">
+  <div class="name">{fullName}</div>
+  <div class="meta">
+    {metaBits.map((b) => <span>{b}</span>)}
+    {showCounts && (
+      <span>{voiceCount} voice {voiceCount === 1 ? 'rule' : 'rules'} · {inhibitionCount} {inhibitionCount === 1 ? 'inhibition' : 'inhibitions'} · {agentCount} agents</span>
+    )}
+  </div>
+  <div>
+    {link && <a href={link.href}>{link.label}</a>}
+  </div>
+</div>

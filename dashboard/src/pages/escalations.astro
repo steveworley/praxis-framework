@@ -1,0 +1,146 @@
+---
+import FullEscalation from '@/components/FullEscalation.astro';
+import RouteHeader from '@/components/RouteHeader.astro';
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import { assembleEscalations, type EscalationsResult } from '@/lib/escalations-loader';
+import { parsePersona, type Persona } from '@/lib/persona-parser';
+import { detectMode, getRoleHome, nowIso } from '@/lib/role-home';
+
+export const prerender = false;
+
+const roleHome = getRoleHome();
+const mode = detectMode(roleHome);
+if (mode === 'seed') {
+  return Astro.redirect('/setup');
+}
+
+const [personaRes, escalationsRes] = await Promise.allSettled([
+  parsePersona(roleHome),
+  assembleEscalations(roleHome),
+]);
+
+const persona: Persona | null = personaRes.status === 'fulfilled' ? personaRes.value : null;
+const escalations: EscalationsResult | null =
+  escalationsRes.status === 'fulfilled' ? escalationsRes.value : null;
+const escalationError =
+  escalationsRes.status === 'rejected' ? String(escalationsRes.reason) : null;
+
+const fullName = persona?.identity['full_name'] ?? persona?.identity['name'] ?? '';
+const updatedAt = nowIso();
+
+const entries = escalations?.entries ?? [];
+const counts = escalations?.countsByStatus ?? { open: 0, resolved: 0, accepted: 0, declined: 0 };
+
+const kindCounts: Record<string, number> = {};
+for (const e of entries) {
+  kindCounts[e.kind] = (kindCounts[e.kind] ?? 0) + 1;
+}
+
+const statusFilters: Array<{ key: string; label: string; count: number }> = [
+  { key: 'all', label: 'all', count: entries.length },
+  { key: 'open', label: 'open', count: counts.open },
+  { key: 'resolved', label: 'resolved', count: counts.resolved },
+  { key: 'accepted', label: 'accepted', count: counts.accepted },
+  { key: 'declined', label: 'declined', count: counts.declined },
+];
+const kindFilters: Array<{ key: string; label: string; count: number | null }> = [
+  { key: 'all', label: 'all kinds', count: null },
+  { key: 'help', label: 'help', count: kindCounts['help'] ?? 0 },
+  { key: 'improvement', label: 'improvement', count: kindCounts['improvement'] ?? 0 },
+  { key: 'proposed_skill', label: 'proposed_skill', count: kindCounts['proposed_skill'] ?? 0 },
+];
+---
+
+<BaseLayout title={fullName ? `Escalations · ${fullName}` : 'Escalations · Praxis'}>
+  <main class="container">
+    <RouteHeader
+      current="escalations"
+      personaName={fullName}
+      escalationOpenCount={counts.open}
+      updatedAt={updatedAt}
+    />
+
+    <div style="margin-top: 2rem;">
+      <div class="group-head">
+        <span class="group-title">Escalations</span>
+        <span class="group-counter">{entries.length} total · {counts.open} open</span>
+      </div>
+
+      {escalationError ? (
+        <div class="empty">Failed to load escalations: {escalationError}</div>
+      ) : entries.length === 0 ? (
+        <div class="empty">
+          No escalations on file. Help requests, process improvements, and proposed skills will surface here.
+        </div>
+      ) : (
+        <>
+          <div class="filter-row" data-filter-group="status" style="margin-top: 0.8rem;">
+            {statusFilters.map((f) => (
+              <span
+                class:list={['filter', f.key === 'all' && 'active']}
+                data-filter={f.key}
+              >
+                {f.label}<span class="ct">{f.count}</span>
+              </span>
+            ))}
+          </div>
+          <div class="filter-row" data-filter-group="kind">
+            {kindFilters.map((f) => (
+              <span
+                class:list={['filter', f.key === 'all' && 'active']}
+                data-filter={f.key}
+              >
+                {f.label}{f.count !== null && <span class="ct">{f.count}</span>}
+              </span>
+            ))}
+          </div>
+
+          <div data-filter-feed>
+            {entries.map((e) => <FullEscalation escalation={e} />)}
+          </div>
+        </>
+      )}
+    </div>
+  </main>
+
+  <script is:inline>
+    (function () {
+      const feed = document.querySelector('[data-filter-feed]');
+      if (!(feed instanceof HTMLElement)) return;
+      const groups = document.querySelectorAll('[data-filter-group]');
+      const active = { status: 'all', kind: 'all' };
+
+      function apply() {
+        const cards = feed.children;
+        for (const card of cards) {
+          if (!(card instanceof HTMLElement)) continue;
+          const status = card.dataset.status ?? '';
+          const kind = card.dataset.kind ?? '';
+          const matchStatus = active.status === 'all' || status === active.status;
+          const matchKind = active.kind === 'all' || kind === active.kind;
+          card.style.display = matchStatus && matchKind ? '' : 'none';
+        }
+      }
+
+      groups.forEach((group) => {
+        if (!(group instanceof HTMLElement)) return;
+        const groupName = group.dataset.filterGroup;
+        if (!groupName) return;
+        group.addEventListener('click', (event) => {
+          const target = event.target;
+          if (!(target instanceof HTMLElement)) return;
+          const filter = target.closest('[data-filter]');
+          if (!(filter instanceof HTMLElement)) return;
+          const value = filter.dataset.filter;
+          if (!value) return;
+          group.querySelectorAll('[data-filter]').forEach((b) => b.classList.remove('active'));
+          filter.classList.add('active');
+          if (groupName === 'status' || groupName === 'kind') {
+            active[groupName] = value;
+            apply();
+          }
+        });
+      });
+    })();
+  </script>
+</BaseLayout>

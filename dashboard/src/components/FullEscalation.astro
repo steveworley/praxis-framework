@@ -1,0 +1,67 @@
+---
+import type { EscalationEntry } from '@/lib/escalations-loader';
+import { renderMarkdown } from '@/lib/markdown';
+
+/** Expanded escalation card for /escalations. Renders full body + meta +
+ * (for proposed_skill) the inlined draft. Resolution actions are placeholder
+ * anchors in v1 — write logic ships separately. The data-status / data-kind
+ * attributes drive the multi-axis filter on the page. */
+interface Props {
+  escalation: EscalationEntry;
+}
+
+const { escalation: e } = Astro.props;
+
+const isProposed = e.kind === 'proposed_skill';
+const isResolved = e.status === 'resolved' || e.status === 'declined' || e.status === 'accepted';
+const bodyHtml = renderMarkdown(e.body);
+
+const metaBits: string[] = [];
+if (e.created) metaBits.push(e.created);
+if (e.agent_context) metaBits.push(`from ${e.agent_context}`);
+const draftLineCount = e.proposed_skill_body ? e.proposed_skill_body.split('\n').length : 0;
+---
+
+<article
+  class:list={['full-esc', isResolved && 'dim']}
+  data-status={e.status}
+  data-kind={e.kind}
+>
+  <div class="top-row">
+    <div class="badges">
+      <span class:list={['lab', e.kind]}>{isProposed ? 'proposed' : e.kind}</span>
+      {e.urgency === 'high' && <span class="lab urg-high">high</span>}
+      <span class:list={['lab', `st-${e.status}`]}>{e.status}</span>
+    </div>
+    <div>
+      {metaBits.join(' · ')}
+      {' · '}<code>{e.path}</code>
+    </div>
+  </div>
+  <h3>{e.title}</h3>
+  <div class="body" set:html={bodyHtml}></div>
+  {isProposed && e.proposed_skill_body && (
+    <div class="draft-block">
+      <div class="draft-meta">
+        draft · {e.proposed_skill_path} · {draftLineCount} {draftLineCount === 1 ? 'line' : 'lines'}
+      </div>{e.proposed_skill_body}
+      <div class="draft-actions">
+        <a class="verb" href="#">accept (move + commit)</a>
+        <a class="verb danger" href="#">decline</a>
+        <a class="verb" href="#">open in editor</a>
+      </div>
+    </div>
+  )}
+  {isProposed && !e.proposed_skill_body && e.proposed_skill_path && (
+    <div class="draft-block">
+      <div class="draft-meta">draft missing at <code>{e.proposed_skill_path}</code></div>
+    </div>
+  )}
+  {!isResolved && (
+    <div class="resolution-actions">
+      <a href="#" class="verb">mark resolved</a>
+      <a href="#" class="verb">edit file (in editor)</a>
+      <span class="resolution-hint">resolution will append a note to the file + commit</span>
+    </div>
+  )}
+</article>
