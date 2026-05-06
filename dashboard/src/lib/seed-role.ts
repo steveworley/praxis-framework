@@ -410,7 +410,16 @@ ${agent.purpose}
 
 ## Reporting
 
-<what to surface back at the end of a run>
+At the end of every run, before signing off, two things:
+
+1. **The work product** — what I did, what I produced, anything blocking. The shape depends on this agent's purpose.
+2. **The reflection beat** — pause and check:
+   - Did anything shift my picture of a person, account, or my own voice? → write to \`memory/\`
+   - Did I hit friction worth surfacing? → file an \`improvement\` escalation
+   - Did I see a recurring pattern that deserves its own playbook? → draft a \`proposed_skill\`
+   - Am I stuck on something my operator needs to weigh in on? → file a \`help\` escalation
+
+If nothing surprised me, the beat is still a beat — I just sign off cleanly. The pause is non-negotiable; the writing follows what I find.
 `;
 }
 

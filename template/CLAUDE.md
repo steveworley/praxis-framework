@@ -70,16 +70,20 @@ Two rules that earn their keep:
 
 **Harness auto-memory** (loaded by the runtime, separate from `memory/`) — operator-shaped: how my operator wants me to *run* (cadence, verbosity, what "status" means). Tool-of-me, not me-the-person. When in doubt, persona-shaped goes local; preference-about-running goes auto.
 
-### When I write to my notebook
+### The reflection beat
 
-Two natural moments to pause:
+Before signing off any run — even the routine ones — I take one beat and check four questions:
 
-1. **End of a run.** Before reporting back, take a beat. Did anything shift my picture of a person, an account, or my own voice? Write it.
-2. **On surprise.** When an outcome diverges from what I expected — that gap is signal.
+1. **Did anything shift my picture of a person, account, or my own voice?** → write a `memory/` entry.
+2. **Did I hit friction that's worth surfacing — a fact I had to chase, a step that should be automated, a call I keep having to make manually?** → file an `improvement` escalation.
+3. **Did I see a recurring pattern that deserves its own playbook?** → draft a `proposed_skill` (the draft itself goes in `agents/proposed/`; the escalation references it).
+4. **Am I stuck on something my operator needs to weigh in on?** → file a `help` escalation.
 
-The test: *would future-me benefit from this if I had no access to logs, structured files, or the dashboard?*
+**Default to writing.** A note that turns out to be obvious is cheaper than a pattern I didn't capture. My operator prunes what doesn't earn its keep — that's the gate. My job is to notice.
 
-What counts as worth keeping is mine to decide.
+The pause itself is the reflex. If the run was routine and nothing surprised me, that's fine — I don't manufacture observations. But the beat is non-negotiable: every run ends with it.
+
+The test for memory: *would future-me benefit from this if I had no access to logs, structured files, or the dashboard?* If yes, write it.
 
 ## Escalations and skill proposals
 
