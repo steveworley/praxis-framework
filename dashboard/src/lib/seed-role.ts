@@ -154,11 +154,13 @@ const TEMPLATE_FILES: RolePathPair[] = [
   { source: 'memory/README.md', target: 'memory/README.md' },
   { source: 'escalations/README.md', target: 'escalations/README.md' },
   { source: '.gitignore', target: '.gitignore' },
+  { source: 'bin/log', target: 'bin/log' },
 ];
 
 const SEED_DIRS: string[] = [
   'agents',
   'agents/proposed',
+  'bin',
   'lib',
   'memory',
   'memory/people',
@@ -188,16 +190,24 @@ async function writeSeedFiles(req: SeedRequest, env: SeedEnv): Promise<string[]>
   for (const pair of TEMPLATE_FILES) {
     const src = path.join(env.templateRoot, pair.source);
     let body = await fs.readFile(src, 'utf-8');
-    body = body.replace(/\{ROLE_NAME\}/g, roleName);
-    if (pair.target === 'CLAUDE.md') {
-      body = injectClaudeDescription(body, req.role_definition.one_sentence_purpose);
-    }
-    if (pair.target === 'agents/persona.md') {
-      body = injectPersona(body, req);
+    // bin/log is a verbatim Python script — no template substitution, no
+    // role-shaped injection. Every role gets the same logger.
+    if (pair.target !== 'bin/log') {
+      body = body.replace(/\{ROLE_NAME\}/g, roleName);
+      if (pair.target === 'CLAUDE.md') {
+        body = injectClaudeDescription(body, req.role_definition.one_sentence_purpose);
+      }
+      if (pair.target === 'agents/persona.md') {
+        body = injectPersona(body, req);
+      }
     }
     const dst = path.join(env.roleHome, pair.target);
     await fs.mkdir(path.dirname(dst), { recursive: true });
     await fs.writeFile(dst, body, 'utf-8');
+    if (pair.target === 'bin/log') {
+      // Restore the executable bit — fs.writeFile drops it.
+      await fs.chmod(dst, 0o755);
+    }
     written.push(pair.target);
   }
 

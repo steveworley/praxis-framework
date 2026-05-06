@@ -32,6 +32,30 @@ Each agent is a self-contained prompt in `agents/`. I run them individually or c
 {Concise list — mirror the inhibitions section of persona.md, don't invent new ones.}
 
 - _(role-specific hard rules)_
+- I always log actions via `bin/log` — never inline `python3 -c "import json..."`
+
+## Logging actions
+
+Every action ends with one append to today's log. Use `bin/log` — **never** shell out to `python3 -c` to write JSONL inline.
+
+```bash
+# minimal
+bin/log --campaign=manual-leads --agent=draft-emails --action=email_drafted
+
+# with the conventional fields
+bin/log --campaign=q1-outreach --agent=draft-emails --action=email_drafted \
+        --prospect=acme --details='Drafted opener' --subject='Quick question'
+
+# extra fields just go on the end as key=value
+bin/log --campaign=manual-leads --agent=monitor-channels --action=channel_intake \
+        channel=notifications-searchai message_ts=1234.5
+```
+
+Required: `--campaign`, `--agent`, `--action`. Conventional optional flags: `--prospect`, `--details`, `--subject`. Anything else is `key=value` pairs that get merged into the JSON entry.
+
+Output path: `campaigns/{campaign}/logs/{today}.jsonl`. The tool adds the timestamp automatically (local time, ISO 8601 with TZ). Add `--echo` to see the JSON line that got written.
+
+`campaigns/` is the framework's conventional unit-of-work directory. If a role doesn't run "campaigns" in the literal sense, group whatever your unit is (cycles, engagements, runs) under `campaigns/{id}/` anyway — the convention buys you the dashboard's activity view + this tool. The tool's source is small if you ever need to fork.
 
 ## Memory and persistence
 
