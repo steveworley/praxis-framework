@@ -2,6 +2,7 @@
 import RouteHeader from '@/components/RouteHeader.astro';
 import BaseLayout from '@/layouts/BaseLayout.astro';
 import { assembleActivity, type ActivityEntry } from '@/lib/activity-loader';
+import { isDecisionEntry, toDecisionView } from '@/lib/decision-renderer';
 import { assembleEscalations } from '@/lib/escalations-loader';
 import { parsePersona, type Persona } from '@/lib/persona-parser';
 import { bucketByDay, recentActivityCount } from '@/lib/recent-stats';
@@ -37,9 +38,16 @@ for (const e of activity) {
   actionCounts[action] = (actionCounts[action] ?? 0) + 1;
 }
 const actionKeys = Object.keys(actionCounts).sort();
+// Relabel the `decision` action chip as `decisions` for clarity per the
+// decisions-feed UX. The data-filter value stays `decision` so it matches
+// the row's data-action attribute.
 const filters: Array<{ key: string; label: string; count: number }> = [
   { key: 'all', label: 'all', count: activity.length },
-  ...actionKeys.map((k) => ({ key: k, label: k, count: actionCounts[k] ?? 0 })),
+  ...actionKeys.map((k) => ({
+    key: k,
+    label: k === 'decision' ? 'decisions' : k,
+    count: actionCounts[k] ?? 0,
+  })),
 ];
 
 const buckets = bucketByDay(activity);
@@ -107,12 +115,66 @@ function metaLine(e: ActivityEntry): string {
           <div data-filter-feed>
             {buckets.map((bucket) => (
               <div class="day-group" data-bucket={bucket.day}>
-                <div class="day-band">{bucket.label} · {bucket.items.length} {bucket.items.length === 1 ? 'entry' : 'entries'}</div>
+                <div class="day-band">
+                  {bucket.label} · <span data-bucket-count>{bucket.items.length}</span> <span data-bucket-noun>{bucket.items.length === 1 ? 'entry' : 'entries'}</span>
+                </div>
                 {bucket.items.map((e) => {
                   const action = typeof e.action === 'string' && e.action.length > 0 ? e.action : 'other';
                   const time = isoTime(typeof e.timestamp === 'string' ? e.timestamp : undefined);
                   const headline = buildHeadline(e);
                   const meta = metaLine(e);
+                  if (isDecisionEntry(e)) {
+                    const view = toDecisionView(e);
+                    return (
+                      <div class="decision-row" data-action={action}>
+                        <div class="act-row">
+                          <span class="time">{time}</span>
+                          <span class:list={['verb', action]}>
+                            decision
+                            {view.decisionType && (
+                              <span class="decision-type-pill">{view.decisionType}</span>
+                            )}
+                          </span>
+                          <div class="what">
+                            {headline}
+                            {meta && <span class="meta">{meta}</span>}
+                          </div>
+                        </div>
+                        <div class="rationale-block">
+                          <dl>
+                            {view.chosen && (
+                              <>
+                                <dt>chosen</dt>
+                                <dd style="color: var(--ink);">{view.chosen}</dd>
+                              </>
+                            )}
+                            {view.considered && (
+                              <>
+                                <dt>considered</dt>
+                                <dd class="considered">{view.considered}</dd>
+                              </>
+                            )}
+                            {view.rationale && (
+                              <>
+                                <dt>rationale</dt>
+                                <dd>{view.rationale}</dd>
+                              </>
+                            )}
+                            {view.confidence && (
+                              <>
+                                <dt>confidence</dt>
+                                <dd>
+                                  <span class:list={['confidence-pill', view.confidenceClass]}>
+                                    {view.confidence}
+                                  </span>
+                                </dd>
+                              </>
+                            )}
+                          </dl>
+                        </div>
+                      </div>
+                    );
+                  }
                   return (
                     <div class="act-row" data-action={action}>
                       <span class="time">{time}</span>
@@ -160,6 +222,10 @@ function metaLine(e: ActivityEntry): string {
             if (match) visible += 1;
           });
           dg.style.display = visible > 0 ? '' : 'none';
+          const countEl = dg.querySelector('[data-bucket-count]');
+          const nounEl = dg.querySelector('[data-bucket-noun]');
+          if (countEl instanceof HTMLElement) countEl.textContent = String(visible);
+          if (nounEl instanceof HTMLElement) nounEl.textContent = visible === 1 ? 'entry' : 'entries';
         });
       });
     })();

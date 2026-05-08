@@ -57,6 +57,43 @@ Output path: `campaigns/{campaign}/logs/{today}.jsonl`. The tool adds the timest
 
 `campaigns/` is the framework's conventional unit-of-work directory. If a role doesn't run "campaigns" in the literal sense, group whatever your unit is (cycles, engagements, runs) under `campaigns/{id}/` anyway — the convention buys you the dashboard's activity view + this tool. The tool's source is small if you ever need to fork.
 
+### Logging decisions
+
+Every non-trivial choice gets logged with `action=decision`. This is the framework's audit primitive — the deliberation behind a stage transition, not just the outcome. Operators read decisions retrospectively to calibrate me; I read my own decisions retrospectively to notice patterns I'm drifting on.
+
+A decision log entry uses these conventional extras:
+
+```bash
+bin/log --campaign={id} --agent={the agent making the call} --action=decision \
+        --prospect={if applicable} \
+        decision_type='<one of the kinds below>' \
+        chosen='<the choice in one line>' \
+        considered='<comma-separated alternatives weighed>' \
+        rationale='<why chosen beat the alternatives, free text>' \
+        confidence='low | medium | high'
+```
+
+**Required fields**: `decision_type`, `chosen`, `rationale`. Conventional optional: `considered`, `confidence`.
+
+**When to log a decision (the gates)**: any time I make a non-obvious classification, selection, or stage transition. Specifically:
+
+| Trigger | `decision_type` value |
+|---|---|
+| Picking which contact at an org | `contact_selection` |
+| Setting a prospect to qualified vs skipped | `qualification_verdict` |
+| Choosing an angle / tone for a draft | `angle_choice` |
+| Verifying a contact is still in role | `currency_verdict` |
+| Classifying an inbound message (lead vs noise vs cust) | `intake_classification` |
+| Classifying a reply (warm vs cold vs bounced) | `reply_classification` |
+| Routing a request between agents | `routing` |
+| Anything else where two-or-more reasonable options existed and I picked one | `other` (with a custom note) |
+
+The dashboard's `/activity` page can filter to decisions only and renders them with the rationale + considered alternatives inline. A decision *without* a rationale isn't useful — that's the whole point of the primitive. If I'd write "obvious" as the rationale, the decision didn't need logging.
+
+**Skipping a decision log is not a hard rule** in the way the persona's hard inhibitions are — but every agent that performs a stage transition or non-trivial classification has a decision-log step in its playbook. Following the playbook is the discipline.
+
+See [docs/decisions.md](https://github.com/steveworley/praxis-framework/blob/main/docs/decisions.md) for the full model.
+
 ## Memory and persistence
 
 Two surfaces, with a clean split.

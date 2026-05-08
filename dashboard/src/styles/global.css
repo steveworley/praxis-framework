@@ -588,6 +588,71 @@ button {
   font-family: ui-monospace, monospace;
 }
 
+/* Decision row (action=decision) — wraps a standard act-row plus an
+   indented rationale block that explains the why behind the choice. */
+.decision-row {
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 0.6rem;
+}
+.decision-row .act-row {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.decision-type-pill {
+  display: inline-block;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 10.5px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--surface-deep);
+  color: var(--ink-soft);
+  text-transform: lowercase;
+  letter-spacing: 0.04em;
+  margin-left: 0.4rem;
+}
+.rationale-block {
+  margin-left: 90px; /* align under the time column */
+  margin-top: 0.3rem;
+  padding: 0.5rem 0.75rem;
+  border-left: 2px solid var(--rule);
+  background: var(--surface-mute);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--ink-soft);
+}
+.rationale-block .field-label {
+  font-weight: 600;
+  color: var(--ink);
+  text-transform: lowercase;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+.rationale-block dl { margin: 0; }
+.rationale-block dt {
+  font-weight: 600;
+  color: var(--ink);
+  font-size: 11px;
+  text-transform: lowercase;
+  letter-spacing: 0.04em;
+  margin-top: 0.4rem;
+}
+.rationale-block dt:first-child { margin-top: 0; }
+.rationale-block dd { margin: 0.1rem 0 0 0; }
+.rationale-block .considered { font-family: ui-monospace, monospace; font-size: 11px; }
+.confidence-pill {
+  display: inline-block;
+  font-family: ui-monospace, monospace;
+  font-size: 10.5px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  text-transform: lowercase;
+  letter-spacing: 0.04em;
+}
+.confidence-pill.high { background: #dcefe2; color: var(--good); }
+.confidence-pill.medium { background: var(--surface-deep); color: var(--ink-muted); }
+.confidence-pill.low { background: #fbeed4; color: var(--warn); }
+.confidence-pill.unknown { background: var(--surface-deep); color: var(--ink-muted); }
+
 /* Role page — autonomous-edit feed */
 .autonomy-summary {
   font-size: 12.5px;
@@ -1060,6 +1125,9 @@ button {
   .act-row {
     grid-template-columns: 60px 100px 1fr;
     gap: 0.7rem;
+  }
+  .rationale-block {
+    margin-left: 0;
   }
   .edit-row {
     grid-template-columns: 1fr;

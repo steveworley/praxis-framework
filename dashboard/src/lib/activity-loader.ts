@@ -7,6 +7,13 @@ export interface ActivityEntry {
   agent?: string;
   headline?: string;
   notes?: string;
+  // Optional decision-shape extras (present when action === 'decision').
+  // See docs/decisions.md in the framework root for the full schema.
+  decision_type?: string;
+  chosen?: string;
+  considered?: string;
+  rationale?: string;
+  confidence?: 'low' | 'medium' | 'high' | string;
   _log_path: string;
   [key: string]: unknown;
 }
