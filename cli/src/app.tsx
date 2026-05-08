@@ -7,11 +7,23 @@ import { OrganisationFlow } from './flows/organisation.js';
 import { RoleDefinitionFlow } from './flows/role-definition.js';
 import { PathChoiceFlow } from './flows/path-choice.js';
 import { Stub } from './flows/stub.js';
+import { CompactHeader } from './ui/header.js';
 import { ok, accent, muted, warn } from './ui/theme.js';
 
 interface Props {
   scaffoldPath: string;
 }
+
+/** Human-readable wayfinding label per step. Shown in the compact header. */
+const STEP_CONTEXT: Record<Step, string> = {
+  welcome: 'welcome',
+  organisation: 'organisation',
+  'role-definition': 'role definition',
+  'path-choice': 'path',
+  'stub-voice': 'voice & traits',
+  'stub-review': 'review',
+  done: 'done',
+};
 
 export const App = ({ scaffoldPath }: Props) => {
   const { exit } = useApp();
@@ -29,80 +41,99 @@ export const App = ({ scaffoldPath }: Props) => {
   if (cancelled) {
     return (
       <Box flexDirection="column">
+        <CompactHeader context="cancelled" />
         <Text>{warn('cancelled')} — no changes were written.</Text>
       </Box>
     );
   }
 
+  // Welcome owns its own full hero header, so we render it without the
+  // compact one. Every other step gets the compact header at top.
   if (step === 'welcome') {
-    return (
-      <Welcome onNext={() => goTo('organisation')} onCancel={cancel} />
-    );
+    return <Welcome onNext={() => goTo('organisation')} onCancel={cancel} />;
   }
+
+  const compactHeader = <CompactHeader context={STEP_CONTEXT[step]} />;
 
   if (step === 'organisation') {
     return (
-      <OrganisationFlow
-        initial={form.organisation}
-        onCancel={cancel}
-        onNext={(next: Partial<Organisation>) => {
-          setForm({ ...form, organisation: next });
-          goTo('role-definition');
-        }}
-      />
+      <Box flexDirection="column">
+        {compactHeader}
+        <OrganisationFlow
+          initial={form.organisation}
+          onCancel={cancel}
+          onNext={(next: Partial<Organisation>) => {
+            setForm({ ...form, organisation: next });
+            goTo('role-definition');
+          }}
+        />
+      </Box>
     );
   }
 
   if (step === 'role-definition') {
     return (
-      <RoleDefinitionFlow
-        initial={form.role_definition}
-        onCancel={cancel}
-        onNext={(next: Partial<RoleDefinition>) => {
-          setForm({ ...form, role_definition: next });
-          goTo('path-choice');
-        }}
-      />
+      <Box flexDirection="column">
+        {compactHeader}
+        <RoleDefinitionFlow
+          initial={form.role_definition}
+          onCancel={cancel}
+          onNext={(next: Partial<RoleDefinition>) => {
+            setForm({ ...form, role_definition: next });
+            goTo('path-choice');
+          }}
+        />
+      </Box>
     );
   }
 
   if (step === 'path-choice') {
     return (
-      <PathChoiceFlow
-        onCancel={cancel}
-        onNext={(path) => {
-          setForm({ ...form, path });
-          goTo('stub-voice');
-        }}
-      />
+      <Box flexDirection="column">
+        {compactHeader}
+        <PathChoiceFlow
+          onCancel={cancel}
+          onNext={(path) => {
+            setForm({ ...form, path });
+            goTo('stub-voice');
+          }}
+        />
+      </Box>
     );
   }
 
   if (step === 'stub-voice') {
     return (
-      <Stub
-        title="Voice & traits"
-        form={form}
-        onCancel={cancel}
-        onNext={() => goTo('stub-review')}
-      />
+      <Box flexDirection="column">
+        {compactHeader}
+        <Stub
+          title="Voice & traits"
+          form={form}
+          onCancel={cancel}
+          onNext={() => goTo('stub-review')}
+        />
+      </Box>
     );
   }
 
   if (step === 'stub-review') {
     return (
-      <Stub
-        title="Review"
-        form={form}
-        onCancel={cancel}
-        onNext={() => goTo('done')}
-      />
+      <Box flexDirection="column">
+        {compactHeader}
+        <Stub
+          title="Review"
+          form={form}
+          onCancel={cancel}
+          onNext={() => goTo('done')}
+        />
+      </Box>
     );
   }
 
   // 'done'
   return (
     <Box flexDirection="column">
+      {compactHeader}
       <Text>{ok('Done.')}</Text>
       <Box marginTop={1}>
         <Text>
