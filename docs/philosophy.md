@@ -19,6 +19,8 @@ The agent gets to grow in three places:
 
 The skill loop stays gated by design. Autonomous proposal, human-in-the-loop acceptance.
 
+Beyond those three, a fourth place: **autonomous edits to operator-opened surfaces**. The model is differentiated, not graduated — different surfaces have different risk profiles, and `lib/autonomy.yaml` names which surfaces the role can edit directly and how (`append-only`, `inline-enrichment`, `bounded`). Constitutional surfaces (`agents/persona.md`, `agents/*.md`, `lib/customers.yaml`, `lib/compliance.yaml`, `CLAUDE.md`) stay gated forever — that's the line. See [autonomy.md](./autonomy.md) for the full model.
+
 ## Visible growth
 
 Everything the agent learns is a file. Memory is markdown. Escalations are markdown. Drafts are markdown. A dashboard surfaces them.

@@ -5,6 +5,12 @@ import PersonaPane from '@/components/PersonaPane.astro';
 import RouteHeader from '@/components/RouteHeader.astro';
 import BaseLayout from '@/layouts/BaseLayout.astro';
 import { type AgentsResult, listLibFiles, loadAgents } from '@/lib/agents-loader';
+import {
+  type AutonomousEdit,
+  type AutonomyConfig,
+  loadAutonomy,
+  recentAutonomousEdits,
+} from '@/lib/autonomy-loader';
 import { assembleEscalations } from '@/lib/escalations-loader';
 import { parsePersona, type Persona } from '@/lib/persona-parser';
 import { detectMode, getRoleHome, nowIso } from '@/lib/role-home';
@@ -17,11 +23,12 @@ if (mode === 'seed') {
   return Astro.redirect('/setup');
 }
 
-const [personaRes, agentsRes, libRes, escalationsRes] = await Promise.allSettled([
+const [personaRes, agentsRes, libRes, escalationsRes, autonomyRes] = await Promise.allSettled([
   parsePersona(roleHome),
   loadAgents(roleHome),
   listLibFiles(roleHome),
   assembleEscalations(roleHome),
+  loadAutonomy(roleHome),
 ]);
 
 const persona: Persona | null = personaRes.status === 'fulfilled' ? personaRes.value : null;
@@ -31,8 +38,50 @@ const libFiles: string[] = libRes.status === 'fulfilled' ? libRes.value : [];
 const openCount =
   escalationsRes.status === 'fulfilled' ? escalationsRes.value.countsByStatus.open : 0;
 
+const autonomy: AutonomyConfig | null =
+  autonomyRes.status === 'fulfilled' ? autonomyRes.value : null;
+
+let edits: AutonomousEdit[] = [];
+if (autonomy && persona) {
+  const roleEmail = persona.identity['email'] ?? '';
+  const roleNameForGit = persona.identity['full_name'] ?? persona.identity['name'] ?? '';
+  const autonomousPaths = autonomy.surfaces.map((s) => s.path);
+  const editsRes = await Promise.allSettled([
+    recentAutonomousEdits(roleHome, {
+      role_email: roleEmail.length > 0 ? roleEmail : undefined,
+      role_name: roleNameForGit.length > 0 ? roleNameForGit : undefined,
+      limit: 20,
+      since_days: 30,
+      autonomous_paths: autonomousPaths.length > 0 ? autonomousPaths : undefined,
+    }),
+  ]);
+  if (editsRes[0].status === 'fulfilled') edits = editsRes[0].value;
+}
+
 const fullName = persona?.identity['full_name'] ?? persona?.identity['name'] ?? '';
 const updatedAt = nowIso();
+
+function summariseSurface(s: AutonomyConfig['surfaces'][number]): string {
+  const bits: string[] = [s.mode];
+  if (s.max_pending !== undefined) bits.push(`${s.max_pending} max pending`);
+  return `${s.path} (${bits.join(', ')})`;
+}
+
+const autonomySummary = autonomy && autonomy.surfaces.length > 0
+  ? `${autonomy.surfaces.length} ${autonomy.surfaces.length === 1 ? 'surface' : 'surfaces'} opened — ${autonomy.surfaces.map(summariseSurface).join(', ')}`
+  : '';
+
+function formatDate(iso: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso.slice(0, 10);
+  return d.toISOString().slice(0, 10);
+}
+
+function firstLine(message: string): string {
+  const idx = message.indexOf('\n');
+  return idx >= 0 ? message.slice(0, idx) : message;
+}
 ---
 
 <BaseLayout title={fullName ? `Role · ${fullName}` : 'Role · Praxis'}>
@@ -91,6 +140,41 @@ const updatedAt = nowIso();
             {agents.live.map((a) => <AgentRow agent={a} />)}
             {agents.proposed.map((a) => <AgentRow agent={a} proposed={true} />)}
           </div>
+        )}
+      </div>
+
+      <div class="group">
+        <div class="group-head">
+          <span class="group-title">Recent edits</span>
+          <span class="group-counter">
+            {autonomy ? `${autonomy.surfaces.length} ${autonomy.surfaces.length === 1 ? 'surface' : 'surfaces'} · ${edits.length} ${edits.length === 1 ? 'edit' : 'edits'} (30d)` : 'no autonomy.yaml'}
+          </span>
+        </div>
+        {!autonomy || edits.length === 0 ? (
+          <div class="empty">
+            No autonomous edits yet. The role's grown surfaces are listed in lib/autonomy.yaml.
+          </div>
+        ) : (
+          <>
+            {autonomySummary && (
+              <div class="autonomy-summary">{autonomySummary}</div>
+            )}
+            <div class="edits-list">
+              {edits.map((e) => (
+                <div class="edit-row">
+                  <span class="sha">{e.short_sha}</span>
+                  <span class="date">{formatDate(e.date)}</span>
+                  <div class="what">
+                    {firstLine(e.message)}
+                    {e.files.length > 0 && (
+                      <span class="paths">{e.files.join(' · ')}</span>
+                    )}
+                    <span class="author">{e.author_name} &lt;{e.author_email}&gt;</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
         )}
       </div>
 

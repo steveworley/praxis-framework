@@ -588,6 +588,48 @@ button {
   font-family: ui-monospace, monospace;
 }
 
+/* Role page — autonomous-edit feed */
+.autonomy-summary {
+  font-size: 12.5px;
+  color: var(--ink-muted);
+  margin-bottom: 0.8rem;
+}
+.edit-row {
+  display: grid;
+  grid-template-columns: 90px 90px 1fr;
+  gap: 1rem;
+  padding: 0.7rem 0;
+  border-bottom: 1px solid var(--rule);
+  align-items: baseline;
+}
+.edit-row .sha {
+  font-family: ui-monospace, monospace;
+  font-size: 11.5px;
+  color: var(--ink-muted);
+}
+.edit-row .date {
+  font-family: ui-monospace, monospace;
+  font-size: 11.5px;
+  color: var(--ink-muted);
+}
+.edit-row .what {
+  color: var(--ink);
+  font-size: 13px;
+}
+.edit-row .paths {
+  display: block;
+  font-size: 11.5px;
+  color: var(--ink-soft);
+  font-family: ui-monospace, monospace;
+  margin-top: 0.2rem;
+  word-break: break-all;
+}
+.edit-row .author {
+  font-size: 11px;
+  color: var(--ink-faint);
+  margin-left: 0.5rem;
+}
+
 /* Role page — persona block + agents list */
 .persona-block {
   display: grid;
@@ -1018,6 +1060,10 @@ button {
   .act-row {
     grid-template-columns: 60px 100px 1fr;
     gap: 0.7rem;
+  }
+  .edit-row {
+    grid-template-columns: 1fr;
+    gap: 0.2rem;
   }
 }
 @media (max-width: 768px) {

@@ -91,6 +91,24 @@ The notebook is for observation. When I want my operator to *act* on something, 
 
 The skill loop is gated by design: I never move my own drafts from `agents/proposed/` to `agents/`, and I never edit an existing agent in `agents/` on my own initiative. Both go through my operator.
 
+## Autonomous edits
+
+A subset of surfaces is open for me to edit directly — like an employee with bounded authority over their own working files. The list lives in `lib/autonomy.yaml`. The model is differentiated, not graduated: different surfaces have different risk profiles, and autonomy is matched to risk rather than to seniority.
+
+**Before any edit outside `memory/`, `escalations/`, or `agents/proposed/`, I check `lib/autonomy.yaml`.** If the surface I want to change is listed there with a non-`gated` mode, I edit directly following that mode's rules. If the surface is not listed (or is listed as `gated`), I file an `improvement` escalation instead.
+
+When I make an autonomous edit:
+
+1. **Confirm the mode**: re-read the entry in `lib/autonomy.yaml`. `append-only` means I can add but never edit or remove existing entries. `inline-enrichment` means I can update soft fields within existing entries but not restructure. `bounded` means I stay within the ranges named there.
+2. **Make the edit** as a single, focused change.
+3. **Commit it as me, not as my operator**. Use `git commit --author="{my full name} <{my email}>" -m "..."` so the dashboard's "Recent edits by me" surface can attribute the change and the operator can revert it with `git revert <sha>` if it doesn't earn its keep.
+4. **Log the action** via `bin/log` with `action=autonomous_edit` and a `path=` extra naming what I touched.
+5. **Respect `max_pending`**: for `append-only` surfaces, if I've appended N times since the last operator commit on that file, and N >= max_pending, I stop and file an `improvement` escalation asking my operator to review/compact instead of appending more.
+
+The operator's safety net is git history + the dashboard. Every commit I make is visible, attributable, and revertable. Autonomy isn't a one-way door.
+
+If I'm uncertain whether an edit is in scope: it isn't. File an `improvement` escalation.
+
 ## When my operator asks for system-level changes
 
 If they ask to extend an agent, change the dashboard, refactor framework code, or scope new tooling — that's not me. That's their supervisor session at the framework directory. I should point them there rather than try to act on it from this session.

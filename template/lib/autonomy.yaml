@@ -1,0 +1,77 @@
+# Autonomy — surfaces I (the role) can edit autonomously, and how.
+#
+# Operator-authored. I never edit this file myself; doing so would let me
+# expand my own autonomy, which defeats the point.
+#
+# The framework documents the full model in docs/autonomy.md. Short version:
+# different surfaces have different risk profiles. Match autonomy to risk,
+# not to "importance".
+#
+# Modes:
+#   full              — I can do anything in this directory/file (current
+#                       state of memory/, escalations/, agents/proposed/).
+#   append-only       — I can add new entries to a list. I never delete or
+#                       edit existing entries. After max_pending unreviewed
+#                       additions, I must file an `improvement` escalation
+#                       for compaction instead of appending more.
+#   inline-enrichment — I can update soft fields (notes, calibration text)
+#                       within existing structured entries. I never add or
+#                       remove top-level entries; structural changes go
+#                       through escalation.
+#   bounded           — I can adjust parameters within ranges the operator
+#                       has set. The bounds live alongside this entry.
+#   gated             — I never edit autonomously. Escalate or draft into
+#                       agents/proposed/.
+#
+# Anything not listed below is implicitly `gated`. To open a new surface,
+# the operator adds it here.
+#
+# Every autonomous edit must be a git commit signed by the role
+# (`--author="{role full name} <{role email}>"`) so the dashboard's
+# "Recent edits" surface can attribute and surface diffs for operator
+# review. The operator can revert any commit; that's the safety net.
+
+surfaces:
+  # === Already-autonomous (named here for discoverability) ===
+
+  - path: memory/
+    mode: full
+    why: |
+      Persona-shaped notebook. Operator prunes; I notice. The reflection
+      beat at end-of-run is what fills this directory.
+
+  - path: agents/proposed/
+    mode: full
+    why: |
+      Drafts of new agents. The HiTM gate is what stops drafts from
+      becoming live agents — I never move my own drafts into agents/.
+
+  - path: escalations/
+    mode: full
+    why: |
+      My structured asks. The operator triages from the dashboard.
+
+  # === Append-only — patterns/heuristics I've discovered ===
+
+  # Example (uncomment + adapt for your role):
+  #
+  # - path: lib/research-strategies.yaml
+  #   mode: append-only
+  #   max_pending: 5
+  #   why: |
+  #     Org-type page conventions and discovery heuristics I notice while
+  #     running research-shaped agents. Adding here speeds the next batch.
+  #     Cost of wrong: one missed page (recoverable). The append-only
+  #     constraint means I can't break existing entries; the max_pending
+  #     forces a compaction conversation if I'm appending too fast.
+
+# === Implicitly gated (do NOT list here unless opening up) ===
+#
+# These remain operator-only. Listed for documentation:
+#
+# - agents/persona.md            (constitution — voice + hard inhibitions)
+# - agents/*.md (existing files) (capability surface — behavioral risk)
+# - lib/customers.yaml           (legal/business — never cold-email a customer)
+# - lib/compliance.yaml          (legal/safety — Spam Act + opt-out gates)
+# - lib/team.yaml structural     (org chart — though `notes` could be inline-enrichment)
+# - CLAUDE.md                    (constitution — global behavior)

@@ -30,6 +30,8 @@ If I'm not sure between `help` and `improvement`: would the work continue if my 
 | I'm stuck and need an answer to continue | `escalations/` with `kind: help` |
 | I see process friction, file-and-forget | `escalations/` with `kind: improvement` |
 | I drafted a new agent | `agents/proposed/` + `escalations/` with `kind: proposed_skill` |
+| The change I want is on a surface listed in `lib/autonomy.yaml` as autonomous | Edit directly per CLAUDE.md "Autonomous edits" — no escalation needed |
+| I've hit `max_pending` on an append-only surface | `escalations/` with `kind: improvement` asking for compaction |
 
 ## What you do
 

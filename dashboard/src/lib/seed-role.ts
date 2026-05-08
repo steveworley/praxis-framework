@@ -153,9 +153,15 @@ const TEMPLATE_FILES: RolePathPair[] = [
   { source: 'agents/proposed/README.md', target: 'agents/proposed/README.md' },
   { source: 'memory/README.md', target: 'memory/README.md' },
   { source: 'escalations/README.md', target: 'escalations/README.md' },
+  { source: 'lib/autonomy.yaml', target: 'lib/autonomy.yaml' },
   { source: '.gitignore', target: '.gitignore' },
   { source: 'bin/log', target: 'bin/log' },
 ];
+
+// Files that ship verbatim — no `{ROLE_NAME}` substitution and no body
+// injection. The operator edits them post-seed (autonomy.yaml) or they're
+// generic helpers (bin/log).
+const VERBATIM_TARGETS = new Set<string>(['bin/log', 'lib/autonomy.yaml']);
 
 const SEED_DIRS: string[] = [
   'agents',
@@ -190,9 +196,10 @@ async function writeSeedFiles(req: SeedRequest, env: SeedEnv): Promise<string[]>
   for (const pair of TEMPLATE_FILES) {
     const src = path.join(env.templateRoot, pair.source);
     let body = await fs.readFile(src, 'utf-8');
-    // bin/log is a verbatim Python script — no template substitution, no
-    // role-shaped injection. Every role gets the same logger.
-    if (pair.target !== 'bin/log') {
+    // Some files ship verbatim: bin/log is a generic Python script and
+    // lib/autonomy.yaml is operator-edited post-seed. Skip both
+    // {ROLE_NAME} substitution and section injection for them.
+    if (!VERBATIM_TARGETS.has(pair.target)) {
       body = body.replace(/\{ROLE_NAME\}/g, roleName);
       if (pair.target === 'CLAUDE.md') {
         body = injectClaudeDescription(body, req.role_definition.one_sentence_purpose);

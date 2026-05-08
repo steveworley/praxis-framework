@@ -1,0 +1,349 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+
+import { simpleGit } from 'simple-git';
+
+export type AutonomyMode = 'full' | 'append-only' | 'inline-enrichment' | 'bounded' | 'gated';
+
+const KNOWN_MODES: ReadonlySet<AutonomyMode> = new Set<AutonomyMode>([
+  'full',
+  'append-only',
+  'inline-enrichment',
+  'bounded',
+  'gated',
+]);
+
+export interface AutonomySurface {
+  /** Path under the role home — directory (`memory/`) or file (`lib/foo.yaml`). */
+  path: string;
+  /** Mode the operator opened the surface in. Unknown values fall back to `gated`. */
+  mode: AutonomyMode;
+  /** Operator's note on why this surface is open. May be multi-line. */
+  why?: string;
+  /** Append-only ceiling before the role must escalate for compaction. */
+  max_pending?: number;
+}
+
+export interface AutonomyConfig {
+  surfaces: AutonomySurface[];
+}
+
+export interface AutonomousEdit {
+  sha: string;
+  short_sha: string;
+  /** ISO timestamp of the commit (author date). */
+  date: string;
+  author_name: string;
+  author_email: string;
+  /** First line of the commit subject. */
+  message: string;
+  /** Paths changed in the commit, relative to the role home. */
+  files: string[];
+}
+
+export interface RecentAutonomousEditsOptions {
+  role_email?: string;
+  role_name?: string;
+  limit?: number;
+  since_days?: number;
+  /** If provided, only return commits touching at least one of these paths. */
+  autonomous_paths?: string[];
+}
+
+const DEFAULT_LIMIT = 20;
+const DEFAULT_SINCE_DAYS = 30;
+
+/**
+ * Parse `lib/autonomy.yaml` into a typed structure. Returns `null` when the
+ * file doesn't exist — that's the normal "no surfaces opened yet" state.
+ *
+ * The schema is shallow enough that a hand-rolled parser is sufficient: a
+ * top-level `surfaces:` list of entries, each with a `path:`, `mode:`,
+ * optional `why:` (block scalar `|` allowed), and optional `max_pending:`.
+ * Anything that isn't a recognised mode is mapped to `gated` (safe default).
+ */
+export async function loadAutonomy(roleHome: string): Promise<AutonomyConfig | null> {
+  const yamlPath = path.join(roleHome, 'lib', 'autonomy.yaml');
+  let text: string;
+  try {
+    text = await fs.readFile(yamlPath, 'utf-8');
+  } catch {
+    return null;
+  }
+  return { surfaces: parseAutonomyYaml(text) };
+}
+
+/**
+ * Hand-rolled parser for the autonomy schema. Exported for testing.
+ *
+ * Supported shapes:
+ *   surfaces:
+ *     - path: memory/
+ *       mode: full
+ *       why: |
+ *         multi-line
+ *         block scalar
+ *       max_pending: 5
+ *
+ * Comment lines (leading `#`) and blank lines outside block scalars are
+ * ignored. Quoted scalar values have their surrounding quotes stripped.
+ */
+export function parseAutonomyYaml(text: string): AutonomySurface[] {
+  const lines = text.split('\n');
+  const surfaces: AutonomySurface[] = [];
+
+  let i = 0;
+  let inSurfaces = false;
+
+  while (i < lines.length) {
+    const raw = lines[i] ?? '';
+    const trimmed = raw.trim();
+
+    if (!inSurfaces) {
+      if (/^surfaces\s*:\s*$/.test(trimmed)) {
+        inSurfaces = true;
+      }
+      i += 1;
+      continue;
+    }
+
+    // We're inside the surfaces list. Skip blank/comment lines.
+    if (trimmed.length === 0 || trimmed.startsWith('#')) {
+      i += 1;
+      continue;
+    }
+
+    // A new top-level key (no leading whitespace, ends with ":") ends the list.
+    if (!/^\s/.test(raw) && /:\s*$/.test(trimmed) && !trimmed.startsWith('-')) {
+      break;
+    }
+
+    // Each entry begins with `- key:` (typically `- path:`). Determine the
+    // entry's indent + the dash position, then consume continuation lines.
+    const dashMatch = /^(\s*)-\s+(.*)$/.exec(raw);
+    if (!dashMatch) {
+      i += 1;
+      continue;
+    }
+    const entryIndent = dashMatch[1]?.length ?? 0;
+    const firstFieldLine = dashMatch[2] ?? '';
+
+    const entryLines: string[] = [firstFieldLine];
+    i += 1;
+    while (i < lines.length) {
+      const next = lines[i] ?? '';
+      const nextTrim = next.trim();
+      if (nextTrim.length === 0) {
+        entryLines.push(next);
+        i += 1;
+        continue;
+      }
+      if (nextTrim.startsWith('#')) {
+        i += 1;
+        continue;
+      }
+      const leading = next.length - next.trimStart().length;
+      if (leading <= entryIndent) {
+        // Either a sibling list entry (`-` at same indent) or end of list.
+        break;
+      }
+      entryLines.push(next);
+      i += 1;
+    }
+
+    const surface = parseEntry(entryLines);
+    if (surface) surfaces.push(surface);
+  }
+
+  return surfaces;
+}
+
+/**
+ * Parse a single list-entry block. The first line has had its leading
+ * `- ` stripped, so it starts at column 0; subsequent lines retain their
+ * original indentation (relative to the file).
+ */
+function parseEntry(lines: string[]): AutonomySurface | null {
+  // Normalise: re-indent the first line so all lines share the same indent
+  // basis. The first line's "indent" is whatever was after `- `, which is
+  // typically 0; subsequent lines were indented further.
+  const fields: Record<string, string> = {};
+
+  let idx = 0;
+  while (idx < lines.length) {
+    const line = lines[idx] ?? '';
+    if (line.trim().length === 0) {
+      idx += 1;
+      continue;
+    }
+
+    // Match `key: value` or `key: |` (block scalar marker).
+    const fieldMatch = /^(\s*)([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.*)$/.exec(line);
+    if (!fieldMatch) {
+      idx += 1;
+      continue;
+    }
+    const fieldIndent = fieldMatch[1]?.length ?? 0;
+    const key = (fieldMatch[2] ?? '').trim();
+    const rest = (fieldMatch[3] ?? '').trim();
+
+    if (rest === '|' || rest === '|-' || rest === '|+' || rest === '>' || rest === '>-') {
+      // Block scalar. Consume subsequent lines that are more indented than
+      // `fieldIndent`. Preserve relative indentation by stripping the common
+      // leading whitespace.
+      idx += 1;
+      const blockLines: string[] = [];
+      let blockIndent: number | null = null;
+      while (idx < lines.length) {
+        const blockLine = lines[idx] ?? '';
+        if (blockLine.trim().length === 0) {
+          blockLines.push('');
+          idx += 1;
+          continue;
+        }
+        const leading = blockLine.length - blockLine.trimStart().length;
+        if (leading <= fieldIndent) break;
+        if (blockIndent === null) blockIndent = leading;
+        const stripWidth = Math.min(blockIndent, leading);
+        blockLines.push(blockLine.slice(stripWidth));
+        idx += 1;
+      }
+      // Trim trailing blank lines for a tidy value.
+      while (blockLines.length > 0 && blockLines[blockLines.length - 1] === '') {
+        blockLines.pop();
+      }
+      fields[key] = blockLines.join('\n');
+      continue;
+    }
+
+    fields[key] = stripQuotes(rest);
+    idx += 1;
+  }
+
+  const rawPath = fields['path'];
+  if (!rawPath || rawPath.length === 0) return null;
+
+  const rawMode = (fields['mode'] ?? '').trim();
+  const mode: AutonomyMode = KNOWN_MODES.has(rawMode as AutonomyMode)
+    ? (rawMode as AutonomyMode)
+    : 'gated';
+
+  const surface: AutonomySurface = { path: rawPath, mode };
+  if (fields['why'] && fields['why'].length > 0) surface.why = fields['why'];
+  if (fields['max_pending']) {
+    const n = Number.parseInt(fields['max_pending'], 10);
+    if (Number.isFinite(n) && n > 0) surface.max_pending = n;
+  }
+  return surface;
+}
+
+function stripQuotes(value: string): string {
+  if (value.length < 2) return value;
+  const first = value[0];
+  const last = value[value.length - 1];
+  if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
+    return value.slice(1, -1);
+  }
+  return value;
+}
+
+/**
+ * Read recent autonomous-edit commits from the role-home git repo. Returns
+ * an empty array when there's no repo, no matching commits, or any git
+ * error — never throws. Filters by author email/name, time window, and
+ * optionally the changed paths overlapping `autonomous_paths`.
+ */
+export async function recentAutonomousEdits(
+  roleHome: string,
+  options: RecentAutonomousEditsOptions = {},
+): Promise<AutonomousEdit[]> {
+  const limit = options.limit ?? DEFAULT_LIMIT;
+  const sinceDays = options.since_days ?? DEFAULT_SINCE_DAYS;
+
+  const git = simpleGit(roleHome);
+  try {
+    if (!(await git.checkIsRepo())) return [];
+  } catch {
+    return [];
+  }
+
+  // We pull a wider net than `limit` because path filtering may discard some
+  // commits — but also stay sane (cap at limit * 5).
+  const fetchCount = Math.max(limit * 5, limit);
+  const args: string[] = [
+    `--since=${sinceDays} days ago`,
+    `--max-count=${fetchCount}`,
+    `--pretty=format:%H%x1f%aI%x1f%an%x1f%ae%x1f%s`,
+  ];
+  if (options.role_email && options.role_email.length > 0) {
+    args.push(`--author=${options.role_email}`);
+  } else if (options.role_name && options.role_name.length > 0) {
+    args.push(`--author=${options.role_name}`);
+  }
+
+  let logOut: string;
+  try {
+    logOut = await git.raw(['log', ...args]);
+  } catch {
+    return [];
+  }
+
+  const candidates: Omit<AutonomousEdit, 'files'>[] = [];
+  for (const rawLine of logOut.split('\n')) {
+    const line = rawLine.trim();
+    if (line.length === 0) continue;
+    const parts = line.split('\x1f');
+    if (parts.length < 5) continue;
+    const sha = parts[0] ?? '';
+    if (sha.length === 0) continue;
+    candidates.push({
+      sha,
+      short_sha: sha.slice(0, 7),
+      date: parts[1] ?? '',
+      author_name: parts[2] ?? '',
+      author_email: parts[3] ?? '',
+      message: parts[4] ?? '',
+    });
+  }
+
+  const allowList = options.autonomous_paths;
+  const out: AutonomousEdit[] = [];
+  for (const candidate of candidates) {
+    let files: string[];
+    try {
+      // `--root` makes the initial commit (no parent) produce file output too;
+      // without it `diff-tree` silently returns nothing for that commit.
+      const filesOut = await git.raw([
+        'diff-tree',
+        '--no-commit-id',
+        '--name-only',
+        '-r',
+        '--root',
+        candidate.sha,
+      ]);
+      files = filesOut
+        .split('\n')
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+    } catch {
+      files = [];
+    }
+    if (allowList && allowList.length > 0) {
+      const overlap = files.some((f) => allowList.some((prefix) => pathMatches(f, prefix)));
+      if (!overlap) continue;
+    }
+    out.push({ ...candidate, files });
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+/**
+ * `prefix` from autonomy.yaml is either a directory (`memory/`) or a file
+ * (`lib/research-strategies.yaml`). For directories we match by prefix; for
+ * files we match exactly.
+ */
+function pathMatches(file: string, prefix: string): boolean {
+  if (prefix.endsWith('/')) return file === prefix.slice(0, -1) || file.startsWith(prefix);
+  return file === prefix;
+}
