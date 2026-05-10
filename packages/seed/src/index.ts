@@ -8,7 +8,7 @@
  * UI feedback) on top.
  */
 
-export { seedRole, injectPersona, injectClaudeDescription } from './seed.js';
+export { seedRole, injectPersona, injectClaudeDescription, injectVerbsTable } from './seed.js';
 export { resolveTemplatePath } from './template.js';
 export { TRAIT_LIBRARY, findTrait } from './traits.js';
 export type { TraitEntry } from './traits.js';

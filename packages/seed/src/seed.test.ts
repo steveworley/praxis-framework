@@ -4,7 +4,8 @@ import path from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { seedRole } from './seed.js';
+import { parseToolsYaml } from './catalog.js';
+import { injectVerbsTable, seedRole } from './seed.js';
 import { SeedError, type SeedInput } from './types.js';
 
 /**
@@ -199,5 +200,183 @@ describe('seedRole', () => {
         expect(e.code).toBe('TEMPLATE_MISSING');
       }
     }
+  });
+
+  describe('lib/tools.yaml', () => {
+    it('writes built-ins plus operator-selected optional tools', async () => {
+      const input: SeedInput = {
+        ...sampleInput(),
+        tools: ['websearch', 'mcp:google-workspace'],
+      };
+      const result = await seedRole(input, tmp);
+      expect(result.filesWritten).toContain('lib/tools.yaml');
+
+      const body = await fs.readFile(path.join(tmp, 'lib/tools.yaml'), 'utf-8');
+      const parsed = parseToolsYaml(body);
+      const names = Object.keys(parsed);
+
+      // Built-ins always land.
+      expect(names).toContain('bash');
+      expect(names).toContain('edit');
+      expect(names).toContain('log');
+      // Operator-selected optionals land.
+      expect(names).toContain('websearch');
+      expect(names).toContain('mcp:google-workspace');
+      // Non-selected optionals are filtered out.
+      expect(names).not.toContain('mcp:slack');
+      expect(names).not.toContain('mcp:playwright');
+      expect(names).not.toContain('mcp:filesystem');
+
+      // Field shape preserved for at least one optional entry.
+      const gw = parsed['mcp:google-workspace'];
+      expect(gw).toBeDefined();
+      expect(gw?.['description']).toBe('Gmail, Calendar, Drive via Google Workspace MCP');
+      expect(gw?.['default_transport']).toBe('stdio');
+      expect(gw?.['default_auth_env']).toBe('GOOGLE_WORKSPACE_TOKEN');
+      expect(gw?.['docker_image']).toBe('praxis/mcp-google-workspace:latest');
+    });
+
+    it('writes only built-ins when tools is empty', async () => {
+      const result = await seedRole(sampleInput(), tmp);
+      expect(result.filesWritten).toContain('lib/tools.yaml');
+
+      const body = await fs.readFile(path.join(tmp, 'lib/tools.yaml'), 'utf-8');
+      const parsed = parseToolsYaml(body);
+      const names = Object.keys(parsed);
+
+      expect(names.sort()).toEqual(['bash', 'edit', 'log'].sort());
+    });
+  });
+
+  describe('persona Identity section', () => {
+    it('renders working_title and day_to_day bullets when present', async () => {
+      const input: SeedInput = {
+        ...sampleInput(),
+        role_definition: {
+          role_name: 'Pat Example',
+          working_title: 'Sales lead',
+          one_sentence_purpose: 'I drive outbound on the flagship product.',
+          day_to_day: 'drafts cold outreach, reviews replies, escalates complex deals',
+        },
+      };
+      await seedRole(input, tmp);
+      const persona = await fs.readFile(path.join(tmp, 'persona.md'), 'utf-8');
+
+      expect(persona).toContain('- **Full name**: Pat Example');
+      expect(persona).toContain('- **Working title**: Sales lead');
+      expect(persona).toContain('- **Role**: I drive outbound on the flagship product.');
+      expect(persona).toContain(
+        '- **Day-to-day**: drafts cold outreach, reviews replies, escalates complex deals',
+      );
+
+      // Order: Working title sits between Full name and Role; Day-to-day sits
+      // between Role and Location/Email.
+      const fullIdx = persona.indexOf('- **Full name**');
+      const titleIdx = persona.indexOf('- **Working title**');
+      const roleIdx = persona.indexOf('- **Role**');
+      const dayIdx = persona.indexOf('- **Day-to-day**');
+      const emailIdx = persona.indexOf('- **Email**');
+      expect(fullIdx).toBeLessThan(titleIdx);
+      expect(titleIdx).toBeLessThan(roleIdx);
+      expect(roleIdx).toBeLessThan(dayIdx);
+      expect(dayIdx).toBeLessThan(emailIdx);
+    });
+
+    it('omits working_title and day_to_day bullets when absent', async () => {
+      // sampleInput() already omits both fields.
+      await seedRole(sampleInput(), tmp);
+      const persona = await fs.readFile(path.join(tmp, 'persona.md'), 'utf-8');
+
+      expect(persona).not.toContain('Working title');
+      expect(persona).not.toContain('Day-to-day');
+      // The other bullets still render.
+      expect(persona).toContain('- **Full name**: Pat Example');
+      expect(persona).toContain('- **Role**:');
+    });
+
+    it('omits only the missing field when one is set and the other is not', async () => {
+      const input: SeedInput = {
+        ...sampleInput(),
+        role_definition: {
+          role_name: 'Pat Example',
+          working_title: 'Sales lead',
+          one_sentence_purpose: 'I drive outbound.',
+          // day_to_day intentionally omitted
+        },
+      };
+      await seedRole(input, tmp);
+      const persona = await fs.readFile(path.join(tmp, 'persona.md'), 'utf-8');
+
+      expect(persona).toContain('- **Working title**: Sales lead');
+      expect(persona).not.toContain('Day-to-day');
+    });
+  });
+
+  describe('CLAUDE.md verbs table', () => {
+    it('replaces the placeholder row with one row per captured verb', async () => {
+      const input: SeedInput = {
+        ...sampleInput(),
+        initial_verbs: [
+          { slug: 'draft-emails', description: ['Compose outbound drafts.'] },
+          { slug: 'review-replies', description: ['Triage and tag inbound replies.'] },
+          { slug: 'log-meeting', description: ['Capture meeting outcomes to memory.'] },
+        ],
+      };
+      await seedRole(input, tmp);
+      const claude = await fs.readFile(path.join(tmp, 'CLAUDE.md'), 'utf-8');
+
+      expect(claude).not.toContain("(add your role's verbs here)");
+      // Built-in rows preserved.
+      expect(claude).toContain('| **Persona** | `persona.md`');
+      expect(claude).toContain('| **Escalate** | `verbs/escalate.md`');
+      // Operator's verbs appear, in the captured order.
+      expect(claude).toContain(
+        '| **Draft Emails** | `verbs/draft-emails.md` | <unset> | Compose outbound drafts. |',
+      );
+      expect(claude).toContain(
+        '| **Review Replies** | `verbs/review-replies.md` | <unset> | Triage and tag inbound replies. |',
+      );
+      expect(claude).toContain(
+        '| **Log Meeting** | `verbs/log-meeting.md` | <unset> | Capture meeting outcomes to memory. |',
+      );
+      // Order check.
+      const draftIdx = claude.indexOf('Draft Emails');
+      const replyIdx = claude.indexOf('Review Replies');
+      const logIdx = claude.indexOf('Log Meeting');
+      expect(draftIdx).toBeLessThan(replyIdx);
+      expect(replyIdx).toBeLessThan(logIdx);
+    });
+
+    it('uses <unset> for verbs without description bullets', async () => {
+      const input: SeedInput = {
+        ...sampleInput(),
+        initial_verbs: [{ slug: 'bare-verb', description: [] }],
+      };
+      await seedRole(input, tmp);
+      const claude = await fs.readFile(path.join(tmp, 'CLAUDE.md'), 'utf-8');
+
+      expect(claude).toContain(
+        '| **Bare Verb** | `verbs/bare-verb.md` | <unset> | <unset> |',
+      );
+    });
+
+    it('drops the placeholder row when no verbs are captured', async () => {
+      const input: SeedInput = { ...sampleInput(), initial_verbs: [] };
+      await seedRole(input, tmp);
+      const claude = await fs.readFile(path.join(tmp, 'CLAUDE.md'), 'utf-8');
+
+      expect(claude).not.toContain("(add your role's verbs here)");
+      // Built-ins still present.
+      expect(claude).toContain('| **Persona** | `persona.md`');
+      expect(claude).toContain('| **Escalate** | `verbs/escalate.md`');
+    });
+
+    it('returns the body unchanged when the placeholder is absent', () => {
+      const customised = '# CLAUDE\n\nNo placeholder here.\n';
+      const out = injectVerbsTable(customised, [
+        { slug: 'foo', description: ['bar'] },
+      ]);
+      expect(out).toBe(customised);
+    });
   });
 });

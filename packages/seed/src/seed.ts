@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
+import { buildSeededCatalog, renderToolsYaml } from './catalog.js';
 import { resolveTemplatePath } from './template.js';
 import { findTrait } from './traits.js';
 import {
@@ -121,6 +122,10 @@ export async function seedRole(
     }
   }
 
+  // Build the filtered tools catalog up-front so a malformed template fails
+  // fast, before we touch the target directory.
+  const seededCatalog = await buildSeededCatalog(templateRoot, input.tools);
+
   if (dryRun) {
     return {
       targetPath: absTarget,
@@ -151,6 +156,7 @@ export async function seedRole(
       body = body.replace(/\{ROLE_NAME\}/g, input.role_definition.role_name);
       if (pair.target === 'CLAUDE.md') {
         body = injectClaudeDescription(body, input.role_definition.one_sentence_purpose);
+        body = injectVerbsTable(body, input.initial_verbs);
       }
       if (pair.target === 'persona.md') {
         body = injectPersona(body, input);
@@ -170,6 +176,20 @@ export async function seedRole(
       await fs.chmod(dst, 0o755);
     }
     filesWritten.push(pair.target);
+  }
+
+  // Generated tools.yaml — built-ins plus operator-selected optional tools.
+  {
+    const target = 'lib/tools.yaml';
+    const dst = path.join(absTarget, target);
+    const body = renderToolsYaml(seededCatalog);
+    try {
+      await fs.writeFile(dst, body, 'utf-8');
+    } catch (e: unknown) {
+      const cause = e instanceof Error ? e.message : String(e);
+      throw new SeedError(`Failed to write ${target}: ${cause}`, 'WRITE_FAILED');
+    }
+    filesWritten.push(target);
   }
 
   // Stub verbs.
@@ -227,6 +247,9 @@ async function planSeed(input: SeedInput, templateRoot: string): Promise<SeedPla
   for (const pair of TEMPLATE_FILES) {
     targets.push(pair.target);
   }
+  // Generated lib/tools.yaml — written every seed (subset of the framework
+  // catalog), so include it in conflict detection.
+  targets.push('lib/tools.yaml');
   for (const verb of input.initial_verbs) {
     targets.push(path.join('verbs', `${verb.slug}.md`));
   }
@@ -251,6 +274,43 @@ export function injectClaudeDescription(body: string, description: string): stri
 }
 
 /**
+ * Replace the verbs-table placeholder row in CLAUDE.md with one row per
+ * operator-supplied verb. The framework template ships the table with
+ * `Persona` and `Escalate` rows already in place plus a single
+ * `_(add your role's verbs here)_` placeholder row; this function deletes
+ * the placeholder and appends one row per captured verb in the order they
+ * were captured.
+ *
+ * Columns: `Verb` (slug, prettified bold) / `File` (path to the stub) /
+ * `Input Stage` (always `<unset>` — the wizard does not capture this yet) /
+ * `Output Stage` (first description bullet, or `<unset>` when the operator
+ * left description empty).
+ *
+ * If the placeholder row is absent (e.g. the template has been customised),
+ * the body is returned unchanged — losing the operator's verbs from the
+ * manual is bad, but mangling a customised manual is worse.
+ */
+export function injectVerbsTable(body: string, verbs: readonly SeedVerb[]): string {
+  const placeholder = "| _(add your role's verbs here)_ | | | |";
+  if (!body.includes(placeholder)) return body;
+
+  if (verbs.length === 0) {
+    // Nothing captured — drop the placeholder line so the table reads cleanly.
+    return body.replace(`${placeholder}\n`, '').replace(placeholder, '');
+  }
+
+  const rows = verbs.map((verb) => {
+    const name = prettify(verb.slug);
+    const file = `verbs/${verb.slug}.md`;
+    const summary =
+      verb.description.length > 0 && verb.description[0] ? verb.description[0] : '<unset>';
+    return `| **${name}** | \`${file}\` | <unset> | ${summary} |`;
+  });
+
+  return body.replace(placeholder, rows.join('\n'));
+}
+
+/**
  * Inject operator-supplied content into the persona template, replacing
  * placeholder section bodies under known section headings. Exported for
  * testing.
@@ -262,8 +322,14 @@ export function injectPersona(body: string, input: SeedInput): string {
 
   const identityBullets: string[] = [
     `- **Full name**: ${input.role_definition.role_name}`,
-    `- **Role**: ${input.role_definition.one_sentence_purpose}`,
   ];
+  if (input.role_definition.working_title) {
+    identityBullets.push(`- **Working title**: ${input.role_definition.working_title}`);
+  }
+  identityBullets.push(`- **Role**: ${input.role_definition.one_sentence_purpose}`);
+  if (input.role_definition.day_to_day) {
+    identityBullets.push(`- **Day-to-day**: ${input.role_definition.day_to_day}`);
+  }
   if (input.identity.location) identityBullets.push(`- **Location**: ${input.identity.location}`);
   if (input.identity.reports_to) identityBullets.push(`- **Reports to**: ${input.identity.reports_to}`);
   if (input.identity.email) identityBullets.push(`- **Email**: ${input.identity.email}`);

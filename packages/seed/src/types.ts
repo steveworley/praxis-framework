@@ -74,9 +74,11 @@ export const SeedInputSchema = z.object({
   capabilities: z.array(z.string().min(1).max(280)).max(10).default([]),
   inhibitions: z.array(z.string().min(1).max(280)).max(10).default([]),
   initial_verbs: z.array(SeedVerbSchema).max(5).default([]),
-  // Optional MCP capability names selected during tool selection. Stored on
-  // disk via lib/tools.yaml today; kept here so future seeders can write
-  // role-scoped tool config. Empty array is the v1 default.
+  // Optional MCP capability names selected during tool selection. The
+  // seeder filters the framework's `template/lib/tools.yaml` catalog to the
+  // always-available built-ins plus these names, and writes the result to
+  // the role's `lib/tools.yaml`. Empty array seeds a tools file containing
+  // only the built-ins.
   tools: z.array(z.string().min(1).max(120)).max(40).default([]),
 });
 
