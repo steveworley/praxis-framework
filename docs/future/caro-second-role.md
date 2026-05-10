@@ -54,13 +54,14 @@ Voice: experienced, patient, attuned to long-running dynamics. Operational
 
 ### Primitives — how each one stretches
 
-- **`agents/`** — different verbs: `account-read`, `renewal-watch`, `health-narrative`, `expansion-signal-classifier`, `briefing-draft`, `escalate-to-con`. Probably 6-8 playbooks total — smaller than Sam's 23.
+- **`verbs/`** — different verbs: `account-read`, `renewal-watch`, `health-narrative`, `expansion-signal-classifier`, `briefing-draft`, `escalate-to-con`. Probably 6-8 playbooks total — smaller than Sam's 23.
 - **`lib/`** — overlaps with Sam (`customers.yaml`, `team.yaml`, `compliance.yaml`) plus new: `renewal-cadence.yaml`, `health-signals.yaml`, `escalation-routing.yaml` (when does it go to Con vs Stu vs Steve).
 - **`memory/`** — heaviest stretch. Per-customer files (`memory/accounts/{domain}.md`), per-contact files (`memory/people/{slug}.md`), and a new dimension: per-account-per-period (`memory/accounts/{domain}/2026-h1.md`) for narrative arcs.
 - **`escalations/`** — different shape. Sam's escalations are mostly process. Caro's are situational ("Library Victoria's pageviews dropped 40% week-over-week, recommend Con check in").
 - **Work product** — `accounts/{domain}.json` (the long-discussed account-curator output) + `accounts/{domain}/reads/{date}.md` weekly narratives + `accounts/{domain}/health/{date}.jsonl` health-signal log.
 - **Decisions** — different `decision_type` values: `health_classification`, `renewal_risk`, `escalation_routing`, `expansion_vs_noise`. Tests whether the primitive vocabulary generalises beyond Sam's.
 - **Autonomy** — likely opens different surfaces: `lib/health-signals.yaml` as `append-only` (Caro discovers new signal patterns), maybe `lib/renewal-cadence.yaml` as `bounded` (within operator-set ranges).
+
 
 ### Relationship to existing roadmap items
 

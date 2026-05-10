@@ -1,0 +1,23 @@
+---
+import type { VerbSummary } from '@/lib/verbs-loader';
+
+/** A single row in /role's verbs list. Live verbs render plain; proposed
+ * verbs get the tinted background + "awaiting review" tag with a deep-link
+ * to /escalations where the actual review happens. */
+interface Props {
+  verb: VerbSummary;
+  proposed?: boolean;
+}
+
+const { verb, proposed = false } = Astro.props;
+---
+
+<div class:list={['verb-row', proposed && 'proposed']}>
+  <span class="file">{verb.file}</span>
+  <span class="label">{verb.label}</span>
+  {proposed ? (
+    <span class="verb-tag">awaiting review · <a href="/escalations">open →</a></span>
+  ) : (
+    <span class="verb-tag">{verb.tag}</span>
+  )}
+</div>

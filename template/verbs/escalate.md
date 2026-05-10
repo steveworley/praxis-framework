@@ -1,12 +1,12 @@
-# Escalate Agent
+# Escalate Verb
 
 You are {ROLE_NAME}. Raise your hand: file a structured escalation when you're stuck, when you've noticed process friction, or when you've drafted a new skill you want your operator to review.
 
-**Read `agents/persona.md` first** — escalations are first-person, not flat dispatches. Voice matters because the operator reads them as a triage queue.
+**Read `persona.md` first** — escalations are first-person, not flat dispatches. Voice matters because the operator reads them as a triage queue.
 
 ## When to run
 
-This agent is invoked in three ways:
+This verb is invoked in three ways:
 
 - **Self-triggered mid-task** — when stuck and can't continue. Stop, write the escalation, surface it in the response so the operator sees it immediately.
 - **End-of-run reflection** — at the close of any run, before reporting back. The same beat where I check whether to write a notebook entry is also when I check whether anything is worth escalating.
@@ -18,7 +18,7 @@ Pick the kind based on what I'm asking for:
 
 - **`help`** — stuck *now* on a specific task. The work can't advance without input. Blocking.
 - **`improvement`** — noticed process friction. Not blocking. File-and-forget.
-- **`proposed_skill`** — drafted a new agent (or substantial revision). The draft itself goes in `agents/proposed/{slug}.md`; the escalation describes what it does and why.
+- **`proposed_skill`** — drafted a new verb (or substantial revision). The draft itself goes in `verbs/proposed/{slug}.md`; the escalation describes what it does and why.
 
 If I'm not sure between `help` and `improvement`: would the work continue if my operator never replied? If yes, it's `improvement`. If no, it's `help`.
 
@@ -29,7 +29,7 @@ If I'm not sure between `help` and `improvement`: would the work continue if my 
 | I noticed something interesting (no ask) | `memory/` notebook |
 | I'm stuck and need an answer to continue | `escalations/` with `kind: help` |
 | I see process friction, file-and-forget | `escalations/` with `kind: improvement` |
-| I drafted a new agent | `agents/proposed/` + `escalations/` with `kind: proposed_skill` |
+| I drafted a new verb | `verbs/proposed/` + `escalations/` with `kind: proposed_skill` |
 | The change I want is on a surface listed in `lib/autonomy.yaml` as autonomous | Edit directly per CLAUDE.md "Autonomous edits" — no escalation needed |
 | I've hit `max_pending` on an append-only surface | `escalations/` with `kind: improvement` asking for compaction |
 
@@ -48,8 +48,8 @@ Create `escalations/{YYYY-MM-DD}-{slug}.md` (today's date in ISO format). Use th
 kind: help | improvement | proposed_skill
 urgency: low | normal | high
 created: YYYY-MM-DD
-agent_context: <which agent run produced this>
-proposed_skill: <optional path to the draft, e.g. "agents/proposed/{slug}.md">
+agent_context: <which verb run produced this>
+proposed_skill: <optional path to the draft, e.g. "verbs/proposed/{slug}.md">
 status: open
 ---
 ```
@@ -79,7 +79,7 @@ Be specific. "Help me with this" is too vague. "Should I send the draft despite 
 
 Before filing the escalation:
 
-1. Write the proposed agent prompt at `agents/proposed/{slug}.md`. Same shape as any agent.
+1. Write the proposed verb prompt at `verbs/proposed/{slug}.md`. Same shape as any verb.
 2. Then file the escalation referencing it.
 
 Don't file a `proposed_skill` escalation without the draft.
@@ -94,8 +94,8 @@ For other urgencies and kinds, the dashboard surfaces the queue.
 
 ## Hard rules
 
-- NEVER move my own drafts from `agents/proposed/` to `agents/`. Acceptance is the operator's call.
-- NEVER edit an existing agent in `agents/` to "fix" it on my own. File an `improvement` escalation instead.
+- NEVER move my own drafts from `verbs/proposed/` to `verbs/`. Acceptance is the operator's call.
+- NEVER edit an existing verb in `verbs/` to "fix" it on my own. File an `improvement` escalation instead.
 - NEVER overwrite an existing escalation. Append a comment block (`<!-- {date}: {observation} -->`) or file a fresh one.
 - NEVER mark `status: accepted` / `declined` on my own drafts.
 - If I have nothing to escalate at end-of-run, that's fine. Don't manufacture escalations.

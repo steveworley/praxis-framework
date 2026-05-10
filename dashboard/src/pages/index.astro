@@ -5,7 +5,7 @@ import SummaryCard from '@/components/SummaryCard.astro';
 import TriageCard from '@/components/TriageCard.astro';
 import BaseLayout from '@/layouts/BaseLayout.astro';
 import { assembleActivity, type ActivityEntry } from '@/lib/activity-loader';
-import { countLiveAgents } from '@/lib/agents-loader';
+import { countLiveVerbs } from '@/lib/verbs-loader';
 import {
   assembleEscalations,
   type EscalationEntry,
@@ -36,12 +36,12 @@ const logGlob = getLogGlob();
 
 // Section-by-section error handling: one failed loader shouldn't blank the
 // page. We surface per-section errors below.
-const [personaRes, memoryRes, escalationsRes, activityRes, agentCountRes, recentRoleRes] = await Promise.allSettled([
+const [personaRes, memoryRes, escalationsRes, activityRes, verbCountRes, recentRoleRes] = await Promise.allSettled([
   parsePersona(roleHome),
   assembleMemory(roleHome),
   assembleEscalations(roleHome),
   assembleActivity(roleHome, logGlob, 200),
-  countLiveAgents(roleHome),
+  countLiveVerbs(roleHome),
   collectRoleEdits(roleHome),
 ]);
 
@@ -50,7 +50,7 @@ const memoryEntries: MemoryEntry[] = memoryRes.status === 'fulfilled' ? memoryRe
 const escalations: EscalationsResult | null =
   escalationsRes.status === 'fulfilled' ? escalationsRes.value : null;
 const activity: ActivityEntry[] = activityRes.status === 'fulfilled' ? activityRes.value : [];
-const agentCount: number = agentCountRes.status === 'fulfilled' ? agentCountRes.value : 0;
+const verbCount: number = verbCountRes.status === 'fulfilled' ? verbCountRes.value : 0;
 const recentRoleEdits: RoleEditsSummary =
   recentRoleRes.status === 'fulfilled' ? recentRoleRes.value : { count: 0, lastFile: null, lastDays: null };
 
@@ -103,7 +103,7 @@ interface RoleEditsSummary {
 }
 
 /**
- * Count git commits touching `agents/` over the last 7 days. Uses simple-git
+ * Count git commits touching `verbs/` over the last 7 days. Uses simple-git
  * which is already a dep. If the role home isn't a git repo, returns zero.
  */
 async function collectRoleEdits(home: string): Promise<RoleEditsSummary> {
@@ -114,7 +114,7 @@ async function collectRoleEdits(home: string): Promise<RoleEditsSummary> {
     const log = await git.log({
       '--since': '7 days ago',
       '--name-only': null,
-      file: 'agents',
+      file: 'verbs',
       maxCount: 50,
     });
     const all = log.all ?? [];
@@ -122,10 +122,10 @@ async function collectRoleEdits(home: string): Promise<RoleEditsSummary> {
     const head = all[0];
     const lastDays = head?.date ? daysSince(head.date) : null;
     // simple-git returns each commit's diff in `diff` only when configured;
-    // pulling first changed agent file out of the body would require a
-    // second pass. Surface the agents/ marker filename instead so the user
+    // pulling first changed verb file out of the body would require a
+    // second pass. Surface the verbs/ marker filename instead so the user
     // gets a hint without us walking diffs.
-    const lastFile = 'agents/';
+    const lastFile = 'verbs/';
     return { count: all.length, lastFile, lastDays };
   } catch {
     return { count: 0, lastFile: null, lastDays: null };
@@ -169,7 +169,7 @@ async function collectRoleEdits(home: string): Promise<RoleEditsSummary> {
       <IdentityStrip
         persona={persona}
         showCounts={true}
-        agentCount={agentCount}
+        verbCount={verbCount}
         link={{ href: '/role', label: 'view role →' }}
       />
     )}

@@ -114,7 +114,7 @@ async function parseEscalation(filePath: string, roleHome: string): Promise<Esca
   let proposedBody: string | null = null;
   const proposedPath = fm['proposed_skill'];
   if (fm['kind'] === 'proposed_skill' && proposedPath) {
-    const proposedRoot = path.resolve(path.join(roleHome, 'agents', 'proposed'));
+    const proposedRoot = path.resolve(path.join(roleHome, 'verbs', 'proposed'));
     const target = path.resolve(path.join(roleHome, proposedPath));
     const rel = path.relative(proposedRoot, target);
     if (!rel.startsWith('..') && !path.isAbsolute(rel)) {

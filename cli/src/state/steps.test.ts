@@ -14,9 +14,13 @@ describe('STEPS', () => {
       'organisation',
       'role-definition',
       'path-choice',
-      'stub-voice',
-      'stub-review',
-      'done',
+      'tool-selection',
+      'voice',
+      'capabilities',
+      'inhibitions',
+      'initial-verbs',
+      'review',
+      'wrote',
     ]);
   });
 });
@@ -32,20 +36,24 @@ describe('nextStep', () => {
     expect(nextStep('welcome')).toBe('organisation');
     expect(nextStep('organisation')).toBe('role-definition');
     expect(nextStep('role-definition')).toBe('path-choice');
-    expect(nextStep('path-choice')).toBe('stub-voice');
-    expect(nextStep('stub-voice')).toBe('stub-review');
-    expect(nextStep('stub-review')).toBe('done');
+    expect(nextStep('path-choice')).toBe('tool-selection');
+    expect(nextStep('tool-selection')).toBe('voice');
+    expect(nextStep('voice')).toBe('capabilities');
+    expect(nextStep('capabilities')).toBe('inhibitions');
+    expect(nextStep('inhibitions')).toBe('initial-verbs');
+    expect(nextStep('initial-verbs')).toBe('review');
+    expect(nextStep('review')).toBe('wrote');
   });
 
   it('returns null past the last step', () => {
-    expect(nextStep('done')).toBeNull();
+    expect(nextStep('wrote')).toBeNull();
   });
 });
 
 describe('previousStep', () => {
   it('walks back one step', () => {
     expect(previousStep('organisation')).toBe('welcome');
-    expect(previousStep('done')).toBe('stub-review');
+    expect(previousStep('wrote')).toBe('review');
   });
 
   it('returns null at the first step', () => {
@@ -54,9 +62,9 @@ describe('previousStep', () => {
 });
 
 describe('isLastStep', () => {
-  it('only matches done', () => {
-    expect(isLastStep('done')).toBe(true);
+  it('only matches the terminal step', () => {
+    expect(isLastStep('wrote')).toBe(true);
     expect(isLastStep('welcome')).toBe(false);
-    expect(isLastStep('stub-review')).toBe(false);
+    expect(isLastStep('review')).toBe(false);
   });
 });

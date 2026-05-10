@@ -30,10 +30,10 @@ export type RoleMode = 'seed' | 'role';
 
 /**
  * Detect whether the role home has been seeded. A populated role has
- * agents/persona.md at the root.
+ * persona.md at the root.
  */
 export function detectMode(roleHome: string): RoleMode {
-  const personaPath = path.join(roleHome, 'agents', 'persona.md');
+  const personaPath = path.join(roleHome, 'persona.md');
   return existsSync(personaPath) ? 'role' : 'seed';
 }
 

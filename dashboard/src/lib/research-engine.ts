@@ -43,17 +43,23 @@ export interface PersonaIdentity {
   email?: string;
 }
 
-export interface PersonaDraftAgent {
+export interface PersonaDraftVerb {
   slug: string;
-  purpose: string;
+  /**
+   * Bullet-shaped body content for the verb. Mirrors the persona-parser's
+   * `PersonaInitialVerb.description` — each entry is one bullet that the
+   * seeder will render under the verb's heading. Empty array means the
+   * researcher returned a slug with no authored body.
+   */
+  description: string[];
 }
 
 export interface PersonaDraft {
   identity: PersonaIdentity;
-  voice_traits: { label: string; detail: string }[];
+  voice_traits: { trait: string; qualifiers: string[] }[];
   capabilities: string[];
   inhibitions: string[];
-  initial_agents: PersonaDraftAgent[];
+  initial_verbs: PersonaDraftVerb[];
 }
 
 export type ResearchResult =
@@ -163,7 +169,7 @@ function renderBrief(ctx: ResearchContext): string {
   lines.push('- 1–8 voice traits.');
   lines.push('- 1–10 capabilities, written in first person ("I can…").');
   lines.push('- 1–10 inhibitions, written as "I never…".');
-  lines.push('- 0–5 initial agents.');
+  lines.push('- 0–5 initial verbs.');
   lines.push('- All content English. Voice traits should be observable behaviours, not adjectives.');
   lines.push('');
   lines.push('## Required output format');
@@ -196,10 +202,12 @@ function renderBrief(ctx: ResearchContext): string {
   lines.push('- I never <inhibition>');
   lines.push('- I never <inhibition>');
   lines.push('');
-  lines.push('## Initial agents');
+  lines.push('## Initial verbs');
   lines.push('');
-  lines.push('- **agent-slug** -- <one-line purpose>');
-  lines.push('- **agent-slug** -- <one-line purpose>');
+  lines.push('- **verb-slug**');
+  lines.push('  - <bullet describing what this verb does>');
+  lines.push('  - <bullet describing what this verb does>');
+  lines.push('- **verb-slug** -- <single bullet, if only one>');
   lines.push('');
   lines.push('# Notes for the operator');
   lines.push('');

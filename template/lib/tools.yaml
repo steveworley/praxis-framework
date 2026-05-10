@@ -1,0 +1,70 @@
+# Tools — framework-level catalog of capabilities a role can request.
+#
+# Roles declare which capabilities they need per-agent in frontmatter; the
+# runtime maps capabilities to concrete adapters at startup. Operators select
+# from this catalog during `praxis init`.
+#
+# Schema (per entry under `capabilities:`):
+#   description        — short human-readable summary
+#   transport_options  — list of supported transports (e.g. native, stdio, sse, url)
+#   default_transport  — which transport to use unless overridden
+#   always_available   — true if the runtime always exposes this capability
+#                        (built-ins like bash/edit/log). Defaults to false.
+#   default_auth_env   — env-var name the runtime reads for credentials, if any
+#   docker_image       — container image used when transport is stdio
+#
+# Anything not in this list is unavailable to roles. To add a new capability,
+# extend this file and ship the matching adapter in the framework.
+
+capabilities:
+  bash:
+    description: "Shell execution scoped to the role's working directory"
+    transport_options: [native]
+    default_transport: native
+    always_available: true
+
+  edit:
+    description: "Read/write files inside the role's working directory"
+    transport_options: [native]
+    default_transport: native
+    always_available: true
+
+  websearch:
+    description: "Web search via configured provider (Tavily, Brave, Google)"
+    transport_options: [url]
+    default_transport: url
+    always_available: false
+
+  log:
+    description: "Structured JSONL action logging via bin/log"
+    transport_options: [native]
+    default_transport: native
+    always_available: true
+
+  mcp:google-workspace:
+    description: "Gmail, Calendar, Drive via Google Workspace MCP"
+    transport_options: [stdio, sse, url]
+    default_transport: stdio
+    default_auth_env: GOOGLE_WORKSPACE_TOKEN
+    docker_image: praxis/mcp-google-workspace:latest
+
+  mcp:slack:
+    description: "Slack read/write via Slack MCP"
+    transport_options: [stdio, sse, url]
+    default_transport: stdio
+    default_auth_env: SLACK_MCP_TOKEN
+    docker_image: praxis/mcp-slack:latest
+
+  mcp:playwright:
+    description: "Headless browser for JS-rendered pages and PDF extraction"
+    transport_options: [stdio, sse]
+    default_transport: stdio
+    default_auth_env: null
+    docker_image: mcr.microsoft.com/playwright:v1.45.0-noble
+
+  mcp:filesystem:
+    description: "Extended filesystem access (beyond role workdir)"
+    transport_options: [stdio]
+    default_transport: stdio
+    default_auth_env: null
+    docker_image: praxis/mcp-filesystem:latest

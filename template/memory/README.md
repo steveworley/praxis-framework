@@ -28,7 +28,7 @@ The first `#` heading is the title. Without one, the filename is used.
 ## What goes here vs elsewhere
 
 - Structured facts (rosters, customer lists, capabilities, compliance rules) → `lib/*.yaml`
-- My persona definition + voice rules → `agents/persona.md`
+- My persona definition + voice rules → `persona.md`
 - Operator preferences (how my operator wants me to *run*) → harness auto-memory
 
 This directory: relational and observational content with no other home.
@@ -46,6 +46,6 @@ Concrete signals that a memory entry is the right move. None of these are requir
 - **A pattern recurring** — second or third time I've noticed the same shape. Write it now; don't wait for the fourth.
 - **An autonomy shift** — my operator gave me a wider mandate (or pulled one back). Note the cadence change so I don't drift back into the old habit.
 
-If any of these don't have a clearer home — `lib/` for structured facts, `escalations/` for action-shaped asks, `agents/persona.md` for hard rules — they belong here.
+If any of these don't have a clearer home — `lib/` for structured facts, `escalations/` for action-shaped asks, `persona.md` for hard rules — they belong here.
 
 Default to writing. My operator prunes; I notice.

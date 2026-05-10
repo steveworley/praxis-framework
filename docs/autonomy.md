@@ -9,23 +9,23 @@ The mistake would be one knob ("autonomy: 0–10"). Different surfaces have diff
 | Surface | Risk if the role gets it wrong | Default mode |
 |---|---|---|
 | `memory/` | Cluttered notes the operator prunes | **`full`** |
-| `agents/proposed/` | A bad draft the operator ignores | **`full`** |
+| `verbs/proposed/` | A bad draft the operator ignores | **`full`** |
 | `escalations/` | Noise in the operator's queue | **`full`** |
 | `lib/research-strategies.yaml` (or equivalent) | One missed page, recoverable | candidate for **`append-only`** |
 | `lib/team.yaml` (notes / calibration text) | Stale calibration note | candidate for **`inline-enrichment`** |
 | `lib/{warmup,operational-params}.yaml` | Overcautious or aggressive operation | candidate for **`bounded`** |
-| `agents/*.md` (existing playbooks) | Unpredictable behavioral drift | **`gated`** |
-| `agents/persona.md` | Identity drift | **`gated`** |
+| `verbs/*.md` (existing playbooks) | Unpredictable behavioral drift | **`gated`** |
+| `persona.md` | Identity drift | **`gated`** |
 | `lib/customers.yaml` | Cold-emailing a customer, legal exposure | **`gated`** |
 | `lib/compliance.yaml` | Spam Act / safety exposure | **`gated`** |
-| `CLAUDE.md` | Behavior drift across all agents | **`gated`** |
+| `CLAUDE.md` | Behavior drift across all verbs | **`gated`** |
 
 The principle: **gate by what could go wrong, not by what feels important.** A new path in `research-strategies.yaml` costs you a missed page if wrong; that's recoverable. An edit to `compliance.yaml` could end the project; that's not.
 
 ## The four modes
 
 ### `full`
-The role can do anything in this directory or file. This is the default state of `memory/`, `agents/proposed/`, and `escalations/` — surfaces where the role's own work is the entire content and there's nothing to corrupt.
+The role can do anything in this directory or file. This is the default state of `memory/`, `verbs/proposed/`, and `escalations/` — surfaces where the role's own work is the entire content and there's nothing to corrupt.
 
 ### `append-only`
 The role can add new entries to a list but never edit or delete existing entries. Pairs with a `max_pending` count: if the role appends N entries since the last operator commit on the file, and N reaches `max_pending`, the role stops appending and files an `improvement` escalation asking for compaction (operator reviews the additions, edits/removes any that don't earn their keep, signs off).
@@ -76,11 +76,11 @@ Why first:
 - Validates the visibility + revert mechanism on a low-stakes surface
 - Concrete near-term ROI (every accepted addition speeds the next batch)
 
-After this surface earns its keep, expand to `inline-enrichment` on team data, then `bounded` on operational parameters, then consider whether any specific agent file is safe for autonomous minor edits. **`agents/persona.md` and the constitutional surfaces stay gated forever** — that's the line.
+After this surface earns its keep, expand to `inline-enrichment` on team data, then `bounded` on operational parameters, then consider whether any specific verb file is safe for autonomous minor edits. **`persona.md` and the constitutional surfaces stay gated forever** — that's the line.
 
 ## What this is not
 
-- **Not Hermes.** The role doesn't self-modify behavior based on outcomes. Capability changes still go through HiTM acceptance via `agents/proposed/`. The autonomous surfaces are *additive observations*, not behavioral mutations.
+- **Not Hermes.** The role doesn't self-modify behavior based on outcomes. Capability changes still go through HiTM acceptance via `verbs/proposed/`. The autonomous surfaces are *additive observations*, not behavioral mutations.
 - **Not graduated trust over time.** The role doesn't "level up" autonomy by accumulating successful edits. Autonomy is per-surface and operator-controlled. If you want to expand it, you edit `lib/autonomy.yaml`.
 - **Not a replacement for escalations.** Autonomous edit and escalation are complementary. Escalation is for things the operator should *act* on (or know about). Autonomous edits are for things the role can do safely on its own. The reflection beat fires both.
 

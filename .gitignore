@@ -36,3 +36,8 @@ coverage/
 # Local praxis tooling
 .claude/
 .praxis/
+
+# CLI is TypeScript-only — guard against stray tsc invocations leaking
+# compiled JS into the source tree. Real build output goes to cli/dist/
+# which is already covered by the dist/ rule above.
+cli/src/**/*.js

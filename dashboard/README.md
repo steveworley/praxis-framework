@@ -5,7 +5,7 @@ Astro + Node SSR. Two surfaces:
 - `/setup` — wizard that converts the framework repo into a populated role (two visible commits)
 - `/interior` — read-only role-watcher: persona, escalations, notebook, recent activity
 
-`/` redirects to whichever is appropriate based on whether `agents/persona.md` exists at the role home.
+`/` redirects to whichever is appropriate based on whether `persona.md` exists at the role home.
 
 ## Running locally
 
@@ -33,7 +33,7 @@ All endpoints return JSON. Read endpoints exist as routes for parity with the le
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/api/persona` | Parses `agents/persona.md` (identity / voice / capabilities / inhibitions) |
+| GET | `/api/persona` | Parses `persona.md` (identity / voice / capabilities / inhibitions) |
 | GET | `/api/memory` | Walks `memory/**/*.md`, recency-sorted, README skipped |
 | GET | `/api/escalations` | Walks `escalations/*.md`, inlines `proposed_skill` drafts, sorted by status → urgency → date |
 | GET | `/api/activity?limit=N` | One entry per line of files matching `PRAXIS_LOG_GLOB` (default 50, max 500) |

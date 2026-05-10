@@ -1,6 +1,5 @@
 import React from 'react';
 import { Box, Text, useInput } from 'ink';
-import { Header } from '../ui/header.js';
 import { muted, accent } from '../ui/theme.js';
 
 interface Props {
@@ -8,6 +7,7 @@ interface Props {
   onCancel: () => void;
 }
 
+/** Welcome step. Header is rendered by App so it persists across the wizard. */
 export const Welcome = ({ onNext, onCancel }: Props) => {
   useInput((input, key) => {
     if (key.return) {
@@ -21,8 +21,7 @@ export const Welcome = ({ onNext, onCancel }: Props) => {
 
   return (
     <Box flexDirection="column">
-      <Header />
-      <Box marginTop={1}>
+      <Box>
         <Text>
           {accent('Welcome.')} This wizard sets up a new role for your business.
         </Text>

@@ -2,47 +2,45 @@ import fs from 'node:fs/promises';
 import type { Dirent } from 'node:fs';
 import path from 'node:path';
 
-export interface AgentSummary {
-  /** Path relative to agents/ — e.g. `discover.md` or `proposed/intake-from-tender.md`. */
+export interface VerbSummary {
+  /** Path relative to verbs/ — e.g. `discover.md` or `proposed/intake-from-tender.md`. */
   file: string;
-  /** Human-readable verb derived from the file's first heading or the filename. */
-  verb: string;
-  /** One-word capability tag inferred from the body — see {@link classifyAgent}. */
+  /** Human-readable label derived from the file's first heading or the filename. */
+  label: string;
+  /** One-word capability tag inferred from the body — see {@link classifyVerb}. */
   tag: string;
 }
 
-export interface AgentsResult {
-  live: AgentSummary[];
-  proposed: AgentSummary[];
+export interface VerbsResult {
+  live: VerbSummary[];
+  proposed: VerbSummary[];
 }
 
-const PERSONA_FILE = 'persona.md';
-
 /**
- * List the role's agents. `agents/*.md` (excluding `persona.md`) become live
- * agents; anything under `agents/proposed/` becomes a proposed agent. Both
- * lists are sorted by file path. Files that fail to read are skipped silently.
+ * List the role's verbs. `verbs/*.md` becomes live verbs; anything under
+ * `verbs/proposed/` becomes a proposed verb. Both lists are sorted by file
+ * path. Files that fail to read are skipped silently.
  */
-export async function loadAgents(roleHome: string): Promise<AgentsResult> {
-  const agentsDir = path.join(roleHome, 'agents');
-  const live: AgentSummary[] = [];
-  const proposed: AgentSummary[] = [];
+export async function loadVerbs(roleHome: string): Promise<VerbsResult> {
+  const verbsDir = path.join(roleHome, 'verbs');
+  const live: VerbSummary[] = [];
+  const proposed: VerbSummary[] = [];
 
   let topEntries;
   try {
-    topEntries = await fs.readdir(agentsDir, { withFileTypes: true });
+    topEntries = await fs.readdir(verbsDir, { withFileTypes: true });
   } catch {
     return { live, proposed };
   }
 
   for (const entry of topEntries) {
-    if (entry.isFile() && entry.name.toLowerCase().endsWith('.md') && entry.name !== PERSONA_FILE) {
-      const summary = await summariseAgent(path.join(agentsDir, entry.name), entry.name);
+    if (entry.isFile() && entry.name.toLowerCase().endsWith('.md')) {
+      const summary = await summariseVerb(path.join(verbsDir, entry.name), entry.name);
       if (summary) live.push(summary);
     }
   }
 
-  const proposedDir = path.join(agentsDir, 'proposed');
+  const proposedDir = path.join(verbsDir, 'proposed');
   let proposedEntries: Dirent[] = [];
   try {
     proposedEntries = await fs.readdir(proposedDir, { withFileTypes: true });
@@ -52,7 +50,7 @@ export async function loadAgents(roleHome: string): Promise<AgentsResult> {
   for (const entry of proposedEntries) {
     if (entry.isFile() && entry.name.toLowerCase().endsWith('.md') && entry.name.toLowerCase() !== 'readme.md') {
       const rel = path.join('proposed', entry.name);
-      const summary = await summariseAgent(path.join(proposedDir, entry.name), rel);
+      const summary = await summariseVerb(path.join(proposedDir, entry.name), rel);
       if (summary) proposed.push(summary);
     }
   }
@@ -63,55 +61,55 @@ export async function loadAgents(roleHome: string): Promise<AgentsResult> {
 }
 
 /**
- * Count live agents (excluding persona and proposed). Cheaper than loading
- * all summaries when the caller only needs a number.
+ * Count live verbs (excluding proposed). Cheaper than loading all summaries
+ * when the caller only needs a number.
  */
-export async function countLiveAgents(roleHome: string): Promise<number> {
-  const agentsDir = path.join(roleHome, 'agents');
+export async function countLiveVerbs(roleHome: string): Promise<number> {
+  const verbsDir = path.join(roleHome, 'verbs');
   let entries;
   try {
-    entries = await fs.readdir(agentsDir, { withFileTypes: true });
+    entries = await fs.readdir(verbsDir, { withFileTypes: true });
   } catch {
     return 0;
   }
   let n = 0;
   for (const entry of entries) {
-    if (entry.isFile() && entry.name.toLowerCase().endsWith('.md') && entry.name !== PERSONA_FILE) {
+    if (entry.isFile() && entry.name.toLowerCase().endsWith('.md')) {
       n += 1;
     }
   }
   return n;
 }
 
-async function summariseAgent(absPath: string, relFile: string): Promise<AgentSummary | null> {
+async function summariseVerb(absPath: string, relFile: string): Promise<VerbSummary | null> {
   let text: string;
   try {
     text = await fs.readFile(absPath, 'utf-8');
   } catch {
     return null;
   }
-  const verb = deriveVerb(text, relFile);
-  const tag = classifyAgent(text);
-  return { file: relFile, verb, tag };
+  const label = deriveLabel(text, relFile);
+  const tag = classifyVerb(text);
+  return { file: relFile, label, tag };
 }
 
-function deriveVerb(text: string, relFile: string): string {
-  // First H1 wins — strip markdown noise so the rendered verb reads cleanly.
+function deriveLabel(text: string, relFile: string): string {
+  // First H1 wins — strip markdown noise so the rendered label reads cleanly.
   const headingMatch = /^#\s+(.+)$/m.exec(text);
   if (headingMatch && headingMatch[1]) {
-    return headingMatch[1].trim().replace(/\s+agent$/i, '').toLowerCase();
+    return headingMatch[1].trim().replace(/\s+verb$/i, '').toLowerCase();
   }
   // Fallback: filename without extension or proposed/ prefix.
   return path.basename(relFile, '.md').replace(/-/g, ' ');
 }
 
 /**
- * Pick a one-word capability tag for an agent based on keywords in its body.
+ * Pick a one-word capability tag for a verb based on keywords in its body.
  * Heuristic — not a classifier. Order matters: earlier matches win, so put
  * the more specific verbs first. A flat default of "act" catches anything
  * we can't categorise.
  */
-export function classifyAgent(text: string): string {
+export function classifyVerb(text: string): string {
   const haystack = text.toLowerCase();
   const rules: Array<[RegExp, string]> = [
     [/\bescalat|reflect\b/, 'reflect'],

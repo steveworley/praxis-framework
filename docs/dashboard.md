@@ -5,7 +5,7 @@ Astro + Node SSR. Two surfaces:
 - **`/setup`** — the wizard that converts the framework repo into a populated role. Writes two visible git commits.
 - **`/interior`** — read-only supervisor surface that watches a populated role.
 
-`/` redirects to whichever is appropriate based on whether `agents/persona.md` exists at the role-home root.
+`/` redirects to whichever is appropriate based on whether `persona.md` exists at the role-home root.
 
 The dashboard lives inside the framework repo at `dashboard/`. When the framework is cloned into a new role, the dashboard travels with it — each role has its own dashboard, no separate hosting required.
 
@@ -44,9 +44,9 @@ All endpoints return JSON. Read endpoints exist for parity / external consumers,
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/api/persona` | Parses `agents/persona.md` (Identity / Voice & Personality / Capabilities / Hard inhibitions sections) |
+| GET | `/api/persona` | Parses `persona.md` (Identity / Voice & Personality / Capabilities / Hard inhibitions sections) |
 | GET | `/api/memory` | Walks `memory/**/*.md` recursively; top-level `README.md` is skipped; subdirs become categories |
-| GET | `/api/escalations` | Walks `escalations/*.md`; inlines `proposed_skill` drafts from `agents/proposed/`; sorted by status → urgency → date |
+| GET | `/api/escalations` | Walks `escalations/*.md`; inlines `proposed_skill` drafts from `verbs/proposed/`; sorted by status → urgency → date |
 | GET | `/api/activity?limit=N` | One entry per line of files matching `PRAXIS_LOG_GLOB` (default 50, capped at 500) |
 | POST | `/api/setup/role` | Wizard submit — seeds the role with two git commits |
 
@@ -54,10 +54,10 @@ All endpoints return JSON. Read endpoints exist for parity / external consumers,
 
 | Surface | Source files | Notes |
 |---|---|---|
-| Persona / hero | `agents/persona.md` | Looks for `## Identity`, `## Voice & Personality`, `## Capabilities`, `## Hard inhibitions` headers with bulleted children |
+| Persona / hero | `persona.md` | Looks for `## Identity`, `## Voice & Personality`, `## Capabilities`, `## Hard inhibitions` headers with bulleted children |
 | Memory | `memory/**/*.md` | Recency-sorted; filterable by category subdir |
 | Escalations | `escalations/*.md` | Sorted by status (open first) → urgency → date desc; filterable by status |
-| Activity | files matching `PRAXIS_LOG_GLOB` | Recent agent runs |
+| Activity | files matching `PRAXIS_LOG_GLOB` | Recent verb runs |
 
 The dashboard handles missing files gracefully — section-by-section error handling, one failed loader doesn't blank the page.
 
@@ -69,13 +69,13 @@ When the operator submits `/setup`, two commits land on the role's repo:
 
 Populates the role from `template/`:
 - `CLAUDE.md` — operating manual with `{ROLE_NAME}` substituted and the operator's role description injected
-- `agents/persona.md` — identity / voice / capabilities / inhibitions populated from the wizard's fields
-- `agents/escalate.md`, `agents/proposed/README.md` — copied verbatim with substitutions
+- `persona.md` — identity / voice / capabilities / inhibitions populated from the wizard's fields (at the role root)
+- `verbs/escalate.md`, `verbs/proposed/README.md` — copied verbatim with substitutions
 - `memory/{people,accounts,notes}/.gitkeep` plus `memory/README.md`
 - `escalations/README.md`
 - `lib/.gitkeep`
 - `.gitignore`
-- Optional starter agent stubs at `agents/{slug}.md` if the operator listed any
+- Optional starter verb stubs at `verbs/{slug}.md` if the operator listed any
 
 **Commit 2 — `chore: tidy framework-only files post-seed`**
 
@@ -94,7 +94,7 @@ Both commits are visible in `git log` and can be reverted independently. The wiz
 - **Phase 0** (shipped): read-only role-watcher, hosted via Astro on the host
 - **Phase 1** (this Dockerfile + compose): dockerized; framework repo mounted as a volume
 - **Phase 3** (shipped — the wizard): role-planning UX in `/setup`; converts the framework into a populated role
-- **Phase 4** (planned): verb taxonomy from agent frontmatter, agents grouped by verb in the dashboard
+- **Phase 4** (planned): verb-tag taxonomy from verb frontmatter, verbs grouped by tag in the dashboard
 - **Phase 2** (last): hosted chat UI replaces Claude Code as the runtime; the dashboard becomes the operator's primary interface
 
 ## What it isn't

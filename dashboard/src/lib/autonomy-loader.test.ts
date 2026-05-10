@@ -32,10 +32,10 @@ describe('parseAutonomyYaml', () => {
       '      Persona-shaped notebook.',
       '      Operator prunes; I notice.',
       '',
-      '  - path: agents/proposed/',
+      '  - path: verbs/proposed/',
       '    mode: full',
       '    why: |',
-      '      Drafts of new agents.',
+      '      Drafts of new verbs.',
       '',
       '  - path: lib/research-strategies.yaml',
       '    mode: append-only',
@@ -52,9 +52,9 @@ describe('parseAutonomyYaml', () => {
       why: 'Persona-shaped notebook.\nOperator prunes; I notice.',
     });
     expect(surfaces[1]).toEqual({
-      path: 'agents/proposed/',
+      path: 'verbs/proposed/',
       mode: 'full',
-      why: 'Drafts of new agents.',
+      why: 'Drafts of new verbs.',
     });
     expect(surfaces[2]).toEqual({
       path: 'lib/research-strategies.yaml',
@@ -182,11 +182,11 @@ describe('recentAutonomousEdits', () => {
     const author = { name: 'Sam Parker', email: 'sam@example.test' };
     await commitAs(tempDir, 'memory/note.md', '# m', 'memory: note', author);
     await commitAs(tempDir, 'lib/customers.yaml', 'c: 1', 'lib: customers', author);
-    await commitAs(tempDir, 'agents/proposed/draft.md', '# d', 'proposed: draft', author);
+    await commitAs(tempDir, 'verbs/proposed/draft.md', '# d', 'proposed: draft', author);
 
     const edits = await recentAutonomousEdits(tempDir, {
       role_email: 'sam@example.test',
-      autonomous_paths: ['memory/', 'agents/proposed/'],
+      autonomous_paths: ['memory/', 'verbs/proposed/'],
     });
     expect(edits.map((e) => e.message).sort()).toEqual(['memory: note', 'proposed: draft']);
   });

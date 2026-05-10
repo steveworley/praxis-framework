@@ -1,12 +1,13 @@
 import React from 'react';
 import { render } from 'ink';
 import { App } from '../app.js';
+import { loadCatalog } from '../lib/catalog.js';
 
 interface InitOptions {
   path?: string;
 }
 
-export const initCommand = (options: InitOptions) => {
+export const initCommand = async (options: InitOptions) => {
   // Ink's useInput requires raw mode, which only works on a real TTY. Refuse
   // to start cleanly when run under CI, piped input, or any non-interactive
   // context — beats letting the React reconciler crash with an obscure
@@ -19,10 +20,25 @@ export const initCommand = (options: InitOptions) => {
     process.exit(1);
   }
 
+  // Load the framework catalog up-front. The wizard can't function without
+  // it, and surfacing the failure here keeps the Ink tree free of a
+  // loading-spinner detour for what should be an instant disk read.
+  let catalog;
+  try {
+    catalog = await loadCatalog();
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    process.stderr.write(`praxis: ${message}\n`);
+    process.exit(1);
+  }
+
   const scaffoldPath = options.path ?? process.cwd();
-  const { waitUntilExit } = render(<App scaffoldPath={scaffoldPath} />, {
-    exitOnCtrlC: true,
-  });
+  const { waitUntilExit } = render(
+    <App scaffoldPath={scaffoldPath} catalog={catalog} />,
+    {
+      exitOnCtrlC: true,
+    },
+  );
 
   waitUntilExit().catch((err: unknown) => {
     const message = err instanceof Error ? err.message : String(err);

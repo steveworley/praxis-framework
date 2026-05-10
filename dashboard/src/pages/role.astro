@@ -1,10 +1,10 @@
 ---
-import AgentRow from '@/components/AgentRow.astro';
+import VerbRow from '@/components/VerbRow.astro';
 import IdentityStrip from '@/components/IdentityStrip.astro';
 import PersonaPane from '@/components/PersonaPane.astro';
 import RouteHeader from '@/components/RouteHeader.astro';
 import BaseLayout from '@/layouts/BaseLayout.astro';
-import { type AgentsResult, listLibFiles, loadAgents } from '@/lib/agents-loader';
+import { type VerbsResult, listLibFiles, loadVerbs } from '@/lib/verbs-loader';
 import {
   type AutonomousEdit,
   type AutonomyConfig,
@@ -23,9 +23,9 @@ if (mode === 'seed') {
   return Astro.redirect('/setup');
 }
 
-const [personaRes, agentsRes, libRes, escalationsRes, autonomyRes] = await Promise.allSettled([
+const [personaRes, verbsRes, libRes, escalationsRes, autonomyRes] = await Promise.allSettled([
   parsePersona(roleHome),
-  loadAgents(roleHome),
+  loadVerbs(roleHome),
   listLibFiles(roleHome),
   assembleEscalations(roleHome),
   loadAutonomy(roleHome),
@@ -33,7 +33,7 @@ const [personaRes, agentsRes, libRes, escalationsRes, autonomyRes] = await Promi
 
 const persona: Persona | null = personaRes.status === 'fulfilled' ? personaRes.value : null;
 const personaError = personaRes.status === 'rejected' ? String(personaRes.reason) : null;
-const agents: AgentsResult = agentsRes.status === 'fulfilled' ? agentsRes.value : { live: [], proposed: [] };
+const verbs: VerbsResult = verbsRes.status === 'fulfilled' ? verbsRes.value : { live: [], proposed: [] };
 const libFiles: string[] = libRes.status === 'fulfilled' ? libRes.value : [];
 const openCount =
   escalationsRes.status === 'fulfilled' ? escalationsRes.value.countsByStatus.open : 0;
@@ -98,28 +98,28 @@ function firstLine(message: string): string {
         <IdentityStrip persona={persona} showEmail={true} />
       ) : (
         <div class="empty">
-          Failed to parse persona: {personaError ?? 'no agents/persona.md found'}
+          Failed to parse persona: {personaError ?? 'no persona.md found'}
         </div>
       )}
 
       <div class="group">
         <div class="group-head">
           <span class="group-title">Constitution</span>
-          <span class="group-counter">authored · agents/persona.md</span>
+          <span class="group-counter">authored · persona.md</span>
         </div>
         <div class="persona-block">
           <PersonaPane
             variant="voice"
             heading="Voice"
             source={`${persona?.voice.length ?? 0} ${(persona?.voice.length ?? 0) === 1 ? 'rule' : 'rules'}`}
-            empty='Add a "## Voice & Personality" section to agents/persona.md with bulleted "- **Label** -- detail" entries.'
+            empty='Add a "## Voice & Personality" section to persona.md with bulleted "- **trait** -- qualifier" entries (or nested sub-bullets for multi-qualifier traits).'
             items={persona?.voice ?? []}
           />
           <PersonaPane
             variant="constitution"
             heading="Hard inhibitions"
             source={`${persona?.inhibitions.length ?? 0} ${(persona?.inhibitions.length ?? 0) === 1 ? 'rule' : 'rules'}`}
-            empty='Add a "## Hard inhibitions" section to agents/persona.md.'
+            empty='Add a "## Hard inhibitions" section to persona.md.'
             items={persona?.inhibitions ?? []}
           />
         </div>
@@ -127,18 +127,18 @@ function firstLine(message: string): string {
 
       <div class="group">
         <div class="group-head">
-          <span class="group-title">Agents</span>
+          <span class="group-title">Verbs</span>
           <span class="group-counter">
-            {agents.live.length} live
-            {agents.proposed.length > 0 && ` · ${agents.proposed.length} pending review`}
+            {verbs.live.length} live
+            {verbs.proposed.length > 0 && ` · ${verbs.proposed.length} pending review`}
           </span>
         </div>
-        {agents.live.length === 0 && agents.proposed.length === 0 ? (
-          <div class="empty">No agents authored yet. Add `.md` files under `agents/`.</div>
+        {verbs.live.length === 0 && verbs.proposed.length === 0 ? (
+          <div class="empty">No verbs authored yet. Add `.md` files under `verbs/`.</div>
         ) : (
-          <div class="agents-list">
-            {agents.live.map((a) => <AgentRow agent={a} />)}
-            {agents.proposed.map((a) => <AgentRow agent={a} proposed={true} />)}
+          <div class="verbs-list">
+            {verbs.live.map((v) => <VerbRow verb={v} />)}
+            {verbs.proposed.map((v) => <VerbRow verb={v} proposed={true} />)}
           </div>
         )}
       </div>

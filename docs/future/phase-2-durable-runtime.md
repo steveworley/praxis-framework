@@ -4,13 +4,13 @@
 
 ## Why
 
-Today a praxis role runs as a Claude Code session: ephemeral, operator-invoked, dev-loop-shaped. The role's *state* persists (in `agents/`, `lib/`, `memory/`, `escalations/`, `campaigns/`), but the *agent* doesn't — it lives only as long as the session.
+Today a praxis role runs as a Claude Code session: ephemeral, operator-invoked, dev-loop-shaped. The role's *state* persists (in `persona.md`, `verbs/`, `lib/`, `memory/`, `escalations/`, `campaigns/`), but the *agent* doesn't — it lives only as long as the session.
 
 For some roles that's fine (BD with daily review cadences). For others (incident response, account watchers, anything with off-hours triggers) the role needs to be always-on: scheduled cron, event-driven webhooks, queue-driven tasks. Phase 2 is the durable runtime that supports those shapes.
 
 ## The frame
 
-Praxis already separates **role spec** from **runtime**. The directory conventions, persona, agents, lib, memory, escalations — those are the role spec. Claude Code is one runtime executor. Phase 2 builds another.
+Praxis already separates **role spec** from **runtime**. The directory conventions, persona, verbs, lib, memory, escalations — those are the role spec. Claude Code is one runtime executor. Phase 2 builds another.
 
 That separation is load-bearing for the framework's claim. The role spec doesn't change; the runtime is implementation detail. A durable runtime reads the same files, follows the same conventions, surfaces through the same dashboard.
 
@@ -18,9 +18,9 @@ That separation is load-bearing for the framework's claim. The role spec doesn't
 
 Surprisingly little, but three new primitives are needed:
 
-### 1. Tool registry — agent frontmatter
+### 1. Tool registry — verb frontmatter
 
-Every agent file declares its required tool capabilities, trigger shape, and inputs/outputs in YAML frontmatter:
+Every verb file declares its required tool capabilities, trigger shape, and inputs/outputs in YAML frontmatter:
 
 ```yaml
 ---
@@ -44,17 +44,17 @@ budget:
   max_runtime_seconds: 600
 ---
 
-# Email Sending Agent
+# Email Sending Verb
 
 You are Sam Parker. Your job is to send approved outreach emails via Gmail.
 ...
 ```
 
-The runtime reads each agent file's frontmatter on startup, validates that all declared tools are available, and uses `when_to_run` to wire triggers.
+The runtime reads each verb file's frontmatter on startup, validates that all declared tools are available, and uses `when_to_run` to wire triggers.
 
 ### 2. Trigger config — `lib/triggers.yaml`
 
-A central config declaring how agents get invoked. Operator-authored, never edited by the agent (gated, like `lib/autonomy.yaml`).
+A central config declaring how verbs get invoked. Operator-authored, never edited by the role (gated, like `lib/autonomy.yaml`).
 
 ```yaml
 # lib/triggers.yaml
@@ -62,26 +62,26 @@ A central config declaring how agents get invoked. Operator-authored, never edit
 
 triggers:
   # Cron-driven
-  - agent: monitor-channels
+  - verb: monitor-channels
     type: cron
     schedule: "*/15 * * * *"
     description: "Poll watched Slack channels every 15 minutes"
 
   # Stage-transition: fires when matching state lands
-  - agent: draft-emails
+  - verb: draft-emails
     type: stage_transition
     when:
       stage_in: [contact_found, qualified]
     description: "Draft outreach when contacts are ready"
 
-  - agent: pre-send-check
+  - verb: pre-send-check
     type: stage_transition
     when:
       stage_in: [approved]
       missing: contact.pre_send.currency.status
     description: "Verify contact currency before send"
 
-  - agent: send-emails
+  - verb: send-emails
     type: stage_transition
     when:
       stage_in: [approved]
@@ -89,24 +89,24 @@ triggers:
     description: "Send approved + verified drafts"
 
   # Scheduled with day-of-week
-  - agent: account-read
+  - verb: account-read
     type: cron
     schedule: "0 9 * * MON"
     description: "Weekly customer account read, Monday 9am AEST"
 
   # Event-driven (webhook or MCP signal)
-  - agent: respond
+  - verb: respond
     type: event
     source: mcp:gmail.reply_received
     description: "Handle warm replies as they land"
 
   # On-demand only — never auto-fires
-  - agent: discover
+  - verb: discover
     type: on_demand
     description: "Operator: 'run discover for {campaign}'"
 
-  # Chained from another agent's output
-  - agent: review
+  # Chained from another verb's output
+  - verb: review
     type: chained
     after: draft-emails
     when:
@@ -126,7 +126,7 @@ triggers:
 
 ### 3. Tool surface contract — `template/lib/tools.yaml`
 
-Framework-level catalog of capability strings. Roles declare needed tools per-agent (in frontmatter); the runtime maps capabilities to concrete adapters at startup.
+Framework-level catalog of capability strings. Roles declare needed tools per-verb (in frontmatter); the runtime maps capabilities to concrete adapters at startup.
 
 ```yaml
 # template/lib/tools.yaml
@@ -178,7 +178,7 @@ Runtimes implement adapters for each capability. A role that declares `tools: [m
 │                                         │
 │  ┌─────────────────────────────────┐    │
 │  │ Role state (mounted volume)     │    │
-│  │   agents/   lib/   memory/      │    │
+│  │   verbs/    lib/   memory/      │    │
 │  │   campaigns/   escalations/     │    │
 │  └─────────────────────────────────┘    │
 │                                         │
@@ -192,8 +192,8 @@ Runtimes implement adapters for each capability. A role that declares `tools: [m
 │  ┌─────────────────────────────────┐    │
 │  │ Anthropic API session           │    │
 │  │   system: CLAUDE.md + persona   │    │
-│  │   user: agent file body         │    │
-│  │   tools: per-agent registry     │    │
+│  │   user: verb file body          │    │
+│  │   tools: per-verb registry      │    │
 │  │   working_dir: /role            │    │
 │  └────────────┬────────────────────┘    │
 │               ▼                         │
@@ -219,13 +219,13 @@ Runtimes implement adapters for each capability. A role that declares `tools: [m
 └─────────────────────────────────────────┘
 ```
 
-A role per container. Mounted volume for role state. The runtime reads triggers, fires agents, the dashboard reads the files for visibility. The HiTM gate (escalations) is async — operator approves from the dashboard whenever they get to it, no live session required.
+A role per container. Mounted volume for role state. The runtime reads triggers, fires verbs, the dashboard reads the files for visibility. The HiTM gate (escalations) is async — operator approves from the dashboard whenever they get to it, no live session required.
 
 ## What stays unchanged
 
 Everything that's already in praxis:
 
-- `agents/` directory + persona + playbooks
+- `persona.md` (role root) + `verbs/` (playbooks)
 - `lib/` reference data
 - `memory/` notebook
 - `escalations/` queue
@@ -242,7 +242,7 @@ The role spec is the contribution. The durable runtime is a *new executor* for t
 
 | Primitive | Purpose | Notes |
 |---|---|---|
-| Agent frontmatter | Per-agent declaration of tools, triggers, inputs/outputs, budget | Migrate existing agents — small effort |
+| Verb frontmatter | Per-verb declaration of tools, triggers, inputs/outputs, budget | Migrate existing verbs — small effort |
 | `lib/triggers.yaml` | Central trigger config | Operator-authored; gated like autonomy.yaml |
 | `template/lib/tools.yaml` | Framework-level capability catalog | Versioned with the framework |
 | Runtime container | Docker image with supervisor + tool adapters + Anthropic client | Phase 2 deliverable |
@@ -254,13 +254,13 @@ The role spec is the contribution. The durable runtime is a *new executor* for t
 ## Migration path for Sam (or any existing role)
 
 **Phase 1.5** (preparatory, low-risk):
-- Add frontmatter to existing agent files declaring tools + when_to_run + budget
-- Create `lib/triggers.yaml` describing how each agent currently fires (mostly `on_demand` for now)
+- Add frontmatter to existing verb files declaring tools + when_to_run + budget
+- Create `lib/triggers.yaml` describing how each verb currently fires (mostly `on_demand` for now)
 - No runtime change yet — Sam still runs in Claude Code
 
 **Phase 2.0** (parallel deployment):
 - Stand up the runtime container against Sam's role home (read-only at first, dry-run mode)
-- Verify the trigger router fires the right agents at the right time without actually invoking
+- Verify the trigger router fires the right verbs at the right time without actually invoking
 - Compare what *would* have happened against Sam's actual Claude Code runs
 
 **Phase 2.1** (live durable):
@@ -271,8 +271,8 @@ The role spec is the contribution. The durable runtime is a *new executor* for t
 ## Open questions
 
 - **Concurrency model.** Does the runtime process prospects in parallel, or serialize per pipeline? Sam's pipeline implicitly assumes serial; parallel breaks some sequencing. Probably need per-stage parallelism caps.
-- **Working-dir mutation safety.** Two agents writing to the same prospect file simultaneously is a race. File locking? Per-prospect mutex? Optimistic concurrency control (compare-and-swap on a version field)?
-- **Reflection-beat trigger.** "End of run" is well-defined when an operator drives. For a long-running daemon, what's the unit-of-run? Per-task-cluster? Time-windowed? Per-agent-invocation?
+- **Working-dir mutation safety.** Two verbs writing to the same prospect file simultaneously is a race. File locking? Per-prospect mutex? Optimistic concurrency control (compare-and-swap on a version field)?
+- **Reflection-beat trigger.** "End of run" is well-defined when an operator drives. For a long-running daemon, what's the unit-of-run? Per-task-cluster? Time-windowed? Per-verb-invocation?
 - **Cost / budget management.** Per-agent budgets, per-day caps, alerting when budget exhausted. How does that surface to the operator?
 - **Tool-availability degradation.** What happens when an MCP goes down mid-run? Per-tool fallback? Pause-the-role? Surface as escalation?
 - **Multi-role on one host.** One role per container or many? Resource isolation? Shared MCPs?
@@ -282,7 +282,7 @@ These get worked out during Phase 2 build, not before.
 
 ## Phase 2 work breakdown (proposed sub-issues)
 
-1. **Spec: tool registry primitive** — define agent frontmatter schema; document; migrate `template/agents/escalate.md` and the wizard's stub generator
+1. **Spec: tool registry primitive** — define verb frontmatter schema; document; migrate `template/verbs/escalate.md` and the wizard's stub generator
 2. **Spec: trigger config primitive** — define `lib/triggers.yaml` schema; document the five trigger types
 3. **Spec: tool surface contract** — define `template/lib/tools.yaml` capability catalog; document
 4. **Build: runtime container scaffold** — Dockerfile, mounted-volume role state, Anthropic API integration, trigger router skeleton
@@ -294,7 +294,7 @@ These get worked out during Phase 2 build, not before.
 
 ## What this is not
 
-- Not a rewrite of the role spec. The directory conventions, persona, agents, lib — all unchanged.
-- Not Hermes. Even with a durable runtime, capability changes still go through the HiTM gate (`agents/proposed/` + operator acceptance). The runtime fires agents; it doesn't modify them.
+- Not a rewrite of the role spec. The directory conventions, persona, verbs, lib — all unchanged.
+- Not Hermes. Even with a durable runtime, capability changes still go through the HiTM gate (`verbs/proposed/` + operator acceptance). The runtime fires verbs; it doesn't modify them.
 - Not a replacement for Claude Code. Claude Code remains the dev-loop / debugging / interactive surface. The durable runtime is the production executor.
 - Not a multi-tenant platform. One role per deployment. Multi-role = multiple deployments. (That separation is by design — see `docs/philosophy.md` on cross-role state.)

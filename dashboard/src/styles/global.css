@@ -758,12 +758,12 @@ button {
   font-family: ui-monospace, monospace;
 }
 
-.agents-list {
+.verbs-list {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0.4rem 0.8rem;
 }
-.agent-row {
+.verb-row {
   display: grid;
   grid-template-columns: 160px 1fr auto;
   gap: 1rem;
@@ -774,26 +774,26 @@ button {
   font-size: 12.5px;
   align-items: baseline;
 }
-.agent-row.proposed {
+.verb-row.proposed {
   background: #f3eef9;
   border-color: #dccfe6;
   grid-column: 1 / -1;
 }
-.agent-row .file {
+.verb-row .file {
   font-family: ui-monospace, monospace;
   color: var(--ink-muted);
 }
-.agent-row .verb {
+.verb-row .label {
   color: var(--ink);
 }
-.agent-row .verb-tag {
+.verb-row .verb-tag {
   font-family: ui-monospace, monospace;
   font-size: 10.5px;
   color: var(--ink-faint);
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
-.agent-row.proposed .verb-tag {
+.verb-row.proposed .verb-tag {
   color: var(--info);
 }
 
@@ -1111,10 +1111,10 @@ button {
   .persona-block {
     grid-template-columns: 1fr;
   }
-  .agents-list {
+  .verbs-list {
     grid-template-columns: 1fr;
   }
-  .agent-row {
+  .verb-row {
     grid-template-columns: 1fr;
     gap: 0.2rem;
   }

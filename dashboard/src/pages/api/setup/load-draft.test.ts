@@ -39,7 +39,7 @@ describe('GET /api/setup/load-draft', () => {
   it("returns kind: 'ready' with the parsed persona when the draft is well-formed", async () => {
     const draftDir = path.join(tempDir, '.praxis');
     await fs.mkdir(draftDir, { recursive: true });
-    const text = `# Persona — Iris\n\n## Identity\n\n- **Full name**: Iris Chen\n\n## Voice & Personality\n\n- **Direct** -- single-sentence opens\n\n## Capabilities\n\n- I can run weekly reads\n\n## Hard inhibitions\n\n- I never send without approval\n\n## Initial agents\n\n- **account-read** -- weekly customer read\n`;
+    const text = `# Persona — Iris\n\n## Identity\n\n- **Full name**: Iris Chen\n\n## Voice & Personality\n\n- **direct** -- single-sentence opens\n\n## Capabilities\n\n- I can run weekly reads\n\n## Hard inhibitions\n\n- I never send without approval\n\n## Initial verbs\n\n- **account-read** -- weekly customer read\n`;
     await fs.writeFile(path.join(draftDir, 'persona-draft.md'), text, 'utf-8');
 
     const res = await callGet();
@@ -48,12 +48,12 @@ describe('GET /api/setup/load-draft', () => {
     expect(payload.kind).toBe('ready');
     expect(payload.persona.identity.full_name).toBe('Iris Chen');
     expect(payload.persona.voice).toEqual([
-      { label: 'Direct', detail: 'single-sentence opens' },
+      { trait: 'direct', qualifiers: ['single-sentence opens'] },
     ]);
     expect(payload.persona.capabilities).toEqual(['I can run weekly reads']);
     expect(payload.persona.inhibitions).toEqual(['I never send without approval']);
-    expect(payload.persona.initial_agents).toEqual([
-      { slug: 'account-read', purpose: 'weekly customer read' },
+    expect(payload.persona.initial_verbs).toEqual([
+      { slug: 'account-read', description: ['weekly customer read'] },
     ]);
   });
 

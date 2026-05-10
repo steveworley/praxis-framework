@@ -3,9 +3,13 @@ export const STEPS = [
   'organisation',
   'role-definition',
   'path-choice',
-  'stub-voice',
-  'stub-review',
-  'done',
+  'tool-selection',
+  'voice',
+  'capabilities',
+  'inhibitions',
+  'initial-verbs',
+  'review',
+  'wrote',
 ] as const;
 
 export type Step = (typeof STEPS)[number];

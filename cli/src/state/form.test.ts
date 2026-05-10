@@ -106,4 +106,150 @@ describe('Form schema', () => {
     });
     expect(result.success).toBe(true);
   });
+
+  it('defaults tools to an empty array when omitted', () => {
+    const result = Form.safeParse({
+      organisation: {},
+      role_definition: {},
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.tools).toEqual([]);
+    }
+  });
+
+  it('accepts a populated tools array of capability names', () => {
+    const result = Form.safeParse({
+      organisation: {},
+      role_definition: {},
+      tools: ['mcp:slack', 'mcp:google-workspace'],
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.tools).toEqual(['mcp:slack', 'mcp:google-workspace']);
+    }
+  });
+
+  it('rejects a tools entry that is not a string', () => {
+    const result = Form.safeParse({
+      organisation: {},
+      role_definition: {},
+      tools: [123],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('emptyForm() includes an empty tools array', () => {
+    expect(emptyForm().tools).toEqual([]);
+  });
+
+  it('defaults voice_traits, capabilities, inhibitions, initial_verbs to empty arrays', () => {
+    const result = Form.safeParse({
+      organisation: {},
+      role_definition: {},
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.voice_traits).toEqual([]);
+      expect(result.data.capabilities).toEqual([]);
+      expect(result.data.inhibitions).toEqual([]);
+      expect(result.data.initial_verbs).toEqual([]);
+    }
+  });
+
+  it('round-trips a populated form including the new manual-path fields', () => {
+    const populated = {
+      organisation: { name: 'Acme' },
+      role_definition: { role_name: 'bd', one_sentence_purpose: 'sell' },
+      path: 'manual' as const,
+      tools: ['mcp:slack'],
+      voice_traits: [
+        { trait: 'direct', qualifiers: ['names the next step in every reply'] },
+      ],
+      capabilities: ['drafts cold-outreach emails'],
+      inhibitions: ['never quote prices without sign-off'],
+      initial_verbs: [
+        {
+          slug: 'account-curator',
+          description: ['maintain account state', 'flag stale records'],
+        },
+      ],
+    };
+    const result = Form.safeParse(populated);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.voice_traits).toEqual(populated.voice_traits);
+      expect(result.data.capabilities).toEqual(populated.capabilities);
+      expect(result.data.inhibitions).toEqual(populated.inhibitions);
+      expect(result.data.initial_verbs).toEqual(populated.initial_verbs);
+    }
+  });
+
+  it('accepts an initial_verbs entry with no description bullets', () => {
+    const result = Form.safeParse({
+      organisation: {},
+      role_definition: {},
+      initial_verbs: [{ slug: 'bd' }],
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.initial_verbs[0]?.description).toEqual([]);
+    }
+  });
+
+  it('accepts a voice_traits entry with no qualifiers', () => {
+    const result = Form.safeParse({
+      organisation: {},
+      role_definition: {},
+      voice_traits: [{ trait: 'direct' }],
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.voice_traits[0]?.qualifiers).toEqual([]);
+    }
+  });
+
+  it('rejects voice_traits entries missing the canonical trait name', () => {
+    const missingTrait = Form.safeParse({
+      organisation: {},
+      role_definition: {},
+      voice_traits: [{ trait: '', qualifiers: ['anything'] }],
+    });
+    expect(missingTrait.success).toBe(false);
+  });
+
+  it('rejects initial_verbs entries with an empty slug', () => {
+    const missingSlug = Form.safeParse({
+      organisation: {},
+      role_definition: {},
+      initial_verbs: [{ slug: '', description: [] }],
+    });
+    expect(missingSlug.success).toBe(false);
+  });
+
+  it('rejects initial_verbs description entries that are not strings', () => {
+    const bad = Form.safeParse({
+      organisation: {},
+      role_definition: {},
+      initial_verbs: [{ slug: 'bd', description: [123] }],
+    });
+    expect(bad.success).toBe(false);
+  });
+
+  it('rejects non-string entries in capabilities/inhibitions arrays', () => {
+    const bad = Form.safeParse({
+      organisation: {},
+      role_definition: {},
+      capabilities: [123],
+    });
+    expect(bad.success).toBe(false);
+  });
+
+  it('emptyForm() includes empty arrays for all manual-path fields', () => {
+    const f = emptyForm();
+    expect(f.voice_traits).toEqual([]);
+    expect(f.capabilities).toEqual([]);
+    expect(f.inhibitions).toEqual([]);
+    expect(f.initial_verbs).toEqual([]);
+  });
 });

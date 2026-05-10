@@ -6,7 +6,7 @@
  *
  * Flow:
  *   1 Welcome → 2 Organisation → 3 Role definition → 4 Path choice
- *   Manual:    5 Voice → 6 Capabilities → 7 Inhibitions → 8 Initial agents
+ *   Manual:    5 Voice → 6 Capabilities → 7 Inhibitions → 8 Initial verbs
  *   Research:  5 Handoff (writes brief, polls for draft) → review
  *   Both:      9 Review & edit (editable, seeding inline) → success
  */
@@ -109,7 +109,7 @@
         <textarea id="org-customer" rows="2" x-model="form.organisation.customer_profile" placeholder="Government and regulated enterprise procurement teams. Technical buyers, mostly."></textarea>
       </div>
       <div class="field-output-hint">
-        Saved to <code>agents/persona.md</code> under <code>## Organisation</code>.
+        Saved to <code>persona.md</code> under <code>## Organisation</code>.
       </div>
     </div>
 
@@ -148,7 +148,7 @@
         <textarea id="role-day" rows="3" x-model="form.role_definition.day_to_day" placeholder="Cold campaigns, manual lead intake, weekly account reads on existing customers."></textarea>
       </div>
       <div class="field-output-hint">
-        Saved to <code>agents/persona.md</code> under <code>## Identity</code> and <code>CLAUDE.md</code>.
+        Saved to <code>persona.md</code> under <code>## Identity</code> and <code>CLAUDE.md</code>.
       </div>
     </div>
 
@@ -212,7 +212,7 @@
         :disabled="form.voice_traits.length >= 8"
       >+ Add trait</button>
       <div class="field-output-hint">
-        Each trait becomes a bullet under <code>## Voice &amp; Personality</code> in <code>agents/persona.md</code>.
+        Each trait becomes a bullet under <code>## Voice &amp; Personality</code> in <code>persona.md</code>.
       </div>
     </div>
 
@@ -271,11 +271,11 @@
       </div>
     </div>
 
-    <!-- Step 8 (manual): Initial agents -->
+    <!-- Step 8 (manual): Initial verbs -->
     <div x-show="step === 8 && form.path === 'manual'">
-      <h2>Initial agents (optional)</h2>
+      <h2>Initial verbs (optional)</h2>
       <p class="wizard-help">
-        Agents are markdown playbooks Claude Code reads when triggered. Stub a few here if you already know the
+        Verbs are markdown playbooks Claude Code reads when triggered. Stub a few here if you already know the
         shape; you can also leave this empty and write them by hand later. Slug + one-line purpose. Up to 5.
       </p>
       <div class="example-block">
@@ -287,24 +287,24 @@
       </div>
       <div class="field-row-labels">
         <span>File slug (kebab-case)</span>
-        <span>What this agent does</span>
+        <span>What this verb does</span>
         <span></span>
       </div>
-      <template x-for="(agent, idx) in form.initial_agents" :key="idx">
+      <template x-for="(verb, idx) in form.initial_verbs" :key="idx">
         <div class="field-row">
-          <input type="text" x-model="agent.slug" placeholder="account-read" />
-          <input type="text" x-model="agent.purpose" placeholder="Weekly read of the customer portfolio." />
-          <button type="button" class="icon-btn" @click="form.initial_agents.splice(idx, 1)">×</button>
+          <input type="text" x-model="verb.slug" placeholder="account-read" />
+          <input type="text" x-model="verb.purpose" placeholder="Weekly read of the customer portfolio." />
+          <button type="button" class="icon-btn" @click="form.initial_verbs.splice(idx, 1)">×</button>
         </div>
       </template>
       <button
         type="button"
         class="add-row"
-        @click="form.initial_agents.push({ slug: '', purpose: '' })"
-        :disabled="form.initial_agents.length >= 5"
-      >+ Add agent</button>
+        @click="form.initial_verbs.push({ slug: '', purpose: '' })"
+        :disabled="form.initial_verbs.length >= 5"
+      >+ Add verb</button>
       <div class="field-output-hint">
-        One markdown file per agent under <code>{'agents/{slug}.md'}</code>. The dashboard lists these on the <code>/role</code> page once seeded.
+        One markdown file per verb under <code>{'verbs/{slug}.md'}</code>. The dashboard lists these on the <code>/role</code> page once seeded.
       </div>
     </div>
 
@@ -381,7 +381,7 @@
           <span x-text="`${form.voice_traits.filter(t => t.label && t.detail).length} voice traits`"></span> ·
           <span x-text="`${form.capabilities.filter(Boolean).length} capabilities`"></span> ·
           <span x-text="`${form.inhibitions.filter(Boolean).length} inhibitions`"></span> ·
-          <span x-text="`${form.initial_agents.filter(a => a.slug && a.purpose).length} initial agents`"></span>
+          <span x-text="`${form.initial_verbs.filter(v => v.slug && v.purpose).length} initial verbs`"></span>
         </div>
         <div class="review-summary-jumps">
           <a href="#" @click.prevent="step = 2">edit organisation</a> ·
@@ -456,21 +456,21 @@
       </details>
 
       <details class="review-section">
-        <summary x-text="`Initial agents (${form.initial_agents.filter(a => a.slug && a.purpose).length})`"></summary>
+        <summary x-text="`Initial verbs (${form.initial_verbs.filter(v => v.slug && v.purpose).length})`"></summary>
         <div class="review-section-body">
           <div class="field-row-labels">
             <span>Slug</span>
             <span>Purpose</span>
             <span></span>
           </div>
-          <template x-for="(agent, idx) in form.initial_agents" :key="`a-${idx}`">
+          <template x-for="(verb, idx) in form.initial_verbs" :key="`v-${idx}`">
             <div class="field-row">
-              <input type="text" x-model="agent.slug" placeholder="account-read" />
-              <input type="text" x-model="agent.purpose" placeholder="Weekly read…" />
-              <button type="button" class="icon-btn" @click="form.initial_agents.splice(idx, 1)">×</button>
+              <input type="text" x-model="verb.slug" placeholder="account-read" />
+              <input type="text" x-model="verb.purpose" placeholder="Weekly read…" />
+              <button type="button" class="icon-btn" @click="form.initial_verbs.splice(idx, 1)">×</button>
             </div>
           </template>
-          <button type="button" class="add-row" @click="form.initial_agents.push({ slug: '', purpose: '' })" :disabled="form.initial_agents.length >= 5">+ Add agent</button>
+          <button type="button" class="add-row" @click="form.initial_verbs.push({ slug: '', purpose: '' })" :disabled="form.initial_verbs.length >= 5">+ Add verb</button>
         </div>
       </details>
 
@@ -528,7 +528,7 @@
         voice_traits: [{ label: '', detail: '' }],
         capabilities: [''],
         inhibitions: [''],
-        initial_agents: [],
+        initial_verbs: [],
       },
       research: {
         brief_path: '',
@@ -768,9 +768,15 @@
           }
         }
         if (Array.isArray(persona.voice) && persona.voice.length > 0) {
+          // The persona-parser emits the new {trait, qualifiers} shape; the
+          // wizard's form still uses the legacy {label, detail} pair shape
+          // for now (no curated trait cloud in the dashboard yet). Map the
+          // first qualifier into `detail` so the form round-trips. A later
+          // dashboard pass will replace this UX with a trait-cloud picker
+          // matching the CLI's voice flow.
           this.form.voice_traits = persona.voice.map((t) => ({
-            label: t.label || '',
-            detail: t.detail || '',
+            label: t.trait || '',
+            detail: Array.isArray(t.qualifiers) ? (t.qualifiers[0] || '') : '',
           }));
         }
         if (Array.isArray(persona.capabilities) && persona.capabilities.length > 0) {
@@ -779,11 +785,20 @@
         if (Array.isArray(persona.inhibitions) && persona.inhibitions.length > 0) {
           this.form.inhibitions = persona.inhibitions.slice();
         }
-        if (Array.isArray(persona.initial_agents) && persona.initial_agents.length > 0) {
-          this.form.initial_agents = persona.initial_agents.map((a) => ({
-            slug: a.slug || '',
-            purpose: a.purpose || '',
-          }));
+        if (Array.isArray(persona.initial_verbs) && persona.initial_verbs.length > 0) {
+          // The persona-parser emits the new {slug, description: string[]}
+          // shape; the wizard's form still holds {slug, purpose: string}
+          // pending a future bullet-list UX. Collapse description bullets
+          // into the single purpose line so the form round-trips. A later
+          // dashboard pass will give this section a textarea-or-bullet UI
+          // matching the CLI's two-stage flow.
+          this.form.initial_verbs = persona.initial_verbs.map((v) => {
+            const desc = Array.isArray(v.description) ? v.description : [];
+            return {
+              slug: v.slug || '',
+              purpose: desc.join(' '),
+            };
+          });
         }
       },
 
@@ -818,14 +833,38 @@
             location: this.form.identity.location.trim() || undefined,
             reports_to: this.form.identity.reports_to.trim() || undefined,
           },
+          // Adapt the wizard's legacy {label, detail} pair shape into the new
+          // {trait, qualifiers} schema the seed package expects. `label`
+          // becomes the canonical trait token (lowercased so it matches the
+          // shared trait library); `detail`, if present, becomes the single
+          // qualifier. A future dashboard refresh will source `trait` from a
+          // curated cloud rather than free text.
           voice_traits: this.form.voice_traits
-            .map((t) => ({ label: t.label.trim(), detail: t.detail.trim() }))
-            .filter((t) => t.label && t.detail),
+            .map((t) => {
+              const label = t.label.trim().toLowerCase();
+              const detail = t.detail.trim();
+              return {
+                trait: label,
+                qualifiers: detail.length > 0 ? [detail] : [],
+              };
+            })
+            .filter((t) => t.trait.length > 0),
           capabilities: this.form.capabilities.map((s) => s.trim()).filter(Boolean),
           inhibitions: this.form.inhibitions.map((s) => s.trim()).filter(Boolean),
-          initial_agents: this.form.initial_agents
-            .map((a) => ({ slug: a.slug.trim(), purpose: a.purpose.trim() }))
-            .filter((a) => a.slug && a.purpose),
+          // The wizard's form still uses {slug, purpose: string} for the
+          // legacy single-line UX. Adapt to the seed package's new
+          // {slug, description: string[]} shape on submit — purpose
+          // becomes the single bullet (or no bullet if it's blank).
+          initial_verbs: this.form.initial_verbs
+            .map((v) => {
+              const slug = v.slug.trim();
+              const purpose = v.purpose.trim();
+              return {
+                slug,
+                description: purpose.length > 0 ? [purpose] : [],
+              };
+            })
+            .filter((v) => v.slug.length > 0),
         };
       },
       async submit() {
