@@ -386,10 +386,17 @@ const bootstrap = {
       display: block;
       max-width: 720px;
       margin: 0;
-      padding: 0;
+      padding: 0.2rem 0 0.2rem 1.1rem;
+      border-left: 3px solid var(--rule);
+    }
+    .chat-turn.role-user {
+      border-left-color: var(--rule-strong);
+    }
+    .chat-turn.role-assistant {
+      border-left-color: var(--info);
     }
     .chat-turn + .chat-turn {
-      margin-top: 2.2rem;
+      margin-top: 2.4rem;
     }
     .chat-turn-head {
       display: flex;
@@ -399,9 +406,12 @@ const bootstrap = {
     }
     .chat-turn-role {
       font-size: 11px;
-      font-weight: 600;
+      font-weight: 700;
       letter-spacing: 0.1em;
       text-transform: uppercase;
+      color: var(--ink-soft);
+    }
+    .role-user .chat-turn-role {
       color: var(--ink);
     }
     .role-assistant .chat-turn-role {
