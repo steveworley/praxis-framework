@@ -13,6 +13,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.95.2",
     "@astrojs/node": "^9.0.0",
     "@praxis/seed": "*",
     "astro": "^5.0.0",
