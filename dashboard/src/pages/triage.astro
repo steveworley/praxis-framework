@@ -126,9 +126,9 @@ const bootstrap = {
             </div>
 
             <div class="actions" x-show="pending[e.id] !== 'accept' && pending[e.id] !== 'decline' && pending[e.id] !== 'comment'">
-              <button type="button" class="action-btn" @click="pending[e.id] = 'accept'">Accept</button>
-              <button type="button" class="action-btn danger" @click="pending[e.id] = 'decline'">Decline</button>
-              <button type="button" class="action-btn" @click="pending[e.id] = 'comment'">Comment</button>
+              <button type="button" class="action-btn" @click="openAction(e.id, 'accept')">Accept</button>
+              <button type="button" class="action-btn danger" @click="openAction(e.id, 'decline')">Decline</button>
+              <button type="button" class="action-btn" @click="openAction(e.id, 'comment')">Comment</button>
             </div>
 
             <template x-if="pending[e.id] === 'accept'">
@@ -239,7 +239,7 @@ const bootstrap = {
                     <span x-show="busy[v.slug]">Saving…</span>
                   </button>
                   <button type="button" class="action-btn" @click="startEdit(v.slug)">Edit before accept</button>
-                  <button type="button" class="action-btn danger" @click="pending[v.slug] = 'decline'">Decline</button>
+                  <button type="button" class="action-btn danger" @click="openAction(v.slug, 'decline')">Decline</button>
                 </span>
               </template>
               <template x-if="editing[v.slug]">
@@ -580,6 +580,17 @@ const bootstrap = {
         cancelAction(id) {
           this.pending[id] = undefined;
           this.notes[id] = '';
+        },
+
+        // Open an action form (accept/decline/comment) for a card, resetting
+        // any stuck per-card state. busy[id] can get stranded truthy when a
+        // prior request was aborted mid-flight (page reload, hot-reload, etc.)
+        // and the finally never ran — that left the Confirm button disabled
+        // with no way for the operator to retry.
+        openAction(id, action) {
+          this.pending[id] = action;
+          this.notes[id] = '';
+          this.busy[id] = false;
         },
 
         /**
