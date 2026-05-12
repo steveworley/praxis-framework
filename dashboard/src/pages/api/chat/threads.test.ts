@@ -63,10 +63,15 @@ describe('POST /api/chat/threads', () => {
     expect(payload.thread_id).toMatch(/^\d{4}-\d{2}-\d{2}-[0-9a-f]+$/);
     expect(payload.title).toBe('how did the acme account go?');
 
-    // Verify the file actually landed.
+    // Verify the file actually landed with frontmatter only — no turns yet.
+    // /api/chat/message owns the first user-turn write; threads-POST must not
+    // duplicate it.
     const filePath = path.join(tempDir, 'memory', 'conversations', `${payload.thread_id}.md`);
     const text = await fs.readFile(filePath, 'utf-8');
-    expect(text).toContain('how did the acme account go?');
+    expect(text).toMatch(/^---\n/);
+    expect(text).toContain(`thread_id: ${payload.thread_id}`);
+    expect(text).toMatch(/title: how did the acme account go\?/);
+    expect(text).not.toMatch(/^## User · /m);
   });
 
   it('shows new threads in the subsequent GET response', async () => {

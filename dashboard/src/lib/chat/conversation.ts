@@ -76,7 +76,14 @@ function isSafeThreadId(threadId: string): boolean {
 }
 
 /**
- * Create a fresh thread file with frontmatter + the first user turn.
+ * Create a fresh thread file with frontmatter only. The first user turn is
+ * persisted separately via `appendTurn()` — `appendTurn` is the single source
+ * of truth for turn writes so the same message can't land twice (POST
+ * /api/chat/threads followed by POST /api/chat/message would otherwise
+ * duplicate the user turn on disk).
+ *
+ * The title is still derived from `firstMessage` because the caller doesn't
+ * pass a title separately and we want a useful list-view label immediately.
  */
 export async function createThread(
   roleHome: string,
@@ -94,8 +101,7 @@ export async function createThread(
     created: now,
     updated: now,
   });
-  const firstTurn = renderTurn({ role: 'user', timestamp: now, content: firstMessage });
-  const body = `${frontmatter}\n\n${firstTurn}\n`;
+  const body = `${frontmatter}\n`;
 
   await fs.writeFile(threadPath(roleHome, threadId), body, 'utf-8');
   return { thread_id: threadId, title };

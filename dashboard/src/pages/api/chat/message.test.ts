@@ -91,8 +91,13 @@ describe('POST /api/chat/message', () => {
   it('runs the chat turn end-to-end and persists user + assistant turns', async () => {
     process.env['ANTHROPIC_API_KEY'] = 'sk-test';
     await seedRole();
-    const { createThread, loadThread } = await import('@/lib/chat/conversation.ts');
+    const { appendTurn, createThread, loadThread } = await import(
+      '@/lib/chat/conversation.ts'
+    );
     const { thread_id } = await createThread(tempDir, 'first question');
+    // createThread writes frontmatter only; the prior turn is appended
+    // explicitly to mirror what /api/chat/message does on the first send.
+    await appendTurn(tempDir, thread_id, { role: 'user', content: 'first question' });
 
     createSpy.mockResolvedValueOnce({
       content: [{ type: 'text', text: 'My answer.' }],

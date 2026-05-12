@@ -53,26 +53,43 @@ describe('generateThreadId', () => {
 });
 
 describe('createThread', () => {
-  it('writes a file with frontmatter and the first user turn', async () => {
+  it('writes a file with frontmatter only — no turns yet', async () => {
     const { thread_id } = await createThread(tempDir, 'What did you do this week?');
     const filePath = path.join(tempDir, 'memory', 'conversations', `${thread_id}.md`);
     const text = await fs.readFile(filePath, 'utf-8');
     expect(text).toMatch(/^---\n/);
     expect(text).toContain(`thread_id: ${thread_id}`);
     expect(text).toMatch(/title: What did you do this week\?/);
-    expect(text).toMatch(/^## User · /m);
-    expect(text).toContain('What did you do this week?');
+    // Title is derived from firstMessage, but the message itself is not
+    // persisted as a turn — appendTurn is the single source of truth.
+    expect(text).not.toMatch(/^## User · /m);
+    const loaded = await loadThread(tempDir, thread_id);
+    expect(loaded.turns).toEqual([]);
   });
 
   it('returns a derived title', async () => {
     const result = await createThread(tempDir, 'hello there');
     expect(result.title).toBe('hello there');
   });
+
+  it('does not duplicate the user turn when appendTurn is called with the same content', async () => {
+    // Regression: createThread used to write the first user turn itself, and
+    // the chat frontend then POSTed to /api/chat/message which appended the
+    // same turn again. Now createThread writes frontmatter only and appendTurn
+    // is the single source of truth.
+    const { thread_id } = await createThread(tempDir, 'hello');
+    await appendTurn(tempDir, thread_id, { role: 'user', content: 'hello' });
+    const loaded = await loadThread(tempDir, thread_id);
+    expect(loaded.turns).toHaveLength(1);
+    expect(loaded.turns[0]!.role).toBe('user');
+    expect(loaded.turns[0]!.content).toBe('hello');
+  });
 });
 
 describe('appendTurn + loadThread round-trip', () => {
   it('appends both user and assistant turns and preserves them in order', async () => {
     const { thread_id } = await createThread(tempDir, 'first message');
+    await appendTurn(tempDir, thread_id, { role: 'user', content: 'first message' });
     await appendTurn(tempDir, thread_id, { role: 'assistant', content: 'first reply' });
     await appendTurn(tempDir, thread_id, { role: 'user', content: 'second message' });
     await appendTurn(tempDir, thread_id, {
@@ -116,10 +133,13 @@ describe('listThreads', () => {
     try {
       vi.setSystemTime(new Date('2026-05-10T10:00:00Z'));
       const a = await createThread(tempDir, 'oldest');
+      await appendTurn(tempDir, a.thread_id, { role: 'user', content: 'oldest' });
       vi.setSystemTime(new Date('2026-05-11T10:00:00Z'));
       const b = await createThread(tempDir, 'middle');
+      await appendTurn(tempDir, b.thread_id, { role: 'user', content: 'middle' });
       vi.setSystemTime(new Date('2026-05-12T10:00:00Z'));
       const c = await createThread(tempDir, 'newest');
+      await appendTurn(tempDir, c.thread_id, { role: 'user', content: 'newest' });
 
       const summaries = await listThreads(tempDir);
       expect(summaries.map((s) => s.thread_id)).toEqual([c.thread_id, b.thread_id, a.thread_id]);

@@ -4,7 +4,7 @@ import path from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { createThread } from '@/lib/chat/conversation.ts';
+import { appendTurn, createThread } from '@/lib/chat/conversation.ts';
 
 import { DELETE, GET } from './[id].ts';
 
@@ -45,6 +45,9 @@ describe('GET /api/chat/threads/[id]', () => {
 
   it('returns the thread detail when present', async () => {
     const { thread_id } = await createThread(tempDir, 'hello there');
+    // The first user turn is appended explicitly — createThread writes
+    // frontmatter only so /api/chat/message owns turn persistence.
+    await appendTurn(tempDir, thread_id, { role: 'user', content: 'hello there' });
     const res = await callGet(thread_id);
     expect(res.status).toBe(200);
     const payload = (await res.json()) as {
