@@ -398,79 +398,6 @@ button {
   font-weight: 600;
   margin-bottom: 0.8rem;
 }
-.full-esc .body p {
-  margin-bottom: 0.5rem;
-  color: var(--ink-soft);
-}
-.full-esc .body h1,
-.full-esc .body h2,
-.full-esc .body h3,
-.full-esc .body h4,
-.full-esc .body h5,
-.full-esc .body h6 {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--ink-muted);
-  margin: 1rem 0 0.25rem;
-  font-weight: 600;
-}
-.full-esc .body ul,
-.full-esc .body ol {
-  padding-left: 1.4rem;
-  margin: 0.4rem 0;
-  color: var(--ink-soft);
-}
-.full-esc .body li {
-  padding: 0.1rem 0;
-}
-.full-esc .body blockquote {
-  margin: 0.5rem 0 0.7rem;
-  padding-left: 0.9rem;
-  border-left: 2px solid var(--rule-strong);
-  color: var(--ink-muted);
-}
-.full-esc .body table {
-  border-collapse: collapse;
-  margin: 0.6rem 0 0.8rem;
-  font-size: 13px;
-  width: 100%;
-}
-.full-esc .body thead {
-  border-bottom: 1px solid var(--rule-strong);
-}
-.full-esc .body th,
-.full-esc .body td {
-  text-align: left;
-  padding: 0.3rem 0.7rem 0.3rem 0;
-  vertical-align: top;
-}
-.full-esc .body th {
-  font-weight: 600;
-  color: var(--ink);
-}
-.full-esc .body tbody tr {
-  border-top: 1px solid var(--rule);
-}
-.full-esc .body tbody tr:first-child {
-  border-top: none;
-}
-.full-esc .body pre {
-  margin: 0.6rem 0 0.8rem;
-  padding: 0.7rem 0.9rem;
-  background: var(--surface-mute);
-  border: 1px solid var(--rule);
-  border-radius: 3px;
-  overflow-x: auto;
-  font-size: 12.5px;
-  line-height: 1.55;
-}
-.full-esc .body pre code {
-  background: none;
-  padding: 0;
-  font-size: inherit;
-  color: var(--ink);
-}
 .full-esc .draft-block {
   margin-top: 1rem;
   padding: 1rem;
@@ -573,84 +500,178 @@ button {
   font-weight: 600;
   margin-bottom: 0.4rem;
 }
-.memo .body p {
-  font-size: 13px;
-  color: var(--ink-soft);
-  margin-bottom: 0.4rem;
+
+/* ---- Canonical markdown-prose surface --------------------------------
+ *
+ * Every dashboard surface that injects rendered markdown (chat turns,
+ * full escalations, notebook memos, output documents/drafts/records/plans/
+ * references) wraps the HTML in `<div class="prose">` so the typography
+ * stays consistent. The scale was set on /chat (commit fbbe99b) and
+ * generalised here.
+ *
+ * Per-surface positioning (max-width, padding, surrounding chrome) stays
+ * on the surrounding container — `.prose` only describes the prose itself.
+ * Surface overrides (e.g. PlanView strips list bullets for its checklist)
+ * sit alongside the surface-specific styles.
+ * ----------------------------------------------------------------- */
+.prose {
+  font-size: 15px;
+  color: var(--ink);
+  line-height: 1.7;
 }
-.memo .body p:last-child {
+.prose p {
+  margin: 0.4rem 0;
+}
+.prose > :first-child {
+  margin-top: 0;
+}
+.prose > :last-child {
   margin-bottom: 0;
 }
-.memo .body h1,
-.memo .body h2,
-.memo .body h3,
-.memo .body h4,
-.memo .body h5,
-.memo .body h6 {
-  font-size: 11px;
+.prose ul,
+.prose ol {
+  margin: 0.5rem 0;
+  padding-left: 1.5rem;
+}
+.prose li {
+  margin: 0.2rem 0;
+}
+.prose li > ul,
+.prose li > ol {
+  margin: 0.2rem 0;
+  padding-left: 1.2rem;
+}
+/* Headings render as inline section markers, not page headings — scaled
+   just slightly above body text so a passage reads as one piece, not a
+   printed document. */
+.prose h1,
+.prose h2,
+.prose h3,
+.prose h4,
+.prose h5,
+.prose h6 {
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--ink-muted);
-  margin: 0.8rem 0 0.2rem;
+  margin-top: 1.3rem;
+  margin-bottom: 0.45rem;
+  color: var(--ink);
+  line-height: 1.35;
 }
-.memo .body ul,
-.memo .body ol {
-  padding-left: 1.4rem;
-  margin: 0.3rem 0;
-  font-size: 13px;
-  color: var(--ink-soft);
+.prose h1 {
+  font-size: 1.15rem;
 }
-.memo .body li {
-  margin-bottom: 0.15rem;
+.prose h2 {
+  font-size: 1.05rem;
 }
-.memo .body blockquote {
-  margin: 0.4rem 0 0.5rem;
-  padding-left: 0.9rem;
-  border-left: 2px solid var(--rule-strong);
-  color: var(--ink-muted);
-  font-size: 13px;
+.prose h3 {
+  font-size: 0.98rem;
 }
-.memo .body table {
-  border-collapse: collapse;
-  margin: 0.5rem 0 0.7rem;
-  font-size: 12.5px;
-  width: 100%;
+.prose h4,
+.prose h5,
+.prose h6 {
+  font-size: 0.94rem;
 }
-.memo .body thead {
-  border-bottom: 1px solid var(--rule-strong);
+.prose hr {
+  border: none;
+  border-top: 1px dashed var(--rule);
+  margin: 1.5rem 0;
 }
-.memo .body th,
-.memo .body td {
-  text-align: left;
-  padding: 0.3rem 0.6rem 0.3rem 0;
-  vertical-align: top;
+/* If an <hr> is immediately followed by a heading the dashed rule + new
+   section marker would double-gap. Collapse the heading's top margin so
+   the pairing reads as one intentional break. */
+.prose hr + h1,
+.prose hr + h2,
+.prose hr + h3,
+.prose hr + h4,
+.prose hr + h5,
+.prose hr + h6 {
+  margin-top: 0.2rem;
 }
-.memo .body th {
+.prose strong {
   font-weight: 600;
   color: var(--ink);
 }
-.memo .body tbody tr {
+.prose em {
+  font-style: italic;
+}
+.prose blockquote {
+  margin: 0.7rem 0;
+  padding: 0.2rem 0 0.2rem 1rem;
+  border-left: 3px solid var(--rule-strong);
+  color: var(--ink-soft);
+  font-size: 14.5px;
+}
+.prose blockquote p {
+  margin: 0.3rem 0;
+}
+.prose blockquote p:first-child {
+  margin-top: 0;
+}
+.prose blockquote p:last-child {
+  margin-bottom: 0;
+}
+.prose blockquote blockquote {
+  margin-top: 0.4rem;
+  color: var(--ink-muted);
+}
+.prose table {
+  border-collapse: collapse;
+  margin: 0.7rem 0 0.9rem;
+  font-size: 13.5px;
+  width: 100%;
+  border: 1px solid var(--rule);
+}
+.prose thead {
+  background: var(--surface-mute);
+  border-bottom: 1px solid var(--rule-strong);
+}
+.prose th,
+.prose td {
+  text-align: left;
+  padding: 0.5rem 0.85rem;
+  vertical-align: top;
+  border-right: 1px solid var(--rule);
+}
+.prose th:last-child,
+.prose td:last-child {
+  border-right: none;
+}
+.prose th {
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--surface-mute);
+}
+.prose tbody tr {
   border-top: 1px solid var(--rule);
 }
-.memo .body tbody tr:first-child {
-  border-top: none;
-}
-.memo .body pre {
-  margin: 0.5rem 0 0.7rem;
-  padding: 0.6rem 0.85rem;
+.prose pre {
+  margin: 0.7rem 0 0.9rem;
+  padding: 0.85rem 1rem;
   background: var(--surface-mute);
   border: 1px solid var(--rule);
   border-radius: 3px;
   overflow-x: auto;
-  font-size: 12px;
+  max-width: 100%;
+  box-sizing: border-box;
+  font-size: 12.5px;
   line-height: 1.55;
 }
-.memo .body pre code {
+.prose pre code {
   background: none;
   padding: 0;
   font-size: inherit;
   color: var(--ink);
+}
+.prose code {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 0.92em;
+  background: var(--surface-mute);
+  padding: 1px 5px;
+  border-radius: 3px;
+  color: var(--ink-soft);
+}
+.prose del,
+.prose s {
+  color: var(--ink-muted);
 }
 
 /* Activity row */

@@ -39,7 +39,7 @@ const draftLineCount = e.proposed_skill_body ? e.proposed_skill_body.split('\n')
     </div>
   </div>
   <h3>{e.title}</h3>
-  <div class="body" set:html={bodyHtml}></div>
+  <div class="prose" set:html={bodyHtml}></div>
   {isProposed && e.proposed_skill_body && (
     <div class="draft-block">
       <div class="draft-meta">

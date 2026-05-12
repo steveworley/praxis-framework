@@ -34,7 +34,7 @@ const audience = typeof meta.extras['audience'] === 'string' ? meta.extras['audi
       )}
     </div>
   </header>
-  <div class="out-prose" set:html={bodyHtml}></div>
+  <div class="prose" set:html={bodyHtml}></div>
 </article>
 
 <style>
@@ -78,30 +78,9 @@ const audience = typeof meta.extras['audience'] === 'string' ? meta.extras['audi
   .out-meta .dot {
     color: var(--ink-faint);
   }
-  .out-prose {
+  /* The rendered body wears the canonical `.prose` class — typography lives
+     in global.css. Constrain measure to a readable column on this surface. */
+  .out-detail .prose {
     max-width: 720px;
-    font-size: 15px;
-    line-height: 1.65;
-    color: var(--ink-soft);
-  }
-  .out-prose :global(h1),
-  .out-prose :global(h2),
-  .out-prose :global(h3) {
-    color: var(--ink);
-    margin-top: 1.6rem;
-    margin-bottom: 0.6rem;
-  }
-  .out-prose :global(p) {
-    margin: 0.8rem 0;
-  }
-  .out-prose :global(ul),
-  .out-prose :global(ol) {
-    padding-left: 1.4rem;
-  }
-  .out-prose :global(code) {
-    font-size: 13px;
-    background: var(--surface-mute);
-    padding: 1px 5px;
-    border-radius: 2px;
   }
 </style>

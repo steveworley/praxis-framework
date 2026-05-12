@@ -60,7 +60,7 @@ const percent = total === 0 ? 0 : Math.round((completed / total) * 100);
     </div>
   )}
 
-  <div class="out-prose" set:html={bodyHtml}></div>
+  <div class="prose" set:html={bodyHtml}></div>
 </article>
 
 <style>
@@ -130,17 +130,18 @@ const percent = total === 0 ? 0 : Math.round((completed / total) * 100);
     background: var(--ink);
     transition: width 0.2s ease;
   }
-  .out-prose {
+  /* The plan body wears the canonical `.prose` class — typography lives in
+     global.css. Plans are markdown checklists (`- [ ]` / `- [x]`), so strip
+     the bullet from the top-level list — the bracket-tokens themselves carry
+     the visual marker. */
+  .out-detail .prose {
     max-width: 720px;
-    font-size: 14.5px;
-    line-height: 1.7;
-    color: var(--ink-soft);
   }
-  .out-prose :global(ul) {
+  .out-detail .prose ul {
     list-style: none;
     padding-left: 0;
   }
-  .out-prose :global(li) {
+  .out-detail .prose li {
     margin: 0.3rem 0;
   }
 </style>

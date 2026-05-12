@@ -34,7 +34,7 @@ const tags = Array.isArray(meta.extras['tags']) ? meta.extras['tags'] : [];
       </div>
     )}
   </header>
-  <div class="out-prose" set:html={bodyHtml}></div>
+  <div class="prose" set:html={bodyHtml}></div>
 </article>
 
 <style>
@@ -90,13 +90,9 @@ const tags = Array.isArray(meta.extras['tags']) ? meta.extras['tags'] : [];
     border-radius: 10px;
     letter-spacing: 0.02em;
   }
-  .out-prose {
+  /* The rendered body wears the canonical `.prose` class — typography lives
+     in global.css. Constrain measure to a readable column on this surface. */
+  .out-detail .prose {
     max-width: 720px;
-    font-size: 14.5px;
-    line-height: 1.65;
-    color: var(--ink-soft);
-  }
-  .out-prose :global(p) {
-    margin: 0.7rem 0;
   }
 </style>

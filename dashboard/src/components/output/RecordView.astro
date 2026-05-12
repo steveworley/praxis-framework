@@ -38,7 +38,7 @@ const observedAt = typeof meta.extras['observed_at'] === 'string' ? meta.extras[
       <span>updated {meta.updated}</span>
     </div>
   </header>
-  <div class="out-prose" set:html={bodyHtml}></div>
+  <div class="prose" set:html={bodyHtml}></div>
 </article>
 
 <style>
@@ -104,18 +104,9 @@ const observedAt = typeof meta.extras['observed_at'] === 'string' ? meta.extras[
   .out-meta .dot {
     color: var(--ink-faint);
   }
-  .out-prose {
+  /* The rendered body wears the canonical `.prose` class — typography lives
+     in global.css. Constrain measure to a readable column on this surface. */
+  .out-detail .prose {
     max-width: 720px;
-    font-size: 14.5px;
-    line-height: 1.65;
-    color: var(--ink-soft);
-  }
-  .out-prose :global(p) {
-    margin: 0.7rem 0;
-  }
-  .out-prose :global(h2),
-  .out-prose :global(h3) {
-    color: var(--ink);
-    margin-top: 1.4rem;
   }
 </style>

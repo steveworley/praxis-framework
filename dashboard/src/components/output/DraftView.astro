@@ -58,7 +58,7 @@ const updateUrl = `/api/output/${meta.type}/${meta.slug}`;
     )}
   </dl>
 
-  <div class="out-prose" set:html={bodyHtml}></div>
+  <div class="prose" set:html={bodyHtml}></div>
 
   {canMarkSent && (
     <div class="out-actions">
@@ -160,18 +160,13 @@ const updateUrl = `/api/output/${meta.type}/${meta.slug}`;
     margin: 0;
     color: var(--ink);
   }
-  .out-prose {
+  /* The draft body wears the canonical `.prose` class — typography lives in
+     global.css. The envelope-letter feel comes from the rule-bar on the left
+     and a slightly tighter column. */
+  .out-detail .prose {
     max-width: 680px;
-    font-size: 14.5px;
-    line-height: 1.65;
-    color: var(--ink-soft);
-    padding-left: 0.4rem;
+    padding: 0.2rem 0 0.2rem 0.4rem;
     border-left: 2px solid var(--rule);
-    padding-top: 0.2rem;
-    padding-bottom: 0.2rem;
-  }
-  .out-prose :global(p) {
-    margin: 0.7rem 0;
   }
   .out-actions {
     margin-top: 1.6rem;
