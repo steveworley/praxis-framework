@@ -5,6 +5,7 @@ import SummaryCard from '@/components/SummaryCard.astro';
 import TriageCard from '@/components/TriageCard.astro';
 import BaseLayout from '@/layouts/BaseLayout.astro';
 import { assembleActivity, type ActivityEntry } from '@/lib/activity-loader';
+import { personaNameFrom } from '@/lib/chat/persona-name';
 import { countLiveVerbs } from '@/lib/verbs-loader';
 import {
   assembleEscalations,
@@ -59,7 +60,7 @@ const proposedVerbCount: number =
   proposedVerbsRes.status === 'fulfilled' ? proposedVerbsRes.value.length : 0;
 
 const updatedAt = nowIso();
-const fullName = persona?.identity['full_name'] ?? persona?.identity['name'] ?? '';
+const personaName = personaNameFrom(persona);
 
 const now = Date.now();
 const openEscalations: EscalationEntry[] = (escalations?.entries ?? []).filter(
@@ -137,11 +138,11 @@ async function collectRoleEdits(home: string): Promise<RoleEditsSummary> {
 }
 ---
 
-<BaseLayout title={fullName ? `Praxis · ${fullName}` : 'Praxis'}>
+<BaseLayout title={persona ? `Praxis · ${personaName.full}` : 'Praxis'}>
   <main class="container">
     <RouteHeader
       current="home"
-      personaName={fullName}
+      personaName={persona ? personaName.full : ''}
       escalationOpenCount={openCount}
       triageCount={openCount + proposedVerbCount}
       updatedAt={updatedAt}
@@ -195,9 +196,9 @@ async function collectRoleEdits(home: string): Promise<RoleEditsSummary> {
     {persona && (
       <div class="chat-cta">
         <div class="chat-cta-body">
-          <div class="chat-cta-title">Talk to {fullName || 'this role'}</div>
+          <div class="chat-cta-title">Talk to {personaName.full}</div>
           <div class="chat-cta-meta">
-            A conversational lens on the role's interior. Conversations persist as markdown under <code>memory/conversations/</code>.
+            A conversational lens on {personaName.short}'s interior. Conversations persist as markdown under <code>memory/conversations/</code>.
           </div>
         </div>
         <a class="chat-cta-link" href="/chat">open chat →</a>

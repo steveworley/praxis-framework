@@ -17,7 +17,7 @@ afterEach(async () => {
 });
 
 async function seedPersona(): Promise<void> {
-  const text = `# Persona — Iris\n\n## Identity\n\n- **Full name**: Iris Chen\n- **Role**: CSM agent\n\n## Voice & Personality\n\n- **direct** -- single-sentence opens\n\n## Capabilities\n\n- I run weekly account reads\n\n## Hard inhibitions\n\n- I never send without approval\n`;
+  const text = `# Persona — Iris\n\n## Identity\n\n- **Full name**: Iris Chen\n- **Working title**: CSM agent\n- **Role**: CSM agent\n\n## Voice & Personality\n\n- **direct** -- single-sentence opens\n\n## Capabilities\n\n- I run weekly account reads\n\n## Hard inhibitions\n\n- I never send without approval\n`;
   await fs.writeFile(path.join(tempDir, 'persona.md'), text, 'utf-8');
 }
 
@@ -26,10 +26,17 @@ describe('buildSystemPrompt', () => {
     await expect(buildSystemPrompt(tempDir)).rejects.toThrow(/persona\.md not found/);
   });
 
-  it('opens with "You are <name>." derived from persona identity', async () => {
+  it('opens with "You are <name> (<title>)." derived from persona identity', async () => {
     await seedPersona();
     const prompt = await buildSystemPrompt(tempDir);
-    expect(prompt.startsWith('You are Iris Chen.')).toBe(true);
+    expect(prompt.startsWith('You are Iris Chen (CSM agent).')).toBe(true);
+  });
+
+  it('drops the parenthetical when working_title is not set', async () => {
+    const text = `# Persona — Iris\n\n## Identity\n\n- **Full name**: Iris Chen\n\n## Voice & Personality\n\n- **direct** -- single-sentence opens\n\n## Capabilities\n\n- I run weekly account reads\n\n## Hard inhibitions\n\n- I never send without approval\n`;
+    await fs.writeFile(path.join(tempDir, 'persona.md'), text, 'utf-8');
+    const prompt = await buildSystemPrompt(tempDir);
+    expect(prompt.startsWith('You are Iris Chen.\n')).toBe(true);
   });
 
   it('strips the persona H1 from the embedded body', async () => {

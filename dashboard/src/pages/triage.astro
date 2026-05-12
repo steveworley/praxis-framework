@@ -1,6 +1,7 @@
 ---
 import RouteHeader from '@/components/RouteHeader.astro';
 import BaseLayout from '@/layouts/BaseLayout.astro';
+import { personaNameFrom } from '@/lib/chat/persona-name';
 import { parsePersona, type Persona } from '@/lib/persona-parser';
 import { detectMode, getRoleHome, nowIso } from '@/lib/role-home';
 import {
@@ -40,7 +41,7 @@ const [personaRes, openEscRes, proposedRes] = await Promise.allSettled([
 ]);
 
 const persona: Persona | null = personaRes.status === 'fulfilled' ? personaRes.value : null;
-const fullName = persona?.identity['full_name'] ?? persona?.identity['name'] ?? '';
+const personaName = personaNameFrom(persona);
 const openEscalations: EscalationSummary[] =
   openEscRes.status === 'fulfilled' ? openEscRes.value : [];
 const proposedVerbs: ProposedVerbSummary[] =
@@ -55,22 +56,22 @@ const triageCount = openEscalations.length + proposedVerbs.length;
 const bootstrap = {
   escalations: openEscalations,
   proposedVerbs,
-  roleName: fullName,
+  personaName,
 };
 ---
 
-<BaseLayout title={fullName ? `Triage · ${fullName}` : 'Triage · Praxis'}>
+<BaseLayout title={persona ? `Triage · ${personaName.full}` : 'Triage · Praxis'}>
   <main class="container">
     <RouteHeader
       current="triage"
-      personaName={fullName}
+      personaName={persona ? personaName.full : ''}
       triageCount={triageCount}
       updatedAt={updatedAt}
     />
 
     <div class="triage-shell" x-data="praxisTriage()" x-init="init()">
       <p class="triage-lede">
-        The role's raise-your-hand queue. Accept, decline, or comment on what the role brought to you.
+        <span x-text="`${personaShort}'s raise-your-hand queue. Accept, decline, or comment on what ${personaShort} brought to you.`"></span>
         Every action writes back to the same markdown files; nothing is hidden.
       </p>
 
@@ -89,7 +90,7 @@ const bootstrap = {
 
         <template x-if="escalations.length === 0 && !escError">
           <div class="empty">
-            Nothing in the triage queue. The role hasn't asked for anything.
+            <span x-text="`Nothing in the triage queue. ${personaShort} hasn't asked for anything.`"></span>
           </div>
         </template>
 
@@ -519,10 +520,14 @@ const bootstrap = {
   <script is:inline src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
   <script is:inline>
     function praxisTriage() {
-      const boot = window.__praxisTriageBootstrap || { escalations: [], proposedVerbs: [], roleName: '' };
+      const boot = window.__praxisTriageBootstrap || { escalations: [], proposedVerbs: [], personaName: null };
+      const persona = boot.personaName || { full: 'the role', short: 'the role', identifier: '' };
       return {
         escalations: boot.escalations || [],
         proposedVerbs: boot.proposedVerbs || [],
+        personaFull: persona.full,
+        personaShort: persona.short,
+        personaTitle: persona.title || '',
         // Per-item UI state (keyed by id/slug).
         expanded: {},   // id -> bool
         bodies: {},     // id -> string (body text)

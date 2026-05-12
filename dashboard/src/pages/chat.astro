@@ -3,6 +3,7 @@ import RouteHeader from '@/components/RouteHeader.astro';
 import BaseLayout from '@/layouts/BaseLayout.astro';
 import { hasApiKey } from '@/lib/chat/anthropic.js';
 import { listThreads, type ThreadSummary } from '@/lib/chat/conversation.js';
+import { personaNameFrom } from '@/lib/chat/persona-name.js';
 import { assembleEscalations } from '@/lib/escalations-loader.js';
 import { parsePersona } from '@/lib/persona-parser.js';
 import { detectMode, getRoleHome, nowIso } from '@/lib/role-home.js';
@@ -26,7 +27,7 @@ const threads: ThreadSummary[] = threadsRes.status === 'fulfilled' ? threadsRes.
 const openCount =
   escalationsRes.status === 'fulfilled' ? escalationsRes.value.countsByStatus.open : 0;
 
-const fullName = persona?.identity['full_name'] ?? persona?.identity['name'] ?? '';
+const personaName = personaNameFrom(persona);
 const initialThreadId =
   (Astro.url.searchParams.get('thread') ?? '').trim() || threads[0]?.thread_id || '';
 const apiKeyConfigured = hasApiKey();
@@ -36,15 +37,15 @@ const bootstrap = {
   threads,
   initialThreadId,
   apiKeyConfigured,
-  roleName: fullName,
+  personaName,
 };
 ---
 
-<BaseLayout title={fullName ? `Chat · ${fullName}` : 'Chat · Praxis'}>
+<BaseLayout title={persona ? `Chat · ${personaName.full}` : 'Chat · Praxis'}>
   <main class="container">
     <RouteHeader
       current="chat"
-      personaName={fullName}
+      personaName={persona ? personaName.full : ''}
       escalationOpenCount={openCount}
       updatedAt={updatedAt}
     />
@@ -56,7 +57,7 @@ const bootstrap = {
           <p>
             The chat surface requires <code>ANTHROPIC_API_KEY</code> to be set in the
             dashboard's environment. Set it and restart the dashboard to enable
-            conversations with this role.
+            conversations with {personaName.full}.
           </p>
           <p>
             Optionally set <code>PRAXIS_CHAT_MODEL</code> to override the default
@@ -110,7 +111,7 @@ const bootstrap = {
                   class="reflect-btn"
                   :disabled="!activeThreadId || sending || reflecting || turns.length === 0"
                   @click="reflect()"
-                  title="Ask the role to reflect on this conversation"
+                  :title="`Ask ${personaShort} to reflect on this conversation`"
                 >
                   <span x-show="!reflecting">Reflect</span>
                   <span x-show="reflecting">Reflecting…</span>
@@ -124,11 +125,11 @@ const bootstrap = {
               <template x-if="!activeThreadId">
                 <div class="chat-empty-hint">
                   <p class="chat-empty-lede">
-                    A correspondence with <strong x-text="roleName || 'this role'"></strong>.
+                    A correspondence with <strong x-text="personaFull"></strong>.
                   </p>
                   <p class="chat-empty-sub">
                     Each exchange is saved as markdown under <code>memory/conversations/</code>,
-                    inspectable like every other piece of the role's interior.
+                    <span x-text="`like every other entry in ${personaShort}'s notebook.`"></span>
                   </p>
                 </div>
               </template>
@@ -138,7 +139,7 @@ const bootstrap = {
               <template x-for="(turn, idx) in turns" :key="`${activeThreadId}-${idx}`">
                 <article class="chat-turn" :class="`role-${turn.role}`">
                   <header class="chat-turn-head">
-                    <span class="chat-turn-role" x-text="turn.role === 'user' ? 'You' : (roleName || 'Role')"></span>
+                    <span class="chat-turn-role" x-text="turn.role === 'user' ? 'You' : personaShort"></span>
                     <span class="chat-turn-time" x-text="formatTimestamp(turn.timestamp)"></span>
                   </header>
                   <template x-if="Array.isArray(turn.toolCalls) && turn.toolCalls.length > 0">
@@ -160,7 +161,7 @@ const bootstrap = {
               <template x-if="pendingAssistant">
                 <article class="chat-turn role-assistant pending">
                   <header class="chat-turn-head">
-                    <span class="chat-turn-role" x-text="roleName || 'Role'"></span>
+                    <span class="chat-turn-role" x-text="personaShort"></span>
                     <span class="chat-turn-time">thinking…</span>
                   </header>
                   <div class="chat-turn-body"><span class="dot-pulse">·  ·  ·</span></div>
@@ -169,7 +170,7 @@ const bootstrap = {
               <template x-if="reflecting">
                 <article class="chat-turn role-assistant pending">
                   <header class="chat-turn-head">
-                    <span class="chat-turn-role" x-text="roleName || 'Role'"></span>
+                    <span class="chat-turn-role" x-text="personaShort"></span>
                     <span class="chat-turn-time">reflecting…</span>
                   </header>
                   <div class="chat-turn-body"><span class="dot-pulse">·  ·  ·</span></div>
@@ -192,7 +193,7 @@ const bootstrap = {
                 <textarea
                   x-model="composer"
                   x-ref="composer"
-                  placeholder="Write to your role…"
+                  :placeholder="`Message ${personaShort}…`"
                   @keydown.cmd.enter="send()"
                   @keydown.ctrl.enter="send()"
                   rows="1"
@@ -628,13 +629,16 @@ const bootstrap = {
   <script is:inline src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
   <script is:inline>
     function praxisChat() {
-      const boot = window.__praxisChatBootstrap || { threads: [], initialThreadId: '', roleName: '' };
+      const boot = window.__praxisChatBootstrap || { threads: [], initialThreadId: '', personaName: null };
+      const persona = boot.personaName || { full: 'the role', short: 'the role', identifier: '' };
       return {
         threads: boot.threads || [],
         activeThreadId: boot.initialThreadId || '',
         activeTitle: '',
         activeUpdated: '',
-        roleName: boot.roleName || '',
+        personaFull: persona.full,
+        personaShort: persona.short,
+        personaTitle: persona.title || '',
         turns: [],
         composer: '',
         attachments: [],

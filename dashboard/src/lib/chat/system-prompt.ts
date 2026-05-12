@@ -5,6 +5,8 @@ import { loadAutonomy, type AutonomySurface } from '@/lib/autonomy-loader.js';
 import { parsePersona } from '@/lib/persona-parser.js';
 import { loadVerbs, type VerbSummary } from '@/lib/verbs-loader.js';
 
+import { personaNameFrom } from './persona-name.js';
+
 /**
  * Surfaces that are constitutional — the model may NOT edit these directly,
  * regardless of what `lib/autonomy.yaml` says. These mirror the framework's
@@ -32,11 +34,14 @@ export async function buildSystemPrompt(roleHome: string): Promise<string> {
     throw new Error(`persona.md not found at ${roleHome}`);
   }
 
-  const roleName =
-    persona.identity['full_name'] ?? persona.identity['name'] ?? 'this role';
+  // Give the model a self-image consistent with how the operator addresses it
+  // in chat copy — by persona name, optionally suffixed with the working
+  // title for context. Falls back through the same chain the UI uses.
+  const name = personaNameFrom(persona);
+  const opener = name.title ? `You are ${name.full} (${name.title}).` : `You are ${name.full}.`;
 
   const sections: string[] = [];
-  sections.push(`You are ${roleName}.`);
+  sections.push(opener);
   sections.push('');
   sections.push(personaText);
 

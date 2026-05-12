@@ -33,9 +33,9 @@ PRAXIS_ROLE_HOME=/path/to/some-role npm run dev
 
 ## Chat
 
-`/chat` is the operator's conversational surface for the role. The model is fed a system prompt assembled from the role's interior (persona body, available verbs, hard rules from `CLAUDE.md`, the autonomy stance from `lib/autonomy.yaml`, and the tool catalog from `lib/tools.yaml`) so it speaks as the role.
+`/chat` is the operator's conversational surface for the persona. The model is fed a system prompt assembled from the role's interior (persona body, available verbs, hard rules from `CLAUDE.md`, the autonomy stance from `lib/autonomy.yaml`, and the tool catalog from `lib/tools.yaml`) so it answers as the persona — addressed by name throughout the UI (the operator writes to Monika, not to "your role").
 
-- **Conversations** persist as markdown under `<role-home>/memory/conversations/<thread_id>.md` — inspectable like every other piece of the role's interior.
+- **Conversations** persist as markdown under `<role-home>/memory/conversations/<thread_id>.md` — inspectable like every other entry in the persona's notebook.
 - **Attachments** uploaded from the composer land under `<role-home>/lib/uploads/<thread_id>/<safe_filename>` and are inlined into the user message when they're small (≤ 10 KB) and text-shaped (`.md`, `.txt`, `.json`, `.yaml`, `.yml`, `.csv`, `.tsv`, `.log`). Upload cap is 5 MB.
 
 ### Learning loop
@@ -58,7 +58,7 @@ Tool calls persist on the assistant turn via an HTML-comment-fenced JSON block i
 
 ### Reflection
 
-The chat pane header has a **Reflect** button. Clicking it asks the role to walk the reflection beat over the whole thread: memory worth keeping, friction worth escalating, patterns worth proposing as new verbs, decisions worth logging. The model is free to reply with a short summary instead if nothing earned its keep.
+The chat pane header has a **Reflect** button. Clicking it asks the persona to walk the reflection beat over the whole thread: memory worth keeping, friction worth escalating, patterns worth proposing as new verbs, decisions worth logging. The model is free to reply with a short summary instead if nothing earned its keep.
 
 ## Triage
 

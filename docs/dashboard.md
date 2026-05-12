@@ -82,7 +82,7 @@ The dashboard handles missing files gracefully — section-by-section error hand
 
 ## Chat
 
-`/chat` is the operator-facing conversational surface for the role. It re-reads the role's interior on every turn so the model embodies the role as it currently stands — refinements to `persona.md`, new entries in `lib/autonomy.yaml`, and proposed verbs all take effect on the next message without restarting anything.
+`/chat` is the operator-facing conversational surface for the persona. The UI addresses the persona by name throughout (placeholder, empty state, turn labels, reflect tooltip) — the operator writes to the person they named, not "your role". The model re-reads the role's interior on every turn so the persona embodies the role as it currently stands — refinements to `persona.md`, new entries in `lib/autonomy.yaml`, and proposed verbs all take effect on the next message without restarting anything.
 
 What the chat reads when assembling the system prompt:
 
@@ -94,7 +94,7 @@ What the chat reads when assembling the system prompt:
 | `lib/autonomy.yaml` | Open surfaces (`mode != gated`) become the allow list; `persona.md`, `verbs/*.md`, `CLAUDE.md`, and `lib/*` stay on the deny list regardless |
 | `lib/tools.yaml` | Capability name + description per entry |
 
-Conversations land at `<role-home>/memory/conversations/<thread_id>.md` in the same markdown shape as every other piece of the role's interior. Operators can grep, diff, or hand-edit them.
+Conversations land at `<role-home>/memory/conversations/<thread_id>.md` in the same markdown shape as every other entry in the persona's notebook. Operators can grep, diff, or hand-edit them.
 
 Attachments uploaded from the composer land at `<role-home>/lib/uploads/<thread_id>/<safe_filename>` (≤ 5 MB per file). Text-shaped attachments under 10 KB are inlined into the user message; everything else is referenced by path.
 
