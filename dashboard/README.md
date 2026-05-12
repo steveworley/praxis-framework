@@ -1,11 +1,12 @@
 # Praxis Interior dashboard
 
-Astro + Node SSR. Four surfaces:
+Astro + Node SSR. Five surfaces:
 
 - `/setup` — wizard that converts the framework repo into a populated role (two visible commits)
 - read-only role-watcher routes (`/`, `/role`, `/escalations`, `/notebook`, `/activity`)
 - `/chat` — conversational lens on the role (Anthropic SDK-backed)
 - `/triage` — operator review surface for the role's raise-your-hand outputs (escalations + proposed verbs)
+- `/output` — typed work product (document / draft / record / plan / reference)
 
 `/` redirects to `/setup` when no `persona.md` exists at the role home.
 
@@ -48,6 +49,8 @@ The model has five growth tools available during every chat turn. They write int
 | `create_escalation` | `escalations/<date>-<random>-<slug>.md` | — (ids include a random suffix to avoid collisions) |
 | `propose_verb` | `verbs/proposed/<slug>.md` | Slug already exists in `verbs/` or `verbs/proposed/` |
 | `append_entry` | An operator-opened append-only YAML surface (e.g. `lib/research-strategies.yaml`) | Surface not in `autonomy.yaml`, wrong mode, missing `root_key`, duplicate `unique_by`, or `max_pending` reached |
+| `write_output` | `output/<type>/<slug>.md` (or `output/record/<entity_type>/<entity_id>/<slug>.md`) | File exists, malformed slug, missing required fields per type, channel enum violation for drafts |
+| `update_output_status` | An existing file under `output/` | File doesn't exist, status not in the closed enum |
 | `log_decision` | `logs/<date>.jsonl` (or `campaigns/<id>/logs/...`) | Unknown campaign id |
 
 Every tool call is gated by `lib/autonomy.yaml` plus a hard-coded constitutional list. Constitutional surfaces (`persona.md`, `verbs/*.md` outside `verbs/proposed/`, `lib/customers.yaml`, `lib/compliance.yaml`, `lib/team.yaml`, `lib/autonomy.yaml`, `CLAUDE.md`) are refused regardless of what the yaml says — the chat surface is never the place to mutate the role's constitution.
@@ -117,6 +120,9 @@ All endpoints return JSON. Read endpoints exist as routes for parity with the le
 | POST | `/api/triage/verbs/proposed/{slug}/accept` | Optional `{ body_override }`. Moves the draft to `verbs/<slug>.md`, updates frontmatter, best-effort appends a row to `CLAUDE.md` |
 | POST | `/api/triage/verbs/proposed/{slug}/decline` | Required `{ reason }`. Flips status to `declined`; file stays in `verbs/proposed/` |
 | POST | `/api/triage/verbs/proposed/{slug}/edit` | Required `{ body }`. Replaces the body in place; frontmatter preserved |
+| GET | `/api/output?type=&status=&entity_type=&entity_id=&limit=` | Lists output entries with optional filters; returns `OutputSummary[]` sorted by `updated` desc |
+| GET | `/api/output/{type}/{...slug}` | Loads one entry (records use multi-segment slug); returns `{ meta, body, body_html, frontmatter }` |
+| POST | `/api/output/{type}/{...slug}` | Updates status. Body `{ status }` from the closed enum. Operator-attributed audit commit. |
 
 ## Production build
 

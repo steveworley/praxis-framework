@@ -37,7 +37,17 @@ Praxis distills four directory conventions, plus the role's identity file at the
 - **`memory/`** — observational notebook. Role-authored. Persona-shaped.
 - **`escalations/`** — structured asks. Role-authored. Operator-triaged.
 
-Plus a fifth role-defined directory for **work product** — Sam uses `campaigns/`, a researcher might use `investigations/`, a triage agent might use `tickets/`. Praxis doesn't enforce a name; each role chooses what fits.
+Plus a sixth framework-shaped surface for **work product** — `output/`, with five typed primitives the framework ships rather than per-role bespoke schemas:
+
+- **`document`** — long-form prose: briefs, notes, analyses.
+- **`draft`** — outgoing communication: emails, Slack DMs, letters, calls.
+- **`record`** — observation tied to an entity: an account read, a meeting log, a call summary.
+- **`plan`** — multi-step intent with a checklist body: `- [ ]` items the role marks done over time.
+- **`reference`** — reusable knowledge: heuristics, recipes, playbook excerpts.
+
+The taxonomy is closed-shape (the framework owns the schemas, in `dashboard/src/lib/output/types.ts` and mirrored as operator-facing reference at `lib/output-schemas.yaml`) but closed-set (only five primitives, chosen to span most knowledge-work outputs without forcing each role to invent its own). Every entry carries the same lifecycle: `draft → review → ready → sent → done → archived`. Adding a new role doesn't add new dashboard code because the renderers are framework-shipped, one per type.
+
+Roles with bespoke work-product shapes (Sam's `campaigns/`, for example) are free to coexist with the typed taxonomy — `output/` is the framework's stance for new roles; legacy work-product surfaces aren't migrated by the framework.
 
 ## Why directories, not abstractions
 

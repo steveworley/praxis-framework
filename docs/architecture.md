@@ -25,8 +25,14 @@ A Praxis role lives in one directory. The convention:
 ├── escalations/               # structured asks (role writes; operator triages)
 │   ├── README.md              # format + lifecycle
 │   └── {date}-{slug}.md       # one file per escalation
-└── {work-product}/            # role-named directory for the actual output
-                               # Sam uses `campaigns/`; choose what fits the role.
+├── output/                    # typed work product (framework-shaped taxonomy)
+│   ├── document/{slug}.md     # long-form prose
+│   ├── draft/{slug}.md        # outgoing communication
+│   ├── record/{entity_type}/{entity_id}/{slug}.md  # entity-tied observation
+│   ├── plan/{slug}.md         # multi-step intent (checklist body)
+│   └── reference/{slug}.md    # reusable knowledge
+└── {legacy-work-product}/     # role-named directory for bespoke output
+                               # Sam uses `campaigns/`; new roles use output/.
 ```
 
 `memory/conversations/` and `lib/uploads/` are created on demand by the dashboard's `/chat` surface (see [`dashboard.md`](dashboard.md) § Chat). They follow the same markdown-and-directory conventions as everything else, so operators can grep, diff, and hand-edit them.
@@ -44,7 +50,8 @@ A Praxis role lives in one directory. The convention:
 | "What did I notice?" | `memory/{people,accounts,notes}/{slug}.md` |
 | "I need help / want to propose a change" | `escalations/{date}-{slug}.md` |
 | "I drafted a new behavior" | `verbs/proposed/{name}.md` + an escalation referencing it |
-| "What did I do?" | `{work-product}/{...}/logs/{date}.jsonl` (role-named) |
+| "What did I produce?" | `output/{type}/{slug}.md` — five primitives, framework-shaped (see [output.md](output.md)) |
+| "What did I do?" | `{work-product}/{...}/logs/{date}.jsonl` (role-named, optional) |
 
 ## File formats
 
@@ -122,9 +129,13 @@ status: open
 ...
 ```
 
-### Work-product layout (role-defined)
+### Output taxonomy
 
-The role-author chooses the work-product directory name and shape. A common pattern Sam uses:
+The framework ships a typed `output/` surface with five primitives. The schema is authoritative in `dashboard/src/lib/output/types.ts` (TypeScript registry + Zod schemas) and shipped as operator-facing reference at `lib/output-schemas.yaml` in the role's home. See [output.md](output.md) for the full spec, frontmatter shape per type, and dashboard rendering.
+
+### Work-product layout (legacy / role-defined)
+
+When a role's work product doesn't fit the five primitives (Sam's `campaigns/` is the reference case), the role-author chooses the directory name and shape. A common pattern Sam uses:
 
 ```
 {work-product}/

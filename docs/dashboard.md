@@ -1,11 +1,12 @@
 # The Praxis dashboard
 
-Astro + Node SSR. Four surfaces:
+Astro + Node SSR. Five surfaces:
 
 - **`/setup`** — the wizard that converts the framework repo into a populated role. Writes two visible git commits.
 - **Read-only supervisor routes** (`/`, `/role`, `/escalations`, `/notebook`, `/activity`) — watch a populated role.
 - **`/chat`** — conversational lens on the role, backed by the Anthropic SDK. The non-technical operator's runtime.
 - **`/triage`** — operator review surface for the role's raise-your-hand outputs (escalations + proposed verbs). Closes the operator-side of the learning loop.
+- **`/output`** — the typed work-product surface. Five primitives (document, draft, record, plan, reference) with per-type renderers and a closed-enum status lifecycle.
 
 `/` redirects to `/setup` when no `persona.md` exists at the role-home root.
 
@@ -68,6 +69,9 @@ All endpoints return JSON. Read endpoints exist for parity / external consumers,
 | POST | `/api/triage/verbs/proposed/{slug}/accept` | Optional `{body_override}`; moves to `verbs/<slug>.md`, best-effort appends to CLAUDE.md verbs table |
 | POST | `/api/triage/verbs/proposed/{slug}/decline` | Required `{reason}`; flips to `declined`, keeps file in place |
 | POST | `/api/triage/verbs/proposed/{slug}/edit` | Required `{body}`; replaces draft body, frontmatter preserved |
+| GET | `/api/output?type=&status=&entity_type=&entity_id=&limit=` | List output entries, filterable by type / status / entity. Returns `OutputSummary[]` sorted by `updated` desc. |
+| GET | `/api/output/{type}/{...slug}` | Load one entry. For records, `{...slug}` is `<entity_type>/<entity_id>/<slug>`. Returns `{meta, body, body_html, frontmatter}`. |
+| POST | `/api/output/{type}/{...slug}` | Update status. Body `{status}` where status is one of the closed lifecycle enum. Operator-attributed commit via audit. |
 
 ## What the dashboard reads
 
@@ -130,6 +134,26 @@ Two sections, both backed by the typed `/api/triage/*` routes:
 
 Every mutation is atomic (write-to-tmp + rename), every id/slug is regex-validated and path-traversal-checked, and the home page surfaces a "N items in triage" strip when the queue is non-empty. The nav tab carries a count badge.
 
+## Output
+
+`/output` is the role's work-product surface. The framework ships five primitives (`document`, `draft`, `record`, `plan`, `reference`) so adding a new role doesn't require new dashboard code — each role's outputs render through the same five views regardless of domain. See [output.md](output.md) for the full taxonomy spec.
+
+Three page levels:
+
+- **`/output`** — overview. Five type cards with counts and the most recent entry per type, plus a 10-entry recent-activity feed underneath.
+- **`/output/[type]`** — listing for one type. Filter chips for status (drawn from the closed lifecycle enum: `draft`, `review`, `ready`, `sent`, `done`, `archived`); for records, an extra `entity_type` filter chip row.
+- **`/output/[type]/[...slug]`** — detail. Dispatches to one of five per-type renderers based on the file's `type` frontmatter:
+
+| Type | Renderer | What it shows |
+|---|---|---|
+| `document` | `DocumentView` | Title + status pill + audience meta + prose body |
+| `draft` | `DraftView` | Envelope head (To / Via / Subject), body in a quoted inset, "Mark as sent" action that POSTs the status update |
+| `record` | `RecordView` | Entity-prominent header (`entity_type · entity_id`), observed_at inline |
+| `plan` | `PlanView` | Goal + owner + progress bar (parsed from `- [ ]` / `- [x]` count in the body) |
+| `reference` | `ReferenceView` | Topic + tag pills + prose body |
+
+The chat tools `write_output` and `update_output_status` write the same files this surface reads. Both commit through the audit module, so every output mutation appears in `git log` with the role's authorship.
+
 ## Audit trail
 
 Every dashboard-mediated mutation — chat-side tool calls and operator-side triage actions — lands as a git commit on the role's repo. Two synthetic actors keep `git log --author=` filtering honest:
@@ -140,6 +164,9 @@ Every dashboard-mediated mutation — chat-side tool calls and operator-side tri
 | `create_escalation` (chat) | `Praxis Role <role@praxis.local>` | `role(escalation): file <kind> — <slug>` |
 | `propose_verb` (chat) | `Praxis Role <role@praxis.local>` | `role(verb): propose <slug>` |
 | `log_decision` (chat) | `Praxis Role <role@praxis.local>` | `role(decision): log <decision_type>` |
+| `write_output` (chat) | `Praxis Role <role@praxis.local>` | `role(output): write <type> <slug>` |
+| `update_output_status` (chat) | `Praxis Role <role@praxis.local>` | `role(output): status <slug>: <prev> → <next>` |
+| `POST /api/output/.../{slug}` (dashboard) | operator (from `git config`) | `operator(output): status <slug>: <prev> → <next>` |
 | accept / decline / comment escalation (triage) | operator (from `git config`) | `operator(triage): <action> escalation <id>` |
 | accept / decline / edit proposed verb (triage) | operator (from `git config`) | `operator(triage): <action> proposed verb <slug>` |
 
