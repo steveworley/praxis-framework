@@ -513,15 +513,22 @@ const bootstrap = {
       margin: 0.7rem 0 0.9rem;
       font-size: 13.5px;
       width: 100%;
+      border: 1px solid var(--rule);
     }
     .chat-turn-body thead {
+      background: var(--surface-mute);
       border-bottom: 1px solid var(--rule-strong);
     }
     .chat-turn-body th,
     .chat-turn-body td {
       text-align: left;
-      padding: 0.35rem 0.7rem 0.35rem 0;
+      padding: 0.45rem 0.75rem;
       vertical-align: top;
+      border-right: 1px solid var(--rule);
+    }
+    .chat-turn-body th:last-child,
+    .chat-turn-body td:last-child {
+      border-right: none;
     }
     .chat-turn-body th {
       font-weight: 600;
@@ -529,9 +536,6 @@ const bootstrap = {
     }
     .chat-turn-body tbody tr {
       border-top: 1px solid var(--rule);
-    }
-    .chat-turn-body tbody tr:first-child {
-      border-top: none;
     }
     .chat-turn-body pre {
       margin: 0.7rem 0 0.9rem;
