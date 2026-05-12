@@ -45,9 +45,17 @@ Directories are a contract everyone can read. A markdown verb file is the same s
 
 The dashboard parses the convention, not the role. The role-author writes the conventions, not the framework. Adding a new role doesn't require touching the framework.
 
+## Runtimes, not "the runtime"
+
+Praxis distinguishes two operator profiles, each with their own runtime:
+
+- **Technical operators** open Claude Code in the role's directory. CLAUDE.md loads, the agent works against the conventions, and the operator has full leverage — they can edit files, run shell commands, audit logs, and iterate the role's constitution.
+- **Non-technical operators** open the dashboard's `/chat` surface. The model is fed the same role files as a system prompt (persona, verbs, hard rules, autonomy stance, tool catalog) so it embodies the role. Conversations persist as markdown under `memory/conversations/`, so they're inspectable like every other piece of the role's interior — the chat is another lens on the same role, not a separate product.
+
+The dashboard now spans supervision *and* conversation. Praxis remains conventions + scaffolding + dashboard; the dashboard does the conversational runtime for operators who shouldn't have to drop into a terminal.
+
 ## What Praxis is not
 
-- **Not a runtime** — Claude Code (or eventually a hosted chat UI in Phase 2) is the runtime. Praxis is conventions + scaffolding + dashboard.
-- **Not opinionated about LLM provider** — the agent runs wherever Claude Code runs.
+- **Not opinionated about LLM provider** — agents running under Claude Code use whatever Claude Code runs. The dashboard's chat uses the Anthropic SDK directly, configurable per-deploy.
 - **Not a workflow engine** — verbs are markdown prompts an LLM executes, not a DAG. Composition is up to the role-author.
 - **Not a memory database** — memory is markdown files. Search is grep until it isn't.

@@ -12,18 +12,24 @@ A Praxis role lives in one directory. The convention:
 │   ├── {verb-name}.md         # one file per repeatable behavior
 │   └── proposed/              # drafts awaiting acceptance (role writes here, never to ../)
 ├── lib/                       # declarative reference data
-│   └── *.yaml                 # role-authored, verb-readable
+│   ├── *.yaml                 # role-authored, verb-readable
+│   └── uploads/               # files attached to /chat conversations (dashboard-managed)
+│       └── {thread_id}/{filename}
 ├── memory/                    # observational notebook (role writes)
 │   ├── README.md              # format + conventions
 │   ├── people/                # contacts, teammates, external relationships
 │   ├── accounts/              # softer narrative context (or rename to fit role)
-│   └── notes/                 # voice calibrations, ongoing situations, anything else
+│   ├── notes/                 # voice calibrations, ongoing situations, anything else
+│   └── conversations/         # /chat transcripts (dashboard-managed)
+│       └── {thread_id}.md
 ├── escalations/               # structured asks (role writes; operator triages)
 │   ├── README.md              # format + lifecycle
 │   └── {date}-{slug}.md       # one file per escalation
 └── {work-product}/            # role-named directory for the actual output
                                # Sam uses `campaigns/`; choose what fits the role.
 ```
+
+`memory/conversations/` and `lib/uploads/` are created on demand by the dashboard's `/chat` surface (see [`dashboard.md`](dashboard.md) § Chat). They follow the same markdown-and-directory conventions as everything else, so operators can grep, diff, and hand-edit them.
 
 `persona.md` lives at the role root because it's identity, not behaviour — alongside `CLAUDE.md`, both are role-root constitution files. Universal directories are fixed: `verbs/`, `lib/`, `memory/`, `escalations/`. The work-product directory is role-named.
 
@@ -147,11 +153,12 @@ See [`creating-a-role.md`](creating-a-role.md) for a walkthrough.
 
 ## The role-runtime boundary
 
-Praxis is conventions + dashboard. It is *not* the runtime.
+Praxis hosts two runtimes for two operator profiles:
 
-Today: Claude Code on the host is the runtime. The operator opens a Claude Code session in the role's directory; CLAUDE.md loads; the agent works against the conventions.
+- **Claude Code on the host** is the technical operator's runtime. The operator opens a Claude Code session in the role's directory; CLAUDE.md loads; the agent works against the conventions with full file/shell access.
+- **The dashboard's `/chat` surface** is the non-technical operator's runtime. The model is fed the role's interior as a system prompt (persona, verbs, hard rules, autonomy, tools) so it embodies the role in conversation. Tool use is intentionally not enabled in the MVP — the model replies in text only.
 
-Phase 2: a hosted chat UI replaces the Claude Code session. The runtime moves into the framework. Until then, host-side Claude Code remains the agent loop.
+Both runtimes consume the same role files and write to the same conventions. They are different lenses on the same role.
 
 ## The Interior dashboard
 
