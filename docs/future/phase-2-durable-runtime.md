@@ -150,7 +150,7 @@ capabilities:
     config_key: "websearch.provider"
 
   log:
-    description: "bin/log structured JSONL logging — appends to campaigns/{id}/logs/{date}.jsonl"
+    description: "praxis log structured JSONL logging — appends to campaigns/{id}/logs/{date}.jsonl"
     always_available: true
 
   mcp:google-workspace:
@@ -229,7 +229,7 @@ Everything that's already in praxis:
 - `lib/` reference data
 - `memory/` notebook
 - `escalations/` queue
-- `bin/log` JSONL logging
+- `praxis log` JSONL logging
 - Decisions primitive
 - Autonomy model
 - Reflection beat

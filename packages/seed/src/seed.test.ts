@@ -69,7 +69,6 @@ describe('seedRole', () => {
       'escalations/README.md',
       'lib/autonomy.yaml',
       '.gitignore',
-      'bin/log',
       'verbs/first-verb.md',
     ];
     for (const rel of expected) {
@@ -77,6 +76,10 @@ describe('seedRole', () => {
       const stat = await fs.stat(path.join(tmp, rel));
       expect(stat.isFile()).toBe(true);
     }
+
+    // bin/log is no longer seeded — operators invoke `praxis log` instead.
+    expect(result.filesWritten).not.toContain('bin/log');
+    await expect(fs.access(path.join(tmp, 'bin', 'log'))).rejects.toThrow();
   });
 
   it('substitutes ROLE_NAME and persona sections', async () => {

@@ -32,30 +32,30 @@ Each verb is a self-contained prompt in `verbs/`. I run them individually or cha
 {Concise list — mirror the inhibitions section of persona.md, don't invent new ones.}
 
 - _(role-specific hard rules)_
-- I always log actions via `bin/log` — never inline `python3 -c "import json..."`
+- I always log actions via `praxis log` — never inline scripts that write JSONL by hand
 
 ## Logging actions
 
-Every action ends with one append to today's log. Use `bin/log` — **never** shell out to `python3 -c` to write JSONL inline.
+Every action ends with one append to today's log. Use `praxis log` — **never** shell out to inline scripts to write JSONL.
 
 ```bash
 # minimal
-bin/log --campaign=manual-leads --agent=draft-emails --action=email_drafted
+praxis log --campaign=manual-leads --agent=draft-emails --action=email_drafted
 
 # with the conventional fields
-bin/log --campaign=q1-outreach --agent=draft-emails --action=email_drafted \
+praxis log --campaign=q1-outreach --agent=draft-emails --action=email_drafted \
         --prospect=acme --details='Drafted opener' --subject='Quick question'
 
 # extra fields just go on the end as key=value
-bin/log --campaign=manual-leads --agent=monitor-channels --action=channel_intake \
+praxis log --campaign=manual-leads --agent=monitor-channels --action=channel_intake \
         channel=notifications-searchai message_ts=1234.5
 ```
 
-Required: `--campaign`, `--agent`, `--action`. Conventional optional flags: `--prospect`, `--details`, `--subject`. Anything else is `key=value` pairs that get merged into the JSON entry.
+Required: `--action`. Conventional optional flags: `--campaign`, `--agent`, `--prospect`, `--details`, `--subject`. Anything else is `key=value` pairs that get merged into the JSON entry.
 
-Output path: `campaigns/{campaign}/logs/{today}.jsonl`. The tool adds the timestamp automatically (local time, ISO 8601 with TZ). Add `--echo` to see the JSON line that got written.
+Output path: `campaigns/{campaign}/logs/{today}.jsonl` when `--campaign` is set; `logs/{today}.jsonl` at the role root otherwise. The tool adds the timestamp automatically (local time, ISO 8601 with TZ). Add `--echo` to see the JSON line that got written.
 
-`campaigns/` is the framework's conventional unit-of-work directory. If a role doesn't run "campaigns" in the literal sense, group whatever your unit is (cycles, engagements, runs) under `campaigns/{id}/` anyway — the convention buys you the dashboard's activity view + this tool. The tool's source is small if you ever need to fork.
+`campaigns/` is the framework's conventional unit-of-work directory. If a role doesn't run "campaigns" in the literal sense, group whatever your unit is (cycles, engagements, runs) under `campaigns/{id}/` anyway — the convention buys you the dashboard's activity view + this tool.
 
 ### Logging decisions
 
@@ -64,7 +64,7 @@ Every non-trivial choice gets logged with `action=decision`. This is the framewo
 A decision log entry uses these conventional extras:
 
 ```bash
-bin/log --campaign={id} --agent={the agent making the call} --action=decision \
+praxis log --campaign={id} --agent={the agent making the call} --action=decision \
         --prospect={if applicable} \
         decision_type='<one of the kinds below>' \
         chosen='<the choice in one line>' \
@@ -139,7 +139,7 @@ When I make an autonomous edit:
 1. **Confirm the mode**: re-read the entry in `lib/autonomy.yaml`. `append-only` means I can add but never edit or remove existing entries. `inline-enrichment` means I can update soft fields within existing entries but not restructure. `bounded` means I stay within the ranges named there.
 2. **Make the edit** as a single, focused change.
 3. **Commit it as me, not as my operator**. Use `git commit --author="{my full name} <{my email}>" -m "..."` so the dashboard's "Recent edits by me" surface can attribute the change and the operator can revert it with `git revert <sha>` if it doesn't earn its keep.
-4. **Log the action** via `bin/log` with `action=autonomous_edit` and a `path=` extra naming what I touched.
+4. **Log the action** via `praxis log` with `action=autonomous_edit` and a `path=` extra naming what I touched.
 5. **Respect `max_pending`**: for `append-only` surfaces, if I've appended N times since the last operator commit on that file, and N >= max_pending, I stop and file an `improvement` escalation asking my operator to review/compact instead of appending more.
 
 The operator's safety net is git history + the dashboard. Every commit I make is visible, attributable, and revertable. Autonomy isn't a one-way door.

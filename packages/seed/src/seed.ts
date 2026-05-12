@@ -37,21 +37,19 @@ const TEMPLATE_FILES: RolePathPair[] = [
   { source: 'escalations/README.md', target: 'escalations/README.md' },
   { source: 'lib/autonomy.yaml', target: 'lib/autonomy.yaml' },
   { source: '.gitignore', target: '.gitignore' },
-  { source: 'bin/log', target: 'bin/log' },
 ];
 
 /**
  * Files copied byte-for-byte without {ROLE_NAME} substitution or section
- * injection. `bin/log` is a generic Python helper; `lib/autonomy.yaml` is
- * operator-edited post-seed so we leave its placeholders alone.
+ * injection. `lib/autonomy.yaml` is operator-edited post-seed so we leave
+ * its placeholders alone.
  */
-const VERBATIM_TARGETS = new Set<string>(['bin/log', 'lib/autonomy.yaml']);
+const VERBATIM_TARGETS = new Set<string>(['lib/autonomy.yaml']);
 
 /** Directories to ensure exist in the seeded role, even if empty. */
 const SEED_DIRS: string[] = [
   'verbs',
   'verbs/proposed',
-  'bin',
   'lib',
   'memory',
   'memory/people',
@@ -169,11 +167,6 @@ export async function seedRole(
     } catch (e: unknown) {
       const cause = e instanceof Error ? e.message : String(e);
       throw new SeedError(`Failed to write ${pair.target}: ${cause}`, 'WRITE_FAILED');
-    }
-    if (pair.target === 'bin/log') {
-      // fs.writeFile drops the executable bit — restore it so the helper
-      // remains directly invokable in the seeded role.
-      await fs.chmod(dst, 0o755);
     }
     filesWritten.push(pair.target);
   }
