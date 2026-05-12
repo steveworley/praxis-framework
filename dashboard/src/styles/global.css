@@ -156,6 +156,14 @@ button {
 .group-action {
   font-size: 12px;
 }
+.page-lede {
+  margin: 0.6rem 0 0;
+  font-size: 12.5px;
+  color: var(--ink-muted);
+}
+.page-lede a {
+  color: var(--link);
+}
 
 /* Triage card (used on /home) */
 .triage-card {
@@ -254,9 +262,6 @@ button {
 }
 .triage-card .actions .verb {
   color: var(--link);
-}
-.triage-card .actions .verb.danger {
-  color: var(--danger);
 }
 .triage-card .actions .stale-flag {
   font-size: 11px;
@@ -485,30 +490,15 @@ button {
   font-family: -apple-system, system-ui, sans-serif;
   font-style: italic;
 }
-.full-esc .draft-block .draft-actions {
-  margin-top: 0.8rem;
-  display: flex;
-  gap: 0.8rem;
-  font-family: -apple-system, system-ui, sans-serif;
-  font-style: normal;
-  font-size: 12px;
-  flex-wrap: wrap;
-}
-.full-esc .resolution-actions {
+.full-esc .actions-pointer {
   margin-top: 1rem;
   padding-top: 0.7rem;
   border-top: 1px dashed var(--rule);
-  display: flex;
-  gap: 1rem;
-  font-size: 12px;
-  flex-wrap: wrap;
-  align-items: baseline;
-}
-.full-esc .resolution-hint {
-  margin-left: auto;
   color: var(--ink-faint);
   font-size: 11.5px;
-  font-style: italic;
+}
+.full-esc .actions-pointer a {
+  color: var(--link);
 }
 .full-esc .resolution-note {
   font-style: italic;

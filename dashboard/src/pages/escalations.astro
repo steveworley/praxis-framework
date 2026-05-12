@@ -65,6 +65,9 @@ const kindFilters: Array<{ key: string; label: string; count: number | null }> =
         <span class="group-title">Escalations</span>
         <span class="group-counter">{entries.length} total · {counts.open} open</span>
       </div>
+      <p class="page-lede">
+        Read-only view. To accept, decline, comment, or edit, head to <a href="/triage">/triage</a>.
+      </p>
 
       {escalationError ? (
         <div class="empty">Failed to load escalations: {escalationError}</div>

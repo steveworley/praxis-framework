@@ -3,8 +3,8 @@ import type { EscalationEntry } from '@/lib/escalations-loader';
 import { renderMarkdown } from '@/lib/markdown';
 
 /** Expanded escalation card for /escalations. Renders full body + meta +
- * (for proposed_skill) the inlined draft. Resolution actions are placeholder
- * anchors in v1 — write logic ships separately. The data-status / data-kind
+ * (for proposed_skill) the inlined draft. Read-only: write actions (accept,
+ * decline, resolve, edit) live on /triage. The data-status / data-kind
  * attributes drive the multi-axis filter on the page. */
 interface Props {
   escalation: EscalationEntry;
@@ -45,11 +45,6 @@ const draftLineCount = e.proposed_skill_body ? e.proposed_skill_body.split('\n')
       <div class="draft-meta">
         draft · {e.proposed_skill_path} · {draftLineCount} {draftLineCount === 1 ? 'line' : 'lines'}
       </div>{e.proposed_skill_body}
-      <div class="draft-actions">
-        <a class="verb" href="#">accept (move + commit)</a>
-        <a class="verb danger" href="#">decline</a>
-        <a class="verb" href="#">open in editor</a>
-      </div>
     </div>
   )}
   {isProposed && !e.proposed_skill_body && e.proposed_skill_path && (
@@ -58,10 +53,8 @@ const draftLineCount = e.proposed_skill_body ? e.proposed_skill_body.split('\n')
     </div>
   )}
   {!isResolved && (
-    <div class="resolution-actions">
-      <a href="#" class="verb">mark resolved</a>
-      <a href="#" class="verb">edit file (in editor)</a>
-      <span class="resolution-hint">resolution will append a note to the file + commit</span>
+    <div class="actions-pointer">
+      Actions → <a href="/triage">triage on /triage</a>
     </div>
   )}
 </article>

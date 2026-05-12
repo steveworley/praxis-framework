@@ -2,9 +2,10 @@
 import type { EscalationEntry } from '@/lib/escalations-loader';
 
 /** Compact escalation card for the home-page "Waiting on you" list. Shows
- * one-line title + body preview, lab pills, and supervisor verbs. The
- * `urgent` and `stale` modifiers are computed by the caller — this component
- * just renders the visual treatment. */
+ * one-line title + body preview, lab pills, and a pointer into the read-only
+ * /escalations view (with full triage actions on /triage). The `urgent` and
+ * `stale` modifiers are computed by the caller — this component just renders
+ * the visual treatment. */
 interface Props {
   escalation: EscalationEntry;
   urgent?: boolean;
@@ -43,13 +44,6 @@ const preview = previewSource.split('\n').find((line) => line.trim().length > 0)
   </div>
   <div class="actions">
     <a class="verb" href="/escalations">{isProposed ? 'review →' : 'open →'}</a>
-    {isProposed ? (
-      <>
-        <a class="verb" href="#">accept</a>
-        <a class="verb danger" href="#">decline</a>
-      </>
-    ) : (
-      <a class="verb" href="#">mark resolved</a>
-    )}
+    <a class="verb" href="/triage">triage →</a>
   </div>
 </article>
