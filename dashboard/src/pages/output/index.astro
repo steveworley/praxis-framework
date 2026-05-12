@@ -75,7 +75,7 @@ function detailHref(o: OutputSummary): string {
     />
 
     <div class="out-overview">
-      <p class="out-lede">
+      <p class="page-lede large">
         {personaName.short || 'The role'}'s work product. Five primitives — pick by the shape of what was produced.
       </p>
 
@@ -139,14 +139,6 @@ function detailHref(o: OutputSummary): string {
     .out-overview {
       margin-top: 1.2rem;
     }
-    .out-lede {
-      max-width: 680px;
-      color: var(--ink-muted);
-      font-size: 13.5px;
-      line-height: 1.6;
-      margin-bottom: 1.8rem;
-    }
-
     .type-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));

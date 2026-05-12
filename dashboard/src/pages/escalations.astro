@@ -61,7 +61,7 @@ const kindFilters: Array<{ key: string; label: string; count: number | null }> =
       updatedAt={updatedAt}
     />
 
-    <div style="margin-top: 2rem;">
+    <div class="page-body">
       <div class="group-head">
         <span class="group-title">Escalations</span>
         <span class="group-counter">{entries.length} total · {counts.open} open</span>
@@ -78,7 +78,7 @@ const kindFilters: Array<{ key: string; label: string; count: number | null }> =
         </EmptyState>
       ) : (
         <>
-          <div class="filter-row" data-filter-group="status" style="margin-top: 0.8rem;">
+          <div class="filter-row spaced" data-filter-group="status">
             {statusFilters.map((f) => (
               <span
                 class:list={['filter', f.key === 'all' && 'active']}

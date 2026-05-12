@@ -128,6 +128,13 @@ button {
   font-weight: 600;
 }
 
+/* Standard top margin for the first block of content under a RouteHeader.
+   Pages used to set this with inline `style="margin-top: 2rem;"`; this
+   class lets every page reach for the same hook. */
+.page-body {
+  margin-top: 2rem;
+}
+
 /* Group titles inside a page */
 .group {
   margin-bottom: 2.5rem;
@@ -156,10 +163,21 @@ button {
 .group-action {
   font-size: 12px;
 }
+/* Introductory paragraph below a group head or page header. The default
+   ("compact") shape lives directly under a group-head — small, no
+   max-width. The `large` variant is for top-of-page introductions on /chat,
+   /triage, /output: 13.5px, generous line-height, capped at a readable
+   measure. */
 .page-lede {
   margin: 0.6rem 0 0;
   font-size: 12.5px;
   color: var(--ink-muted);
+}
+.page-lede.large {
+  max-width: 680px;
+  font-size: 13.5px;
+  line-height: 1.6;
+  margin: 1.2rem 0 1.8rem;
 }
 .page-lede a {
   color: var(--link);
@@ -438,12 +456,17 @@ button {
   opacity: 0.7;
 }
 
-/* Filter row (used multiple places) */
+/* Filter row (used multiple places). When the row is the first thing under
+   a group-head, callers add `class="filter-row spaced"` to lift it off the
+   rule by `--filter-row-spaced` — saves the inline margin override. */
 .filter-row {
   display: flex;
   gap: 0.5rem;
   flex-wrap: wrap;
   margin-bottom: 1.4rem;
+}
+.filter-row.spaced {
+  margin-top: 0.8rem;
 }
 .filter {
   padding: 0.3rem 0.8rem;

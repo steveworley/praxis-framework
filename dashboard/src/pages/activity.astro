@@ -84,7 +84,7 @@ function metaLine(e: ActivityEntry): string {
       updatedAt={updatedAt}
     />
 
-    <div style="margin-top: 2rem;">
+    <div class="page-body">
       <div class="group-head">
         <span class="group-title">Activity</span>
         <span class="group-counter">last {activity.length} entries · {todayCount} today</span>
@@ -96,7 +96,7 @@ function metaLine(e: ActivityEntry): string {
         <EmptyState>No activity logged yet.</EmptyState>
       ) : (
         <>
-          <div class="filter-row" data-filter-group="action" style="margin-top: 0.8rem;">
+          <div class="filter-row spaced" data-filter-group="action">
             {filters.map((f) => (
               <span
                 class:list={['filter', f.key === 'all' && 'active']}

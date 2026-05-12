@@ -72,7 +72,7 @@ const bootstrap = {
     />
 
     <div class="triage-shell" x-data="praxisTriage()" x-init="init()">
-      <p class="triage-lede">
+      <p class="page-lede large">
         <span x-text="`${personaShort}'s raise-your-hand queue. Accept, decline, or comment on what ${personaShort} brought to you.`"></span>
         Every action writes back to the same markdown files; nothing is hidden.
       </p>
@@ -290,14 +290,6 @@ const bootstrap = {
     .triage-shell {
       margin-top: 1.2rem;
     }
-    .triage-lede {
-      max-width: 680px;
-      color: var(--ink-muted);
-      font-size: 13.5px;
-      margin-bottom: 1.8rem;
-      line-height: 1.6;
-    }
-
     .triage-item {
       padding: 1.4rem 0;
       border-top: 1px solid var(--rule);
