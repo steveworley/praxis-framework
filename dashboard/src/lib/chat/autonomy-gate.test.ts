@@ -117,18 +117,54 @@ describe('isWriteAllowed — autonomy.yaml lookup', () => {
     expect(d.allowed).toBe(true);
   });
 
-  it('refuses surfaces in mode: append-only (MVP — no per-mode enforcement yet)', async () => {
+  it('allows surfaces in mode: append-only and returns the surface config', async () => {
     await writeAutonomy(
       [
         'surfaces:',
         '  - path: lib/research-strategies.yaml',
         '    mode: append-only',
         '    max_pending: 5',
+        '    root_key: strategies',
+        '    unique_by: id',
       ].join('\n'),
     );
     const d = await isWriteAllowed(tempDir, 'lib/research-strategies.yaml');
+    expect(d.allowed).toBe(true);
+    if (d.allowed) {
+      expect(d.mode).toBe('append-only');
+      expect(d.surface?.root_key).toBe('strategies');
+      expect(d.surface?.unique_by).toBe('id');
+      expect(d.surface?.max_pending).toBe(5);
+    }
+  });
+
+  it('refuses surfaces in mode: inline-enrichment (not yet wired)', async () => {
+    // lib/team.yaml is constitutional, so we use a non-constitutional path
+    // to verify the inline-enrichment branch fires (and is not pre-empted
+    // by the constitutional hard refuse).
+    await writeAutonomy(
+      [
+        'surfaces:',
+        '  - path: lib/something-else.yaml',
+        '    mode: inline-enrichment',
+      ].join('\n'),
+    );
+    const d = await isWriteAllowed(tempDir, 'lib/something-else.yaml');
     expect(d.allowed).toBe(false);
-    if (!d.allowed) expect(d.reason).toMatch(/append-only/);
+    if (!d.allowed) expect(d.reason).toMatch(/inline-enrichment/);
+  });
+
+  it('refuses surfaces in mode: bounded (not yet wired)', async () => {
+    await writeAutonomy(
+      [
+        'surfaces:',
+        '  - path: lib/operational-params.yaml',
+        '    mode: bounded',
+      ].join('\n'),
+    );
+    const d = await isWriteAllowed(tempDir, 'lib/operational-params.yaml');
+    expect(d.allowed).toBe(false);
+    if (!d.allowed) expect(d.reason).toMatch(/bounded/);
   });
 
   it('refuses surfaces not listed in autonomy.yaml', async () => {

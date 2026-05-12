@@ -64,6 +64,25 @@ describe('parseAutonomyYaml', () => {
     });
   });
 
+  it('parses root_key and unique_by on append-only surfaces', () => {
+    const text = [
+      'surfaces:',
+      '  - path: lib/research-strategies.yaml',
+      '    mode: append-only',
+      '    max_pending: 5',
+      '    root_key: strategies',
+      '    unique_by: id',
+    ].join('\n');
+    const surfaces = parseAutonomyYaml(text);
+    expect(surfaces[0]).toEqual({
+      path: 'lib/research-strategies.yaml',
+      mode: 'append-only',
+      max_pending: 5,
+      root_key: 'strategies',
+      unique_by: 'id',
+    });
+  });
+
   it('preserves multi-line block scalars exactly', () => {
     const text = [
       'surfaces:',

@@ -22,6 +22,17 @@ export interface AutonomySurface {
   why?: string;
   /** Append-only ceiling before the role must escalate for compaction. */
   max_pending?: number;
+  /**
+   * For `append-only` YAML surfaces: the top-level key whose list the role
+   * may append to (e.g. `strategies` in `lib/research-strategies.yaml`). The
+   * append tool refuses if this is absent on an append-only surface.
+   */
+  root_key?: string;
+  /**
+   * For `append-only` surfaces: the field on each entry whose value must be
+   * unique across the list. Used to detect duplicate appends.
+   */
+  unique_by?: string;
 }
 
 export interface AutonomyConfig {
@@ -233,6 +244,12 @@ function parseEntry(lines: string[]): AutonomySurface | null {
   if (fields['max_pending']) {
     const n = Number.parseInt(fields['max_pending'], 10);
     if (Number.isFinite(n) && n > 0) surface.max_pending = n;
+  }
+  if (fields['root_key'] && fields['root_key'].length > 0) {
+    surface.root_key = fields['root_key'];
+  }
+  if (fields['unique_by'] && fields['unique_by'].length > 0) {
+    surface.unique_by = fields['unique_by'];
   }
   return surface;
 }

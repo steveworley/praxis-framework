@@ -142,7 +142,46 @@ describe('buildSystemPrompt', () => {
     expect(prompt).toContain('`write_memory`');
     expect(prompt).toContain('`create_escalation`');
     expect(prompt).toContain('`propose_verb`');
+    expect(prompt).toContain('`append_entry`');
     expect(prompt).toContain('`log_decision`');
+  });
+
+  it('lists operator-opened append-only surfaces with their config', async () => {
+    await seedPersona();
+    await fs.mkdir(path.join(tempDir, 'lib'), { recursive: true });
+    await fs.writeFile(
+      path.join(tempDir, 'lib', 'autonomy.yaml'),
+      [
+        'surfaces:',
+        '  - path: lib/research-strategies.yaml',
+        '    mode: append-only',
+        '    max_pending: 5',
+        '    root_key: strategies',
+        '    unique_by: id',
+        '    why: |',
+        '      Page conventions I notice during research.',
+      ].join('\n'),
+      'utf-8',
+    );
+    const prompt = await buildSystemPrompt(tempDir);
+    expect(prompt).toContain('Operator-opened append-only surfaces');
+    expect(prompt).toContain('`lib/research-strategies.yaml`');
+    expect(prompt).toContain('root_key: strategies');
+    expect(prompt).toContain('unique_by: id');
+    expect(prompt).toContain('max_pending: 5');
+    expect(prompt).toContain('Page conventions I notice during research.');
+  });
+
+  it('omits the append-only surfaces block when none are declared', async () => {
+    await seedPersona();
+    await fs.mkdir(path.join(tempDir, 'lib'), { recursive: true });
+    await fs.writeFile(
+      path.join(tempDir, 'lib', 'autonomy.yaml'),
+      'surfaces:\n  - path: memory/\n    mode: full\n',
+      'utf-8',
+    );
+    const prompt = await buildSystemPrompt(tempDir);
+    expect(prompt).not.toContain('Operator-opened append-only surfaces');
   });
 });
 

@@ -40,16 +40,19 @@ PRAXIS_ROLE_HOME=/path/to/some-role npm run dev
 
 ### Learning loop
 
-The model has four growth tools available during every chat turn. They write into the role's growth surfaces (the same surfaces a technical operator would write to from Claude Code):
+The model has five growth tools available during every chat turn. They write into the role's growth surfaces (the same surfaces a technical operator would write to from Claude Code):
 
 | Tool | Writes to | Refuses on |
 |---|---|---|
 | `write_memory` | `memory/<category>/<slug>.md` | Existing file (memory is append-only at the file level) |
 | `create_escalation` | `escalations/<date>-<random>-<slug>.md` | — (ids include a random suffix to avoid collisions) |
 | `propose_verb` | `verbs/proposed/<slug>.md` | Slug already exists in `verbs/` or `verbs/proposed/` |
+| `append_entry` | An operator-opened append-only YAML surface (e.g. `lib/research-strategies.yaml`) | Surface not in `autonomy.yaml`, wrong mode, missing `root_key`, duplicate `unique_by`, or `max_pending` reached |
 | `log_decision` | `logs/<date>.jsonl` (or `campaigns/<id>/logs/...`) | Unknown campaign id |
 
 Every tool call is gated by `lib/autonomy.yaml` plus a hard-coded constitutional list. Constitutional surfaces (`persona.md`, `verbs/*.md` outside `verbs/proposed/`, `lib/customers.yaml`, `lib/compliance.yaml`, `lib/team.yaml`, `lib/autonomy.yaml`, `CLAUDE.md`) are refused regardless of what the yaml says — the chat surface is never the place to mutate the role's constitution.
+
+`append_entry` is the operator-opt-in surface for `mode: append-only` entries in `lib/autonomy.yaml`. Each opened surface declares a `root_key` (the YAML list it appends to), an optional `unique_by` (duplicate-detection field, typically `id`), and an optional `max_pending` (unreviewed-entry ceiling). New entries get `reviewed: false` injected automatically; the operator flips it to `true` after reviewing. When the ceiling is reached, the next append refuses and the model is expected to file an `improvement` escalation asking for compaction. See `docs/autonomy.md` for the full shape.
 
 Tool calls persist on the assistant turn via an HTML-comment-fenced JSON block inside the thread markdown file, so the thread stays human-readable while the dashboard can replay calls when the conversation reloads.
 
@@ -77,6 +80,7 @@ Every dashboard-mediated mutation lands as a git commit on the role's repo so op
 | Chat-side `write_memory` | `Praxis Role <role@praxis.local>` | `role(memory): note <slug>` |
 | Chat-side `create_escalation` | `Praxis Role <role@praxis.local>` | `role(escalation): file <kind> — <slug>` |
 | Chat-side `propose_verb` | `Praxis Role <role@praxis.local>` | `role(verb): propose <slug>` |
+| Chat-side `append_entry` | `Praxis Role <role@praxis.local>` | `role(lib): append <surface-name>` |
 | Chat-side `log_decision` | `Praxis Role <role@praxis.local>` | `role(decision): log <decision_type>` |
 | Triage accept/decline/comment escalation | operator (from `git config`) | `operator(triage): <accept\|decline\|comment> escalation <id>` |
 | Triage accept/decline/edit proposed verb | operator (from `git config`) | `operator(triage): <accept\|decline\|edit> proposed verb <slug>` |

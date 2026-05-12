@@ -60,13 +60,14 @@ export async function buildSystemPrompt(roleHome: string): Promise<string> {
     '- Upload documents for context',
     '- Refine your role over time',
     '',
-    'Respond in your voice. You have four growth tools available to you in this conversation:',
+    'Respond in your voice. You have five growth tools available to you in this conversation:',
     '- `write_memory` — capture an observation worth remembering into your notebook',
     '- `create_escalation` — file a help / improvement / proposed_skill ask for your operator',
     '- `propose_verb` — draft a new playbook into verbs/proposed/ for operator review',
+    '- `append_entry` — append an entry to an operator-opened append-only YAML surface (see above)',
     '- `log_decision` — log a non-trivial decision to your audit trail',
     '',
-    'Use them sparingly and only when the observation, ask, or decision is genuinely worth capturing. Default to writing for memory (your operator prunes); be selective for the other three. If a tool refuses (gated surface, duplicate slug, malformed input), the refusal message tells you why — adjust and try again, or surface the friction to your operator in your reply.',
+    'Use them sparingly and only when the observation, ask, or decision is genuinely worth capturing. Default to writing for memory (your operator prunes); be selective for the other tools. If a tool refuses (gated surface, duplicate slug, malformed input, max_pending reached), the refusal message tells you why — adjust and try again, or surface the friction to your operator in your reply. For `append_entry`, a max_pending refusal is your signal to file an `improvement` escalation asking for compaction.',
   );
 
   return sections.join('\n');
@@ -225,6 +226,29 @@ async function renderAutonomySection(roleHome: string): Promise<string | null> {
     lines.push(`- ${item}`);
   }
   lines.push('- lib/* (except where listed above)');
+
+  const appendOnly = openSurfaces.filter((s) => s.mode === 'append-only');
+  if (appendOnly.length > 0) {
+    lines.push('', '### Operator-opened append-only surfaces');
+    lines.push(
+      '',
+      'You may append (but not edit existing entries) to these files using `append_entry`:',
+    );
+    for (const s of appendOnly) {
+      const meta: string[] = [];
+      if (s.root_key) meta.push(`root_key: ${s.root_key}`);
+      if (s.unique_by) meta.push(`unique_by: ${s.unique_by}`);
+      if (s.max_pending !== undefined) meta.push(`max_pending: ${s.max_pending}`);
+      const metaPart = meta.length > 0 ? ` (${meta.join(', ')})` : '';
+      lines.push(`- \`${s.path}\`${metaPart}`);
+      if (s.why) {
+        for (const whyLine of s.why.split('\n')) {
+          if (whyLine.trim().length === 0) continue;
+          lines.push(`  ${whyLine.trim()}`);
+        }
+      }
+    }
+  }
   return lines.join('\n');
 }
 

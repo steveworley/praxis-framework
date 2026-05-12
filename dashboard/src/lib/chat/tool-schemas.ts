@@ -136,6 +136,42 @@ export const PROPOSE_VERB_TOOL: Anthropic.Tool = {
   },
 };
 
+export const APPEND_ENTRY_TOOL: Anthropic.Tool = {
+  name: 'append_entry',
+  description:
+    'Append an entry to an operator-opened append-only YAML surface (e.g. ' +
+    '`lib/research-strategies.yaml`). Use this for operational knowledge you ' +
+    "discover during work — new heuristics, patterns, conventions, calibrations. " +
+    "You can't edit or delete existing entries; the operator owns those. The " +
+    'autonomy.yaml entry for the surface declares the root key (which list to ' +
+    'append to), the unique field (often `id`), and the max_pending ceiling. ' +
+    'If max_pending unreviewed entries have accumulated, the tool refuses — ' +
+    "that's your signal to file an `improvement` escalation asking for compaction " +
+    'instead of appending more.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      path: {
+        type: 'string',
+        description:
+          'Relative path to the append-only YAML surface, e.g. ' +
+          '"lib/research-strategies.yaml". Must be listed in your role\'s ' +
+          'lib/autonomy.yaml with mode: append-only.',
+      },
+      entry: {
+        type: 'object',
+        description:
+          'The new entry to append. Shape depends on the surface — read the existing ' +
+          'file structure first so your entry matches. Must include the field declared ' +
+          'as unique_by (often "id") if the surface declares one. A `reviewed: false` ' +
+          'marker is injected automatically so the operator can flip it to true on ' +
+          'review without you needing to set it.',
+      },
+    },
+    required: ['path', 'entry'],
+  },
+};
+
 export const LOG_DECISION_TOOL: Anthropic.Tool = {
   name: 'log_decision',
   description:
@@ -189,11 +225,13 @@ export const LOG_DECISION_TOOL: Anthropic.Tool = {
 
 /**
  * The full toolset, in the order the model sees them. Memory first — most
- * common action; logging last — least conversational.
+ * common action; logging last — least conversational. `append_entry` slots
+ * after the high-frequency growth tools and before logging.
  */
 export const CHAT_TOOLS: readonly Anthropic.Tool[] = [
   WRITE_MEMORY_TOOL,
   CREATE_ESCALATION_TOOL,
   PROPOSE_VERB_TOOL,
+  APPEND_ENTRY_TOOL,
   LOG_DECISION_TOOL,
 ];

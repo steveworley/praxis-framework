@@ -5,6 +5,7 @@ import path from 'node:path';
 import { z } from 'zod';
 
 import { commitChange, type CommitResult } from '../audit.js';
+import { executeAppendEntry } from './append-entry.js';
 import { isWriteAllowed } from './autonomy-gate.js';
 
 /**
@@ -345,12 +346,14 @@ export type ToolName =
   | 'write_memory'
   | 'create_escalation'
   | 'propose_verb'
+  | 'append_entry'
   | 'log_decision';
 
 const KNOWN_TOOLS: ReadonlySet<string> = new Set([
   'write_memory',
   'create_escalation',
   'propose_verb',
+  'append_entry',
   'log_decision',
 ]);
 
@@ -375,6 +378,8 @@ export async function executeTool(
         return await executeCreateEscalation(roleHome, input);
       case 'propose_verb':
         return await executeProposeVerb(roleHome, input);
+      case 'append_entry':
+        return await executeAppendEntry(roleHome, input);
       case 'log_decision':
         return await executeLogDecision(roleHome, input);
     }

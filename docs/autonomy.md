@@ -32,6 +32,41 @@ The role can add new entries to a list but never edit or delete existing entries
 
 Use for: discovery heuristics, observed patterns, accumulated calibrations that are individually low-risk but collectively need pruning.
 
+**The chat tool**: from `/chat`, the model uses `append_entry({path, entry})`. The framework reads the surface's autonomy.yaml entry to find the YAML list key (`root_key`), the duplicate-detection field (`unique_by`), and the unreviewed-entry ceiling (`max_pending`). The full shape:
+
+```yaml
+# lib/autonomy.yaml
+surfaces:
+  - path: lib/research-strategies.yaml
+    mode: append-only
+    max_pending: 5
+    root_key: strategies      # the list at the top of the YAML file
+    unique_by: id             # field on each entry that must be unique
+    why: |
+      Org-type page conventions I notice while running find-contacts.
+```
+
+And a matching file the role appends to:
+
+```yaml
+# lib/research-strategies.yaml
+strategies:
+  - id: au-tafes-leadership
+    pattern: "AU TAFEs: leadership at /about/leadership"
+    observed: 2026-04-12
+    confidence: high
+    reviewed: true            # operator has reviewed this entry
+  - id: multi-brand-au-institutes
+    pattern: "Multi-brand AU institutes: corporate page on parent subdomain"
+    observed: 2026-04-15
+    confidence: medium
+    reviewed: false           # still unreviewed (counts toward max_pending)
+```
+
+**How pending entries are counted**: each entry carries a `reviewed: false` marker; `append_entry` injects it automatically if the model doesn't set it. The operator flips it to `reviewed: true` after reviewing (manually in their IDE for now). When the count of `reviewed: false` entries reaches `max_pending`, the next append refuses with a clear message — the role's expected response is to file an `improvement` escalation suggesting compaction.
+
+**Duplicate detection**: if `unique_by` is declared and the incoming entry's value collides with an existing entry, the append refuses. The role can't use append-only to edit; structural changes to an existing entry need an escalation.
+
 ### `inline-enrichment`
 The role can update soft fields (notes, calibration text, enrichment strings) within existing structured entries. The role never adds new top-level entries or removes existing ones; structural changes go through escalation.
 

@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-import { loadAutonomy, type AutonomyMode } from '@/lib/autonomy-loader.js';
+import { loadAutonomy, type AutonomyMode, type AutonomySurface } from '@/lib/autonomy-loader.js';
 
 /**
  * Surfaces that are constitutional — the model may NEVER edit these via tool
@@ -40,6 +40,15 @@ const NULL_BYTE = String.fromCharCode(0);
 export interface WriteAllowed {
   allowed: true;
   mode: AutonomyMode;
+  /**
+   * The surface entry from autonomy.yaml when one matched. Absent when the
+   * write landed on an implicit-autonomous prefix (memory/, escalations/,
+   * verbs/proposed/, logs/, campaigns/<id>/logs/) — those don't carry an
+   * autonomy.yaml entry. Callers that need surface-level config (e.g. the
+   * `append_entry` tool reading `root_key` / `unique_by` / `max_pending`)
+   * check this field.
+   */
+  surface?: AutonomySurface;
 }
 
 export interface WriteRefused {
@@ -60,9 +69,11 @@ export type WriteDecision = WriteAllowed | WriteRefused;
  *   3. Implicit autonomous prefixes — allow with mode `full`, no yaml lookup
  *      needed (memory/, escalations/, verbs/proposed/, logs/, and
  *      per-campaign logs).
- *   4. autonomy.yaml lookup — match by prefix or exact path. Mode `full`
- *      allowed, mode `gated` refused; the other modes are refused for MVP
- *      until each has its own enforcement.
+ *   4. autonomy.yaml lookup — match by prefix or exact path. Modes `full`
+ *      and `append-only` are allowed (the surface is returned so the caller
+ *      can enforce per-mode rules). `gated`, `inline-enrichment`, and
+ *      `bounded` are refused — the latter two have no per-mode enforcement
+ *      yet.
  *   5. Default deny — anything not explicitly opened is gated.
  */
 export async function isWriteAllowed(
@@ -98,7 +109,13 @@ export async function isWriteAllowed(
     };
   }
   if (surface.mode === 'full') {
-    return { allowed: true, mode: 'full' };
+    return { allowed: true, mode: 'full', surface };
+  }
+  if (surface.mode === 'append-only') {
+    // The caller (the `append_entry` tool) is responsible for enforcing the
+    // per-mode rules — max_pending, unique_by, root_key shape. The gate only
+    // says "this surface is open for appends; here's its config".
+    return { allowed: true, mode: 'append-only', surface };
   }
   if (surface.mode === 'gated') {
     return {
@@ -106,9 +123,9 @@ export async function isWriteAllowed(
       reason: `Refusing to write ${normalized}: surface is gated. File an escalation instead.`,
     };
   }
-  // append-only / inline-enrichment / bounded — these have per-mode rules the
-  // tools don't yet enforce, so for MVP we treat them as gated. The model
-  // sees a clear refusal and can adjust.
+  // inline-enrichment / bounded — declared in the autonomy model but not yet
+  // wired through the chat tool surface. Refuse with a clear message until
+  // each earns dedicated enforcement.
   return {
     allowed: false,
     reason: `Refusing to write ${normalized}: surface is in mode '${surface.mode}', which is not yet supported via the chat tool surface. File an escalation instead.`,

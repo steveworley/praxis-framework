@@ -53,11 +53,22 @@ surfaces:
 
   # === Append-only — patterns/heuristics I've discovered ===
 
-  # Example (uncomment + adapt for your role):
+  # Example (uncomment + adapt for your role). Required fields on an
+  # append-only surface:
+  #
+  #   root_key   — top-level YAML key whose list I may append to
+  #   unique_by  — field on each entry that must be unique (often `id`)
+  #   max_pending — ceiling on unreviewed entries before I must escalate
+  #
+  # The file at `path:` must already exist and contain a `<root_key>:` line
+  # followed by zero-or-more list items. New entries are appended with
+  # `reviewed: false`; you flip to `reviewed: true` after reviewing them.
   #
   # - path: lib/research-strategies.yaml
   #   mode: append-only
   #   max_pending: 5
+  #   root_key: strategies
+  #   unique_by: id
   #   why: |
   #     Org-type page conventions and discovery heuristics I notice while
   #     running research-shaped agents. Adding here speeds the next batch.
