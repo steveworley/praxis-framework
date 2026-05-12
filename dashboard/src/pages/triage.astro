@@ -136,7 +136,7 @@ const bootstrap = {
                 <label>Optional operator note (will be appended to the file):</label>
                 <textarea x-model="notes[e.id]" rows="3" placeholder="will land this week"></textarea>
                 <div class="action-form-row">
-                  <button type="submit" class="action-btn primary" :disabled="busy[e.id]">
+                  <button type="submit" class="action-btn primary" :disabled="busy[e.id] === true">
                     <span x-show="!busy[e.id]">Confirm accept</span>
                     <span x-show="busy[e.id]">Saving…</span>
                   </button>
@@ -150,7 +150,7 @@ const bootstrap = {
                 <label>Decline reason (required):</label>
                 <textarea x-model="notes[e.id]" rows="3" placeholder="duplicate of existing verb; out of scope; etc."></textarea>
                 <div class="action-form-row">
-                  <button type="submit" class="action-btn danger" :disabled="busy[e.id] || !(notes[e.id] || '').trim()">
+                  <button type="submit" class="action-btn danger" :disabled="busy[e.id] === true || !(notes[e.id] || '').trim()">
                     <span x-show="!busy[e.id]">Confirm decline</span>
                     <span x-show="busy[e.id]">Saving…</span>
                   </button>
@@ -164,7 +164,7 @@ const bootstrap = {
                 <label>Append a note (keeps status open):</label>
                 <textarea x-model="notes[e.id]" rows="3" placeholder="looking at this; will get back tomorrow"></textarea>
                 <div class="action-form-row">
-                  <button type="submit" class="action-btn" :disabled="busy[e.id] || !(notes[e.id] || '').trim()">
+                  <button type="submit" class="action-btn" :disabled="busy[e.id] === true || !(notes[e.id] || '').trim()">
                     <span x-show="!busy[e.id]">Append</span>
                     <span x-show="busy[e.id]">Saving…</span>
                   </button>
@@ -234,7 +234,7 @@ const bootstrap = {
             <div class="actions" x-show="pending[v.slug] !== 'decline'">
               <template x-if="!editing[v.slug]">
                 <span class="actions-inline">
-                  <button type="button" class="action-btn primary" @click="acceptVerb(v.slug)" :disabled="busy[v.slug]">
+                  <button type="button" class="action-btn primary" @click="acceptVerb(v.slug)" :disabled="busy[v.slug] === true">
                     <span x-show="!busy[v.slug]">Accept (move to verbs/)</span>
                     <span x-show="busy[v.slug]">Saving…</span>
                   </button>
@@ -244,11 +244,11 @@ const bootstrap = {
               </template>
               <template x-if="editing[v.slug]">
                 <span class="actions-inline">
-                  <button type="button" class="action-btn" @click="saveEdit(v.slug)" :disabled="busy[v.slug]">
+                  <button type="button" class="action-btn" @click="saveEdit(v.slug)" :disabled="busy[v.slug] === true">
                     <span x-show="!busy[v.slug]">Save only (keep in proposed/)</span>
                     <span x-show="busy[v.slug]">Saving…</span>
                   </button>
-                  <button type="button" class="action-btn primary" @click="saveAndAccept(v.slug)" :disabled="busy[v.slug]">
+                  <button type="button" class="action-btn primary" @click="saveAndAccept(v.slug)" :disabled="busy[v.slug] === true">
                     <span x-show="!busy[v.slug]">Save + accept</span>
                     <span x-show="busy[v.slug]">Saving…</span>
                   </button>
@@ -262,7 +262,7 @@ const bootstrap = {
                 <label>Decline reason (required, stays in proposed/ as a record):</label>
                 <textarea x-model="notes[v.slug]" rows="3" placeholder="duplicate of existing verb; too narrow; etc."></textarea>
                 <div class="action-form-row">
-                  <button type="submit" class="action-btn danger" :disabled="busy[v.slug] || !(notes[v.slug] || '').trim()">
+                  <button type="submit" class="action-btn danger" :disabled="busy[v.slug] === true || !(notes[v.slug] || '').trim()">
                     <span x-show="!busy[v.slug]">Confirm decline</span>
                     <span x-show="busy[v.slug]">Saving…</span>
                   </button>
