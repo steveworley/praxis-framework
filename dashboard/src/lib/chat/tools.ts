@@ -7,6 +7,10 @@ import { z } from 'zod';
 import { commitChange, type CommitResult } from '../audit.js';
 import { executeAppendEntry } from './append-entry.js';
 import { isWriteAllowed } from './autonomy-gate.js';
+import {
+  executeUpdateOutputStatus,
+  executeWriteOutput,
+} from './output-tools.js';
 
 /**
  * Tool executors for the chat surface. Each executor:
@@ -347,7 +351,9 @@ export type ToolName =
   | 'create_escalation'
   | 'propose_verb'
   | 'append_entry'
-  | 'log_decision';
+  | 'log_decision'
+  | 'write_output'
+  | 'update_output_status';
 
 const KNOWN_TOOLS: ReadonlySet<string> = new Set([
   'write_memory',
@@ -355,6 +361,8 @@ const KNOWN_TOOLS: ReadonlySet<string> = new Set([
   'propose_verb',
   'append_entry',
   'log_decision',
+  'write_output',
+  'update_output_status',
 ]);
 
 /**
@@ -382,6 +390,10 @@ export async function executeTool(
         return await executeAppendEntry(roleHome, input);
       case 'log_decision':
         return await executeLogDecision(roleHome, input);
+      case 'write_output':
+        return await executeWriteOutput(roleHome, input);
+      case 'update_output_status':
+        return await executeUpdateOutputStatus(roleHome, input);
     }
   } catch (e: unknown) {
     return fail(`Tool ${name} threw: ${errorMessage(e)}`);

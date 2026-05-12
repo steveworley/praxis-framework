@@ -223,15 +223,127 @@ export const LOG_DECISION_TOOL: Anthropic.Tool = {
   },
 };
 
+export const WRITE_OUTPUT_TOOL: Anthropic.Tool = {
+  name: 'write_output',
+  description:
+    "Create a new file in your work-product surface (output/). The output " +
+    "taxonomy has five types — pick by the *shape* of what you're producing: " +
+    "`document` (long-form prose: brief, note, analysis), `draft` (outgoing " +
+    'communication: email, Slack DM, letter), `record` (observation tied to ' +
+    'an entity: an account read, a call summary, a meeting note), `plan` ' +
+    '(multi-step intent with a checklist body: `- [ ]` items), `reference` ' +
+    "(reusable knowledge: a heuristic, a recipe, a playbook excerpt). The " +
+    "tool refuses if the file already exists — pick a different slug, or use " +
+    'update_output_status to change an existing file\'s lifecycle stage. The ' +
+    'file lives at `output/<type>/<slug>.md` (or, for records, ' +
+    '`output/record/<entity_type>/<entity_id>/<slug>.md`).',
+  input_schema: {
+    type: 'object',
+    properties: {
+      type: {
+        type: 'string',
+        enum: ['document', 'draft', 'record', 'plan', 'reference'],
+        description:
+          "Pick by shape: prose=document, outgoing comms=draft, entity-tied " +
+          'observation=record, multi-step intent with checklist=plan, ' +
+          'reusable knowledge=reference.',
+      },
+      slug: {
+        type: 'string',
+        description:
+          'Lowercase letters/digits/hyphens, starting alphanumeric. Used as the ' +
+          'filename stem.',
+      },
+      body: {
+        type: 'string',
+        description:
+          'Markdown body. For `plan` types, format the body as a checklist ' +
+          'using `- [ ]` (open) and `- [x]` (done) items — the dashboard ' +
+          'parses these to compute progress.',
+      },
+      status: {
+        type: 'string',
+        enum: ['draft', 'review', 'ready', 'sent', 'done', 'archived'],
+        description:
+          "Lifecycle stage. Defaults to 'draft'. Use 'review' when you want " +
+          "operator eyes on it, 'ready' when it's complete and waiting for " +
+          "action, 'sent' / 'done' when shipped, 'archived' when superseded.",
+      },
+      fields: {
+        type: 'object',
+        description:
+          "Type-specific frontmatter fields. Required and optional fields by " +
+          'type:\n' +
+          '- document: required {title}; optional {audience}\n' +
+          '- draft: required {}; optional {recipient, channel, subject} ' +
+          '(channel ∈ email|slack|dm|letter|call|other)\n' +
+          '- record: required {entity_type, entity_id, observed_at} — these ' +
+          'drive the on-disk path (`output/record/<entity_type>/<entity_id>/' +
+          '<slug>.md`); entity_type and entity_id must be slug-shaped\n' +
+          '- plan: required {goal}; optional {owner}\n' +
+          '- reference: required {topic}; optional {tags} (array of strings)',
+      },
+    },
+    required: ['type', 'slug', 'body'],
+  },
+};
+
+export const UPDATE_OUTPUT_STATUS_TOOL: Anthropic.Tool = {
+  name: 'update_output_status',
+  description:
+    "Update the `status` field on an existing output file. Use this to " +
+    'transition a draft email to "sent" after the operator confirms, mark a ' +
+    'plan "done" once its checklist is fully checked, or "archive" a stale ' +
+    "reference. The status enum is fixed framework-wide: draft, review, " +
+    'ready, sent, done, archived. Refuses if the file doesn\'t exist — pick ' +
+    'the right path or call write_output first.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      type: {
+        type: 'string',
+        enum: ['document', 'draft', 'record', 'plan', 'reference'],
+        description: 'Output type, same as the file\'s `type:` frontmatter.',
+      },
+      slug: {
+        type: 'string',
+        description: 'Slug of the existing file (filename stem).',
+      },
+      status: {
+        type: 'string',
+        enum: ['draft', 'review', 'ready', 'sent', 'done', 'archived'],
+        description: 'The new lifecycle stage.',
+      },
+      entity_type: {
+        type: 'string',
+        description:
+          'For `record` outputs only — the entity_type path segment of the ' +
+          'existing file.',
+      },
+      entity_id: {
+        type: 'string',
+        description:
+          'For `record` outputs only — the entity_id path segment of the ' +
+          'existing file.',
+      },
+    },
+    required: ['type', 'slug', 'status'],
+  },
+};
+
 /**
  * The full toolset, in the order the model sees them. Memory first — most
  * common action; logging last — least conversational. `append_entry` slots
- * after the high-frequency growth tools and before logging.
+ * after the high-frequency growth tools and before logging. The output
+ * tools sit between the role-growth tools and the audit tools — they're
+ * work product, not introspection.
  */
 export const CHAT_TOOLS: readonly Anthropic.Tool[] = [
   WRITE_MEMORY_TOOL,
   CREATE_ESCALATION_TOOL,
   PROPOSE_VERB_TOOL,
   APPEND_ENTRY_TOOL,
+  WRITE_OUTPUT_TOOL,
+  UPDATE_OUTPUT_STATUS_TOOL,
   LOG_DECISION_TOOL,
 ];

@@ -23,16 +23,23 @@ const CONSTITUTIONAL_PATHS: readonly string[] = [
 /**
  * Surfaces that are implicitly autonomous regardless of autonomy.yaml — these
  * are the role's own working surfaces where the framework already grants
- * autonomy as the default. Memory, escalations, verbs/proposed/ and logs.
+ * autonomy as the default. Memory, escalations, verbs/proposed/, logs, and
+ * the output taxonomy.
  *
  * `logs/` is autonomous because logging is the audit primitive — gating it
  * defeats the whole point of having an audit trail.
+ *
+ * `output/` is autonomous because it is the role's work product surface —
+ * every entry is shaped by the framework's typed taxonomy (document, draft,
+ * record, plan, reference) and lives behind closed-enum status transitions,
+ * so the write tools enforce structure without needing per-surface gating.
  */
 const IMPLICIT_AUTONOMOUS_PREFIXES: readonly string[] = [
   'memory/',
   'escalations/',
   'verbs/proposed/',
   'logs/',
+  'output/',
 ];
 
 const NULL_BYTE = String.fromCharCode(0);

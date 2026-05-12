@@ -36,15 +36,20 @@ const TEMPLATE_FILES: RolePathPair[] = [
   { source: 'memory/README.md', target: 'memory/README.md' },
   { source: 'escalations/README.md', target: 'escalations/README.md' },
   { source: 'lib/autonomy.yaml', target: 'lib/autonomy.yaml' },
+  { source: 'lib/output-schemas.yaml', target: 'lib/output-schemas.yaml' },
   { source: '.gitignore', target: '.gitignore' },
 ];
 
 /**
  * Files copied byte-for-byte without {ROLE_NAME} substitution or section
  * injection. `lib/autonomy.yaml` is operator-edited post-seed so we leave
- * its placeholders alone.
+ * its placeholders alone. `lib/output-schemas.yaml` is framework-shipped
+ * reference material — the operator should read it, not the substitutor.
  */
-const VERBATIM_TARGETS = new Set<string>(['lib/autonomy.yaml']);
+const VERBATIM_TARGETS = new Set<string>([
+  'lib/autonomy.yaml',
+  'lib/output-schemas.yaml',
+]);
 
 /** Directories to ensure exist in the seeded role, even if empty. */
 const SEED_DIRS: string[] = [
@@ -56,6 +61,12 @@ const SEED_DIRS: string[] = [
   'memory/accounts',
   'memory/notes',
   'escalations',
+  'output',
+  'output/document',
+  'output/draft',
+  'output/record',
+  'output/plan',
+  'output/reference',
 ];
 
 /**
@@ -69,6 +80,11 @@ const GITKEEP_LEAVES: string[] = [
   'memory/accounts',
   'memory/notes',
   'escalations',
+  'output/document',
+  'output/draft',
+  'output/record',
+  'output/plan',
+  'output/reference',
 ];
 
 /**

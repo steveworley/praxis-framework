@@ -68,6 +68,7 @@ describe('seedRole', () => {
       'memory/README.md',
       'escalations/README.md',
       'lib/autonomy.yaml',
+      'lib/output-schemas.yaml',
       '.gitignore',
       'verbs/first-verb.md',
     ];
@@ -80,6 +81,29 @@ describe('seedRole', () => {
     // bin/log is no longer seeded — operators invoke `praxis log` instead.
     expect(result.filesWritten).not.toContain('bin/log');
     await expect(fs.access(path.join(tmp, 'bin', 'log'))).rejects.toThrow();
+
+    // Output taxonomy directories all exist as .gitkeep'd leaves.
+    for (const leaf of ['document', 'draft', 'record', 'plan', 'reference']) {
+      const dir = path.join(tmp, 'output', leaf);
+      const stat = await fs.stat(dir);
+      expect(stat.isDirectory()).toBe(true);
+      const keep = await fs.stat(path.join(dir, '.gitkeep'));
+      expect(keep.isFile()).toBe(true);
+    }
+  });
+
+  it('copies lib/output-schemas.yaml verbatim without substitution', async () => {
+    await seedRole(sampleInput(), tmp);
+    const schemas = await fs.readFile(path.join(tmp, 'lib/output-schemas.yaml'), 'utf-8');
+    expect(schemas).toContain('status_enum:');
+    expect(schemas).toContain('types:');
+    expect(schemas).toContain('document:');
+    expect(schemas).toContain('draft:');
+    expect(schemas).toContain('record:');
+    expect(schemas).toContain('plan:');
+    expect(schemas).toContain('reference:');
+    // No {ROLE_NAME} substitution should run on this verbatim file.
+    expect(schemas).not.toContain('Pat Example');
   });
 
   it('substitutes ROLE_NAME and persona sections', async () => {
