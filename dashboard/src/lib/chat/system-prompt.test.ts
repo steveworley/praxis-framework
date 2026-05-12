@@ -135,11 +135,14 @@ describe('buildSystemPrompt', () => {
     expect(prompt).not.toContain('## Available tools');
   });
 
-  it("ends with the operator-greeting block and the no-tool-use caveat", async () => {
+  it('ends with the operator-greeting block and lists the growth tools', async () => {
     await seedPersona();
     const prompt = await buildSystemPrompt(tempDir);
     expect(prompt).toContain('You are speaking with the operator');
-    expect(prompt).toContain("The runtime hasn't enabled tool use yet.");
+    expect(prompt).toContain('`write_memory`');
+    expect(prompt).toContain('`create_escalation`');
+    expect(prompt).toContain('`propose_verb`');
+    expect(prompt).toContain('`log_decision`');
   });
 });
 

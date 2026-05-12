@@ -183,6 +183,73 @@ describe('parseThreadFile', () => {
   });
 });
 
+describe('tool calls round-trip', () => {
+  it('persists toolCalls on an assistant turn and parses them back', async () => {
+    const { thread_id } = await createThread(tempDir, 'first');
+    await appendTurn(tempDir, thread_id, { role: 'user', content: 'first' });
+    await appendTurn(tempDir, thread_id, {
+      role: 'assistant',
+      content: 'I noted that down.',
+      toolCalls: [
+        {
+          name: 'write_memory',
+          input: { category: 'people', title: 'Mary', body: 'b' },
+          result: {
+            ok: true,
+            summary: 'wrote memory/people/mary.md',
+            data: { path: 'memory/people/mary.md' },
+          },
+        },
+      ],
+    });
+
+    const loaded = await loadThread(tempDir, thread_id);
+    expect(loaded.turns).toHaveLength(2);
+    const assistant = loaded.turns[1]!;
+    expect(assistant.role).toBe('assistant');
+    expect(assistant.content).toBe('I noted that down.');
+    expect(assistant.toolCalls).toHaveLength(1);
+    expect(assistant.toolCalls?.[0]?.name).toBe('write_memory');
+    expect(assistant.toolCalls?.[0]?.result.ok).toBe(true);
+
+    // The on-disk fence should be present in the rendered file.
+    const filePath = path.join(tempDir, 'memory', 'conversations', `${thread_id}.md`);
+    const text = await fs.readFile(filePath, 'utf-8');
+    expect(text).toContain('<!-- praxis:tool_calls');
+    expect(text).toContain('-->');
+  });
+
+  it('survives a malformed fence by falling back to no tool calls', async () => {
+    const { thread_id } = await createThread(tempDir, 'x');
+    // Hand-craft a thread file with a broken JSON fence to verify the
+    // fail-safe path: we still parse the turn, just without toolCalls.
+    const filePath = path.join(tempDir, 'memory', 'conversations', `${thread_id}.md`);
+    const broken = [
+      '---',
+      `thread_id: ${thread_id}`,
+      'title: x',
+      'created: 2026-05-12T10:00:00Z',
+      'updated: 2026-05-12T10:00:00Z',
+      '---',
+      '',
+      '## Assistant · 2026-05-12T10:00:00Z',
+      '',
+      '<!-- praxis:tool_calls',
+      'this is not json',
+      '-->',
+      '',
+      'Body text.',
+      '',
+    ].join('\n');
+    await fs.writeFile(filePath, broken, 'utf-8');
+    const loaded = await loadThread(tempDir, thread_id);
+    expect(loaded.turns).toHaveLength(1);
+    expect(loaded.turns[0]!.toolCalls).toBeUndefined();
+    // The fence stays as part of the content when JSON parse fails — that's
+    // acceptable; the alternative (silently dropping content) would be worse.
+  });
+});
+
 describe('thread_id safety', () => {
   it('rejects path traversal in loadThread', async () => {
     await expect(loadThread(tempDir, '../etc/passwd')).rejects.toThrow(/Invalid thread_id/);

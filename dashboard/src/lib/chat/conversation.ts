@@ -6,11 +6,31 @@ const CONVERSATIONS_REL = path.posix.join('memory', 'conversations');
 
 export type TurnRole = 'user' | 'assistant';
 
+/**
+ * A tool call the model made during the assistant turn, persisted alongside
+ * the reply text so the dashboard can render the action inline. Stored as an
+ * HTML-comment-fenced JSON block at the start of the turn body; see
+ * `parseTurns()` / `renderTurn()` for the on-disk shape.
+ */
+export interface PersistedToolCall {
+  name: string;
+  input: Record<string, unknown>;
+  /** Truthy result.ok = success; the summary/data shape mirrors ToolResult. */
+  result: {
+    ok: boolean;
+    summary?: string;
+    data?: Record<string, unknown>;
+    error?: string;
+  };
+}
+
 export interface Turn {
   role: TurnRole;
   /** ISO 8601 timestamp (no fractional seconds). */
   timestamp: string;
   content: string;
+  /** Tool calls made during this turn (assistant turns only). */
+  toolCalls?: PersistedToolCall[];
 }
 
 export interface ThreadMeta {
@@ -113,7 +133,10 @@ export async function createThread(
 export async function appendTurn(
   roleHome: string,
   threadId: string,
-  turn: Omit<Turn, 'timestamp'> & { timestamp?: string },
+  turn: Omit<Turn, 'timestamp' | 'toolCalls'> & {
+    timestamp?: string;
+    toolCalls?: PersistedToolCall[];
+  },
 ): Promise<Turn> {
   const file = threadPath(roleHome, threadId);
   const text = await fs.readFile(file, 'utf-8');
@@ -128,6 +151,9 @@ export async function appendTurn(
     timestamp: finalTimestamp,
     content: turn.content,
   };
+  if (turn.toolCalls && turn.toolCalls.length > 0) {
+    newTurn.toolCalls = turn.toolCalls;
+  }
   const updatedMeta: ThreadMeta = { ...parsed.thread, updated: finalTimestamp };
   const turns = [...parsed.turns, newTurn];
 
@@ -279,10 +305,71 @@ function parseTurns(body: string): Turn[] {
     while (contentLines.length > 0 && contentLines[contentLines.length - 1]!.trim().length === 0) {
       contentLines.pop();
     }
-    turns.push({ role, timestamp, content: contentLines.join('\n') });
+
+    const { toolCalls, remaining } = extractToolCallFence(contentLines);
+    const turn: Turn = { role, timestamp, content: remaining.join('\n') };
+    if (toolCalls && toolCalls.length > 0) turn.toolCalls = toolCalls;
+    turns.push(turn);
   }
 
   return turns;
+}
+
+/**
+ * Tool calls are persisted at the head of an assistant turn body as an
+ * HTML-comment-fenced JSON array. Shape:
+ *
+ *   <!-- praxis:tool_calls
+ *   [{"name":"write_memory","input":{...},"result":{...}}]
+ *   -->
+ *
+ * The fence is invisible in any markdown renderer, round-trips losslessly,
+ * and keeps the file readable when an operator opens it in their editor.
+ * Falls back silently to "no tool calls" if the JSON doesn't parse — we'd
+ * rather lose the metadata than lose the conversation.
+ */
+function extractToolCallFence(lines: string[]): {
+  toolCalls: PersistedToolCall[] | null;
+  remaining: string[];
+} {
+  if (lines.length === 0) return { toolCalls: null, remaining: lines };
+  if ((lines[0] ?? '').trim() !== '<!-- praxis:tool_calls') {
+    return { toolCalls: null, remaining: lines };
+  }
+  let end = -1;
+  for (let i = 1; i < lines.length; i += 1) {
+    if ((lines[i] ?? '').trim() === '-->') {
+      end = i;
+      break;
+    }
+  }
+  if (end < 0) return { toolCalls: null, remaining: lines };
+  const jsonText = lines.slice(1, end).join('\n').trim();
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch {
+    return { toolCalls: null, remaining: lines };
+  }
+  if (!Array.isArray(parsed)) return { toolCalls: null, remaining: lines };
+  const toolCalls = parsed.filter(isPersistedToolCall) as PersistedToolCall[];
+
+  // Drop the fence + any single trailing blank line after it.
+  const after = lines.slice(end + 1);
+  while (after.length > 0 && (after[0] ?? '').trim().length === 0) {
+    after.shift();
+  }
+  return { toolCalls, remaining: after };
+}
+
+function isPersistedToolCall(value: unknown): value is PersistedToolCall {
+  if (typeof value !== 'object' || value === null) return false;
+  const v = value as Record<string, unknown>;
+  if (typeof v['name'] !== 'string') return false;
+  if (typeof v['input'] !== 'object' || v['input'] === null) return false;
+  if (typeof v['result'] !== 'object' || v['result'] === null) return false;
+  const result = v['result'] as Record<string, unknown>;
+  return typeof result['ok'] === 'boolean';
 }
 
 function renderThreadFile(meta: ThreadMeta, turns: Turn[]): string {
@@ -314,5 +401,15 @@ function escapeFrontmatterValue(value: string): string {
 
 function renderTurn(turn: Turn): string {
   const heading = turn.role === 'user' ? 'User' : 'Assistant';
-  return `## ${heading} · ${turn.timestamp}\n\n${turn.content}`;
+  const parts = [`## ${heading} · ${turn.timestamp}`, ''];
+  if (turn.toolCalls && turn.toolCalls.length > 0) {
+    parts.push(
+      '<!-- praxis:tool_calls',
+      JSON.stringify(turn.toolCalls),
+      '-->',
+      '',
+    );
+  }
+  parts.push(turn.content);
+  return parts.join('\n');
 }

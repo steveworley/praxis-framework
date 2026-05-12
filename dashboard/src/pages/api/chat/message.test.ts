@@ -100,6 +100,7 @@ describe('POST /api/chat/message', () => {
     await appendTurn(tempDir, thread_id, { role: 'user', content: 'first question' });
 
     createSpy.mockResolvedValueOnce({
+      stop_reason: 'end_turn',
       content: [{ type: 'text', text: 'My answer.' }],
     });
 
@@ -121,5 +122,96 @@ describe('POST /api/chat/message', () => {
       { role: 'user', content: 'first question' },
       { role: 'user', content: 'second question' },
     ]);
+  });
+
+  it('runs a tool-use loop and persists tool calls onto the assistant turn', async () => {
+    process.env['ANTHROPIC_API_KEY'] = 'sk-test';
+    await seedRole();
+    const { appendTurn, createThread, loadThread } = await import(
+      '@/lib/chat/conversation.ts'
+    );
+    const { thread_id } = await createThread(tempDir, 'remember Mary');
+    await appendTurn(tempDir, thread_id, { role: 'user', content: 'remember Mary' });
+
+    createSpy
+      .mockResolvedValueOnce({
+        stop_reason: 'tool_use',
+        content: [
+          {
+            type: 'tool_use',
+            id: 'tu_1',
+            name: 'write_memory',
+            input: {
+              category: 'people',
+              title: 'Mary Chen at Acme',
+              body: 'She prefers async updates.',
+            },
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        stop_reason: 'end_turn',
+        content: [{ type: 'text', text: 'Noted Mary in my memory.' }],
+      });
+
+    const res = await callPost({ thread_id, content: 'next' });
+    expect(res.status).toBe(200);
+    const payload = (await res.json()) as {
+      content: string;
+      toolCalls: Array<{ name: string; result: { ok: boolean } }>;
+    };
+    expect(payload.content).toBe('Noted Mary in my memory.');
+    expect(payload.toolCalls).toHaveLength(1);
+    expect(payload.toolCalls[0]!.name).toBe('write_memory');
+    expect(payload.toolCalls[0]!.result.ok).toBe(true);
+
+    // The memory file was actually written.
+    const memText = await fs.readFile(
+      path.join(tempDir, 'memory/people/mary-chen-at-acme.md'),
+      'utf-8',
+    );
+    expect(memText).toMatch(/# Mary Chen at Acme/);
+
+    // The thread file persisted the tool-call fence on reload.
+    const detail = await loadThread(tempDir, thread_id);
+    const assistant = detail.turns[2]!;
+    expect(assistant.role).toBe('assistant');
+    expect(assistant.toolCalls).toHaveLength(1);
+    expect(assistant.toolCalls?.[0]?.name).toBe('write_memory');
+  });
+
+  it('records a tool-call error result and lets the model recover', async () => {
+    process.env['ANTHROPIC_API_KEY'] = 'sk-test';
+    await seedRole();
+    const { appendTurn, createThread } = await import('@/lib/chat/conversation.ts');
+    const { thread_id } = await createThread(tempDir, 'try');
+    await appendTurn(tempDir, thread_id, { role: 'user', content: 'try' });
+
+    createSpy
+      .mockResolvedValueOnce({
+        stop_reason: 'tool_use',
+        content: [
+          {
+            type: 'tool_use',
+            id: 'tu_x',
+            name: 'write_memory',
+            // category is missing → input validation refusal.
+            input: { title: 'x', body: 'y' },
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        stop_reason: 'end_turn',
+        content: [{ type: 'text', text: 'I could not write that.' }],
+      });
+
+    const res = await callPost({ thread_id, content: 'next' });
+    expect(res.status).toBe(200);
+    const payload = (await res.json()) as {
+      toolCalls: Array<{ result: { ok: boolean; error?: string } }>;
+    };
+    expect(payload.toolCalls).toHaveLength(1);
+    expect(payload.toolCalls[0]!.result.ok).toBe(false);
+    expect(payload.toolCalls[0]!.result.error).toMatch(/invalid/);
   });
 });

@@ -141,3 +141,134 @@ describe('sendMessage', () => {
     expect((err as Error).message).toMatch(/429/);
   });
 });
+
+describe('sendMessageWithTools — tool-use loop', () => {
+  it('returns immediately when stop_reason is end_turn', async () => {
+    process.env['ANTHROPIC_API_KEY'] = 'sk-test';
+    createSpy.mockResolvedValueOnce({
+      stop_reason: 'end_turn',
+      content: [{ type: 'text', text: 'hello' }],
+    });
+    const { sendMessageWithTools } = await import('./anthropic.ts');
+    const exec = vi.fn();
+    const result = await sendMessageWithTools(
+      'sys',
+      [],
+      'hi',
+      [
+        {
+          name: 'noop',
+          description: 'noop',
+          input_schema: { type: 'object', properties: {} },
+        },
+      ],
+      exec,
+    );
+    expect(result.text).toBe('hello');
+    expect(result.toolCalls).toEqual([]);
+    expect(result.truncated).toBe(false);
+    expect(exec).not.toHaveBeenCalled();
+  });
+
+  it('loops on tool_use stop_reason and feeds tool_result back', async () => {
+    process.env['ANTHROPIC_API_KEY'] = 'sk-test';
+    createSpy
+      .mockResolvedValueOnce({
+        stop_reason: 'tool_use',
+        content: [
+          { type: 'text', text: '' },
+          {
+            type: 'tool_use',
+            id: 'toolu_1',
+            name: 'write_memory',
+            input: { category: 'notes', title: 't', body: 'b' },
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        stop_reason: 'end_turn',
+        content: [{ type: 'text', text: 'Done.' }],
+      });
+
+    const exec = vi.fn().mockResolvedValue({
+      ok: true,
+      contentText: 'wrote memory/notes/t.md.\n{"path":"memory/notes/t.md"}',
+      summary: 'wrote memory/notes/t.md',
+      data: { path: 'memory/notes/t.md' },
+    });
+
+    const { sendMessageWithTools } = await import('./anthropic.ts');
+    const result = await sendMessageWithTools(
+      'sys',
+      [],
+      'remember this',
+      [
+        {
+          name: 'write_memory',
+          description: 'd',
+          input_schema: { type: 'object', properties: {} },
+        },
+      ],
+      exec,
+    );
+
+    expect(result.text).toBe('Done.');
+    expect(result.toolCalls).toHaveLength(1);
+    expect(result.toolCalls[0]!.name).toBe('write_memory');
+    expect(result.toolCalls[0]!.result.ok).toBe(true);
+    expect(exec).toHaveBeenCalledWith('write_memory', {
+      category: 'notes',
+      title: 't',
+      body: 'b',
+    });
+
+    // Verify the second create call passed back the tool_result.
+    const secondCall = createSpy.mock.calls[1]![0] as { messages: unknown[] };
+    expect(secondCall.messages).toHaveLength(3); // user + assistant(tool_use) + user(tool_result)
+    const lastMsg = secondCall.messages[2] as {
+      role: string;
+      content: Array<{ type: string; tool_use_id: string; is_error?: boolean }>;
+    };
+    expect(lastMsg.role).toBe('user');
+    expect(lastMsg.content[0]!.type).toBe('tool_result');
+    expect(lastMsg.content[0]!.tool_use_id).toBe('toolu_1');
+    expect(lastMsg.content[0]!.is_error).toBe(false);
+  });
+
+  it('marks tool failures with is_error and persists the error in toolCalls', async () => {
+    process.env['ANTHROPIC_API_KEY'] = 'sk-test';
+    createSpy
+      .mockResolvedValueOnce({
+        stop_reason: 'tool_use',
+        content: [
+          {
+            type: 'tool_use',
+            id: 'toolu_fail',
+            name: 'write_memory',
+            input: { category: 'people', title: 'dup', body: 'b' },
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        stop_reason: 'end_turn',
+        content: [{ type: 'text', text: 'noted the refusal' }],
+      });
+
+    const exec = vi
+      .fn()
+      .mockResolvedValue({ ok: false, contentText: 'already exists' });
+
+    const { sendMessageWithTools } = await import('./anthropic.ts');
+    const result = await sendMessageWithTools('sys', [], 'try', [], exec);
+
+    expect(result.toolCalls).toHaveLength(1);
+    expect(result.toolCalls[0]!.result.ok).toBe(false);
+    expect(result.toolCalls[0]!.result.error).toBe('already exists');
+
+    const secondCall = createSpy.mock.calls[1]![0] as { messages: unknown[] };
+    const lastMsg = secondCall.messages[2] as {
+      content: Array<{ is_error: boolean }>;
+    };
+    expect(lastMsg.content[0]!.is_error).toBe(true);
+  });
+});

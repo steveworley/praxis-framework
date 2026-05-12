@@ -8,10 +8,13 @@ import {
   AnthropicChatError,
   hasApiKey,
   MissingApiKeyError,
-  sendMessage,
+  sendMessageWithTools,
+  type ToolExecutor,
 } from '@/lib/chat/anthropic.js';
-import { appendTurn, loadThread } from '@/lib/chat/conversation.js';
+import { appendTurn, loadThread, type PersistedToolCall } from '@/lib/chat/conversation.js';
 import { buildSystemPrompt } from '@/lib/chat/system-prompt.js';
+import { CHAT_TOOLS } from '@/lib/chat/tool-schemas.js';
+import { executeTool } from '@/lib/chat/tools.js';
 import { getRoleHome } from '@/lib/role-home.js';
 
 export const prerender = false;
@@ -79,9 +82,34 @@ export const POST: APIRoute = async ({ request }) => {
     ? `${attachmentBlock}\n\n${parsed.data.content}`
     : parsed.data.content;
 
+  // Wire the tool executor. It captures `roleHome` and dispatches via the
+  // shared `executeTool` registry — keeps the routing logic in one place.
+  const toolExecutor: ToolExecutor = async (name, input) => {
+    const result = await executeTool(name, input, roleHome);
+    if (result.ok) {
+      // The model sees a compact human-readable summary + the structured data
+      // payload as JSON. That gives it enough to plan follow-up turns while
+      // staying inside the 1024-token budget Anthropic suggests for tool_result.
+      const text = [`${result.summary}.`, JSON.stringify(result.data)].join('\n');
+      return { ok: true, contentText: text, summary: result.summary, data: result.data };
+    }
+    return { ok: false, contentText: result.error };
+  };
+
   let assistantText: string;
+  let toolCalls: PersistedToolCall[];
+  let truncated = false;
   try {
-    assistantText = await sendMessage(systemPrompt, thread.turns, userContent);
+    const result = await sendMessageWithTools(
+      systemPrompt,
+      thread.turns,
+      userContent,
+      CHAT_TOOLS,
+      toolExecutor,
+    );
+    assistantText = result.text;
+    toolCalls = result.toolCalls;
+    truncated = result.truncated;
   } catch (error: unknown) {
     if (error instanceof MissingApiKeyError) {
       return json(503, { error: error.message });
@@ -90,6 +118,10 @@ export const POST: APIRoute = async ({ request }) => {
       return json(502, { error: error.message });
     }
     return json(500, { error: errorMessage(error) });
+  }
+
+  if (truncated && assistantText.length === 0) {
+    assistantText = '(stopped after the tool-use iteration cap was reached)';
   }
 
   // Persist the user turn first, then the assistant reply, so a crash between
@@ -102,11 +134,14 @@ export const POST: APIRoute = async ({ request }) => {
     const assistantTurn = await appendTurn(roleHome, parsed.data.thread_id, {
       role: 'assistant',
       content: assistantText,
+      toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
     });
     return json(200, {
       role: 'assistant',
       content: assistantText,
       timestamp: assistantTurn.timestamp,
+      toolCalls,
+      truncated,
     });
   } catch (error: unknown) {
     return json(500, {

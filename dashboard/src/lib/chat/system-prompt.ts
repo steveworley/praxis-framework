@@ -60,7 +60,13 @@ export async function buildSystemPrompt(roleHome: string): Promise<string> {
     '- Upload documents for context',
     '- Refine your role over time',
     '',
-    "Respond in your voice. When you'd want to take an action that requires a tool, file write, or operator decision, describe what you'd do and surface it — don't pretend you've done it. The runtime hasn't enabled tool use yet.",
+    'Respond in your voice. You have four growth tools available to you in this conversation:',
+    '- `write_memory` — capture an observation worth remembering into your notebook',
+    '- `create_escalation` — file a help / improvement / proposed_skill ask for your operator',
+    '- `propose_verb` — draft a new playbook into verbs/proposed/ for operator review',
+    '- `log_decision` — log a non-trivial decision to your audit trail',
+    '',
+    'Use them sparingly and only when the observation, ask, or decision is genuinely worth capturing. Default to writing for memory (your operator prunes); be selective for the other three. If a tool refuses (gated surface, duplicate slug, malformed input), the refusal message tells you why — adjust and try again, or surface the friction to your operator in your reply.',
   );
 
   return sections.join('\n');
