@@ -94,13 +94,25 @@ async function summariseVerb(absPath: string, relFile: string): Promise<VerbSumm
 }
 
 function deriveLabel(text: string, relFile: string): string {
-  // First H1 wins — strip markdown noise so the rendered label reads cleanly.
+  const slug = path.basename(relFile, '.md');
+  // Prefer frontmatter `description` when present — role-proposed verbs carry
+  // a human-readable description there; their H1 is just the slug echoed back.
+  const fmMatch = /^---\s*\n([\s\S]*?)\n---/.exec(text);
+  if (fmMatch && fmMatch[1]) {
+    const descMatch = /^description:\s*(.+)$/m.exec(fmMatch[1]);
+    if (descMatch && descMatch[1]) {
+      const desc = descMatch[1].trim().replace(/^["']|["']$/g, '');
+      if (desc.length > 0) return desc;
+    }
+  }
+  // Next: first H1, unless it just repeats the slug (operator-meaningful H1 wins).
   const headingMatch = /^#\s+(.+)$/m.exec(text);
   if (headingMatch && headingMatch[1]) {
-    return headingMatch[1].trim().replace(/\s+verb$/i, '').toLowerCase();
+    const heading = headingMatch[1].trim().replace(/\s+verb$/i, '').toLowerCase();
+    if (heading !== slug.toLowerCase()) return heading;
   }
-  // Fallback: filename without extension or proposed/ prefix.
-  return path.basename(relFile, '.md').replace(/-/g, ' ');
+  // Fallback: filename without extension, slug-with-spaces.
+  return slug.replace(/-/g, ' ');
 }
 
 /**
