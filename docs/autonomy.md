@@ -51,6 +51,8 @@ Whatever surfaces are open, three things hold:
 
 1. **Visibility** — every autonomous edit is a git commit signed by the role (`--author="{role full name} <{role email}>"`). The dashboard's `/role` page surfaces "Recent edits by {role}" with a diff preview. Operators read it like a manager reviewing a direct report's working files.
 
+   Actor convention: dashboard-mediated commits use two synthetic identities so `git log --author=` filtering stays clean — `Praxis Role <role@praxis.local>` for autonomous chat-side writes (`write_memory`, `create_escalation`, `propose_verb`, `log_decision`), and the operator's configured `user.name`/`user.email` (falling back to `Operator <operator@praxis.local>` when no git identity is set) for triage-side actions (accept/decline/comment escalations, accept/decline/edit proposed verbs). Commit subjects follow conventional-commit shape: `role(<scope>): <subject>` and `operator(triage): <subject>` respectively. Operators who drive the role via Claude Code commit under their own git identity as usual — the synthetic actors only apply to dashboard-mediated mutations.
+
 2. **Reversibility** — `git revert <sha>` is the rollback. Every autonomous edit is one commit, attributed to the role, on a known set of paths. No autonomous edit is irreversible.
 
 3. **Lock toggle** — `lib/autonomy.yaml` is operator-authored. Any surface can be downgraded to `gated` with a one-line edit. If the role starts making changes the operator keeps reverting, the operator pulls the lever.

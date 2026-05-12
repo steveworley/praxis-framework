@@ -75,6 +75,7 @@ const bootstrap = {
       </p>
 
       <div class="triage-error" x-show="bannerError" x-text="bannerError"></div>
+      <div class="triage-warn" x-show="bannerWarning" x-text="bannerWarning"></div>
 
       <div class="group">
         <div class="group-head">
@@ -296,6 +297,15 @@ const bootstrap = {
       font-size: 13px;
       border-radius: 3px;
       margin-bottom: 1rem;
+    }
+    .triage-warn {
+      background: #fdf6ec;
+      color: var(--warn, #946400);
+      padding: 0.55rem 0.95rem;
+      font-size: 12.5px;
+      border-radius: 3px;
+      margin-bottom: 1rem;
+      border-left: 2px solid var(--warn, #d4a017);
     }
 
     .triage-item {
@@ -521,6 +531,7 @@ const bootstrap = {
         editing: {},    // slug -> bool (only used for proposed verbs)
         busy: {},       // id -> bool (in-flight network)
         bannerError: '',
+        bannerWarning: '',
 
         init() {
           // nothing to do — page renders from the server-side bootstrap.
@@ -566,9 +577,33 @@ const bootstrap = {
           this.notes[id] = '';
         },
 
+        /**
+         * Pull `commit_warning` out of a successful triage-action response and
+         * surface it as a soft banner. The action itself already landed on
+         * disk — this is the audit-log gap, not a primary failure.
+         *
+         * The accept-escalation / decline-escalation / comment-escalation
+         * endpoints return `{ ok, escalation }` with the warning on
+         * `escalation.commit_warning`. Accept-proposed-verb returns
+         * `{ ok, movedTo, commit_warning }` at the top level. Accept either.
+         */
+        surfaceCommitWarning(body) {
+          if (!body || typeof body !== 'object') return;
+          const direct = body.commit_warning;
+          const nestedEsc = body.escalation && body.escalation.commit_warning;
+          const nestedVerb = body.verb && body.verb.commit_warning;
+          const warning = direct || nestedEsc || nestedVerb;
+          if (typeof warning === 'string' && warning.length > 0) {
+            this.bannerWarning = warning;
+          } else {
+            this.bannerWarning = '';
+          }
+        },
+
         async acceptEscalation(id) {
           this.busy[id] = true;
           this.bannerError = '';
+          this.bannerWarning = '';
           try {
             const note = (this.notes[id] || '').trim();
             const body = note ? { operator_note: note } : {};
@@ -581,6 +616,8 @@ const bootstrap = {
               const err = await res.json().catch(() => ({}));
               throw new Error(err.error || `Accept failed (${res.status})`);
             }
+            const respBody = await res.json().catch(() => ({}));
+            this.surfaceCommitWarning(respBody);
             this.removeEscalation(id);
           } catch (e) {
             this.bannerError = e instanceof Error ? e.message : String(e);
@@ -594,6 +631,7 @@ const bootstrap = {
           if (!reason) return;
           this.busy[id] = true;
           this.bannerError = '';
+          this.bannerWarning = '';
           try {
             const res = await fetch(`/api/triage/escalations/${encodeURIComponent(id)}/decline`, {
               method: 'POST',
@@ -604,6 +642,8 @@ const bootstrap = {
               const err = await res.json().catch(() => ({}));
               throw new Error(err.error || `Decline failed (${res.status})`);
             }
+            const respBody = await res.json().catch(() => ({}));
+            this.surfaceCommitWarning(respBody);
             this.removeEscalation(id);
           } catch (e) {
             this.bannerError = e instanceof Error ? e.message : String(e);
@@ -617,6 +657,7 @@ const bootstrap = {
           if (!note) return;
           this.busy[id] = true;
           this.bannerError = '';
+          this.bannerWarning = '';
           try {
             const res = await fetch(`/api/triage/escalations/${encodeURIComponent(id)}/comment`, {
               method: 'POST',
@@ -627,6 +668,8 @@ const bootstrap = {
               const err = await res.json().catch(() => ({}));
               throw new Error(err.error || `Comment failed (${res.status})`);
             }
+            const respBody = await res.json().catch(() => ({}));
+            this.surfaceCommitWarning(respBody);
             this.pending[id] = undefined;
             this.notes[id] = '';
             // Body might have been expanded — refresh the cached copy.
@@ -668,6 +711,7 @@ const bootstrap = {
         async acceptVerb(slug, bodyOverride) {
           this.busy[slug] = true;
           this.bannerError = '';
+          this.bannerWarning = '';
           try {
             const body = bodyOverride !== undefined ? { body_override: bodyOverride } : {};
             const res = await fetch(`/api/triage/verbs/proposed/${encodeURIComponent(slug)}/accept`, {
@@ -679,6 +723,8 @@ const bootstrap = {
               const err = await res.json().catch(() => ({}));
               throw new Error(err.error || `Accept failed (${res.status})`);
             }
+            const respBody = await res.json().catch(() => ({}));
+            this.surfaceCommitWarning(respBody);
             this.removeVerb(slug);
           } catch (e) {
             this.bannerError = e instanceof Error ? e.message : String(e);
@@ -690,6 +736,7 @@ const bootstrap = {
         async saveEdit(slug) {
           this.busy[slug] = true;
           this.bannerError = '';
+          this.bannerWarning = '';
           try {
             const body = this.bodies[slug] || '';
             const res = await fetch(`/api/triage/verbs/proposed/${encodeURIComponent(slug)}/edit`, {
@@ -701,6 +748,8 @@ const bootstrap = {
               const err = await res.json().catch(() => ({}));
               throw new Error(err.error || `Save failed (${res.status})`);
             }
+            const respBody = await res.json().catch(() => ({}));
+            this.surfaceCommitWarning(respBody);
             this.editing[slug] = false;
           } catch (e) {
             this.bannerError = e instanceof Error ? e.message : String(e);
@@ -722,6 +771,7 @@ const bootstrap = {
           if (!reason) return;
           this.busy[slug] = true;
           this.bannerError = '';
+          this.bannerWarning = '';
           try {
             const res = await fetch(`/api/triage/verbs/proposed/${encodeURIComponent(slug)}/decline`, {
               method: 'POST',
@@ -732,6 +782,8 @@ const bootstrap = {
               const err = await res.json().catch(() => ({}));
               throw new Error(err.error || `Decline failed (${res.status})`);
             }
+            const respBody = await res.json().catch(() => ({}));
+            this.surfaceCommitWarning(respBody);
             this.removeVerb(slug);
           } catch (e) {
             this.bannerError = e instanceof Error ? e.message : String(e);

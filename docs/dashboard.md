@@ -130,7 +130,22 @@ Two sections, both backed by the typed `/api/triage/*` routes:
 
 Every mutation is atomic (write-to-tmp + rename), every id/slug is regex-validated and path-traversal-checked, and the home page surfaces a "N items in triage" strip when the queue is non-empty. The nav tab carries a count badge.
 
-The triage surface does *not* yet commit per action — committing each accept/decline/comment as the operator (alongside the role's own commits) is dispatch #2 in the roadmap.
+## Audit trail
+
+Every dashboard-mediated mutation — chat-side tool calls and operator-side triage actions — lands as a git commit on the role's repo. Two synthetic actors keep `git log --author=` filtering honest:
+
+| Surface | Author | Conventional commit |
+|---|---|---|
+| `write_memory` (chat) | `Praxis Role <role@praxis.local>` | `role(memory): note <slug>` |
+| `create_escalation` (chat) | `Praxis Role <role@praxis.local>` | `role(escalation): file <kind> — <slug>` |
+| `propose_verb` (chat) | `Praxis Role <role@praxis.local>` | `role(verb): propose <slug>` |
+| `log_decision` (chat) | `Praxis Role <role@praxis.local>` | `role(decision): log <decision_type>` |
+| accept / decline / comment escalation (triage) | operator (from `git config`) | `operator(triage): <action> escalation <id>` |
+| accept / decline / edit proposed verb (triage) | operator (from `git config`) | `operator(triage): <action> proposed verb <slug>` |
+
+The role's repo doesn't need to be a git repo on first launch — the audit module auto-initialises one and lays a `chore: praxis init audit baseline` commit before any mutation lands. If the operator hasn't set a git identity, operator-side commits fall back to `Operator <operator@praxis.local>` and the triage UI surfaces a soft banner inviting them to set `user.name`/`user.email`.
+
+The audit-commit path is best-effort: any failure (no diff to commit, hook rejection, disk error) returns a warning to the caller but never blocks the primary mutation. Chat-side tool calls render the short SHA inline (`→ wrote memory/foo.md  abc1234`) on success or `(commit skipped: <reason>)` when the commit didn't land.
 
 ## What the wizard writes
 
@@ -170,6 +185,5 @@ Both commits are visible in `git log` and can be reverted independently. The wiz
 
 ## What it isn't
 
-- Not (yet) git-aware — `/triage` mutations land on disk but don't auto-commit as the operator. Commit-per-action is dispatch #2.
 - Not multi-role — one dashboard instance, one role. Multi-role = multiple framework clones.
 - Not a search interface — feeds are linear. Use grep against the role-home for targeted lookups.

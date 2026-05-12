@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
+import { commitChange, type CommitResult } from './audit.ts';
 import { extractTitle, parseFrontmatter } from './frontmatter.ts';
 
 /**
@@ -40,6 +41,14 @@ export interface EscalationSummary {
 export interface EscalationDetail extends EscalationSummary {
   body: string;
   frontmatter: Record<string, string>;
+  /**
+   * Audit-commit metadata. Set only by mutation calls (accept/decline/
+   * comment); read helpers leave both undefined. `commit_sha` is present
+   * when the audit commit landed; `commit_warning` describes why it didn't
+   * when something went wrong (no repo, no diff, etc.).
+   */
+  commit_sha?: string;
+  commit_warning?: string;
 }
 
 export interface ProposedVerbSummary {
@@ -54,6 +63,11 @@ export interface ProposedVerbSummary {
 export interface ProposedVerbDetail extends ProposedVerbSummary {
   body: string;
   frontmatter: Record<string, string>;
+  /**
+   * Audit-commit metadata. See EscalationDetail — same shape, same rules.
+   */
+  commit_sha?: string;
+  commit_warning?: string;
 }
 
 export type EscalationStatusFilter = 'open' | 'accepted' | 'declined' | 'resolved' | 'all';
@@ -126,6 +140,22 @@ function liveVerbPath(roleHome: string, slug: string): string {
     throw new TriageValidationError(`Live verb path escapes verbs/: ${slug}`);
   }
   return abs;
+}
+
+// ---- Audit commit helper -----------------------------------------------
+
+/**
+ * Apply a CommitResult's metadata onto a detail object. Mutation callers
+ * use this so the API layer can pick up `commit_warning` (and the operator
+ * UI can surface it inline).
+ */
+function attachCommitMeta<T extends { commit_sha?: string; commit_warning?: string }>(
+  detail: T,
+  commit: CommitResult,
+): T {
+  if (commit.committed && commit.sha) detail.commit_sha = commit.sha;
+  if (commit.warning) detail.commit_warning = commit.warning;
+  return detail;
 }
 
 // ---- Atomic write ------------------------------------------------------
@@ -386,7 +416,7 @@ export async function acceptEscalation(
   operatorNote?: string,
   now: Date = new Date(),
 ): Promise<EscalationDetail> {
-  return rewriteEscalation(
+  const detail = await rewriteEscalation(
     roleHome,
     id,
     (fm) => {
@@ -395,6 +425,15 @@ export async function acceptEscalation(
     },
     operatorNote ? operatorNoteBlock('accepted', operatorNote, now) : `\n## Operator note · ${localIsoString(now)}\n\nAccepted.\n`,
   );
+  const commit = await commitChange({
+    roleHome,
+    actor: 'operator',
+    filePaths: [detail.path],
+    scope: 'triage',
+    subject: `accept escalation ${id}`,
+    body: operatorNote && operatorNote.trim().length > 0 ? operatorNote.trim() : undefined,
+  });
+  return attachCommitMeta(detail, commit);
 }
 
 export async function declineEscalation(
@@ -406,7 +445,7 @@ export async function declineEscalation(
   if (reason.trim().length === 0) {
     throw new TriageValidationError('Decline reason is required.');
   }
-  return rewriteEscalation(
+  const detail = await rewriteEscalation(
     roleHome,
     id,
     (fm) => {
@@ -415,6 +454,15 @@ export async function declineEscalation(
     },
     operatorNoteBlock('declined', reason, now),
   );
+  const commit = await commitChange({
+    roleHome,
+    actor: 'operator',
+    filePaths: [detail.path],
+    scope: 'triage',
+    subject: `decline escalation ${id}`,
+    body: reason.trim(),
+  });
+  return attachCommitMeta(detail, commit);
 }
 
 export async function commentOnEscalation(
@@ -426,7 +474,16 @@ export async function commentOnEscalation(
   if (note.trim().length === 0) {
     throw new TriageValidationError('Comment note is required.');
   }
-  return rewriteEscalation(roleHome, id, () => {}, operatorNoteBlock('comment', note, now));
+  const detail = await rewriteEscalation(roleHome, id, () => {}, operatorNoteBlock('comment', note, now));
+  const commit = await commitChange({
+    roleHome,
+    actor: 'operator',
+    filePaths: [detail.path],
+    scope: 'triage',
+    subject: `comment on escalation ${id}`,
+    body: note.trim(),
+  });
+  return attachCommitMeta(detail, commit);
 }
 
 function operatorNoteBlock(kind: 'accepted' | 'declined' | 'comment', note: string, now: Date): string {
@@ -530,7 +587,14 @@ export async function editProposedVerb(
   if (!refreshed) {
     throw new Error(`Failed to re-read proposed verb after edit: ${slug}`);
   }
-  return refreshed;
+  const commit = await commitChange({
+    roleHome,
+    actor: 'operator',
+    filePaths: [refreshed.path],
+    scope: 'triage',
+    subject: `edit proposed verb ${slug}`,
+  });
+  return attachCommitMeta(refreshed, commit);
 }
 
 export interface AcceptProposedVerbOptions {
@@ -543,6 +607,10 @@ export interface AcceptProposedVerbResult {
   movedTo: string;
   /** Whether the CLAUDE.md verbs table was updated. */
   claudeMdUpdated: boolean;
+  /** Set when the audit commit landed. */
+  commit_sha?: string;
+  /** Set when the audit commit was skipped or failed. */
+  commit_warning?: string;
 }
 
 /**
@@ -607,7 +675,28 @@ export async function acceptProposedVerb(
   const claudeMdUpdated = await appendVerbToClaudeMd(roleHome, slug, existing.description ?? null);
 
   const rel = path.relative(roleHome, liveAbs);
-  return { movedTo: rel, claudeMdUpdated };
+
+  // 4. Audit commit. Stage all three potentially-changed paths so the rename
+  //    + frontmatter update + CLAUDE.md row land as one operator-attributed
+  //    commit. simple-git's `git add` over the deleted proposed file would
+  //    NOT stage the deletion, so explicitly stage that path so the commit
+  //    records the rename.
+  const commitPaths = [rel, path.relative(roleHome, proposedAbs)];
+  if (claudeMdUpdated) commitPaths.push('CLAUDE.md');
+  const commitBody = [`Promoted verbs/proposed/${slug}.md to verbs/${slug}.md.`];
+  if (claudeMdUpdated) commitBody.push('Appended row to CLAUDE.md verbs table.');
+  const commit = await commitChange({
+    roleHome,
+    actor: 'operator',
+    filePaths: commitPaths,
+    scope: 'triage',
+    subject: `accept proposed verb ${slug}`,
+    body: commitBody.join('\n'),
+  });
+  const result: AcceptProposedVerbResult = { movedTo: rel, claudeMdUpdated };
+  if (commit.committed && commit.sha) result.commit_sha = commit.sha;
+  if (commit.warning) result.commit_warning = commit.warning;
+  return result;
 }
 
 export async function declineProposedVerb(
@@ -635,7 +724,15 @@ export async function declineProposedVerb(
   if (!refreshed) {
     throw new Error(`Failed to re-read proposed verb after decline: ${slug}`);
   }
-  return refreshed;
+  const commit = await commitChange({
+    roleHome,
+    actor: 'operator',
+    filePaths: [refreshed.path],
+    scope: 'triage',
+    subject: `decline proposed verb ${slug}`,
+    body: reason.trim(),
+  });
+  return attachCommitMeta(refreshed, commit);
 }
 
 // ---- CLAUDE.md verbs-table append -------------------------------------

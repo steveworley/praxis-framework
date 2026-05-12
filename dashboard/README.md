@@ -68,6 +68,23 @@ The page has two sections:
 
 All mutations are atomic (write to tmp + rename) and refuse path-traversal-y ids/slugs. The home page surfaces a "N items in triage" strip when the queue is non-empty, and the nav tab carries a red count badge.
 
+## Audit trail
+
+Every dashboard-mediated mutation lands as a git commit on the role's repo so operators can read `git log` as the role's diary and `git revert <sha>` to roll back any single change.
+
+| Surface | Author | Conventional commit |
+|---|---|---|
+| Chat-side `write_memory` | `Praxis Role <role@praxis.local>` | `role(memory): note <slug>` |
+| Chat-side `create_escalation` | `Praxis Role <role@praxis.local>` | `role(escalation): file <kind> — <slug>` |
+| Chat-side `propose_verb` | `Praxis Role <role@praxis.local>` | `role(verb): propose <slug>` |
+| Chat-side `log_decision` | `Praxis Role <role@praxis.local>` | `role(decision): log <decision_type>` |
+| Triage accept/decline/comment escalation | operator (from `git config`) | `operator(triage): <accept\|decline\|comment> escalation <id>` |
+| Triage accept/decline/edit proposed verb | operator (from `git config`) | `operator(triage): <accept\|decline\|edit> proposed verb <slug>` |
+
+`git log --author=Praxis\ Role` shows everything the role wrote autonomously through chat. `git log --author=<your-email>` shows the operator-side review actions. If the role home isn't yet a git repo when a mutation lands, the audit module auto-initialises one and plants a `chore: praxis init audit baseline` commit attributed to the operator before the mutation's own commit. If the operator's git identity isn't configured, operator-side commits fall back to `Operator <operator@praxis.local>` and the dashboard surfaces a soft warning inviting the operator to set `user.name`/`user.email`.
+
+Failures in the audit-commit path never block the user's primary action — the disk write already succeeded. Chat tool results render the short SHA next to the summary on success (`→ wrote memory/foo.md  abc1234`), and when the commit was skipped the model sees a `(commit skipped: <reason>)` suffix so it can reason about the gap.
+
 ## API surface
 
 All endpoints return JSON. Read endpoints exist as routes for parity with the legacy server, but the dashboard pages assemble data server-side via the same loader functions for fewer round-trips.

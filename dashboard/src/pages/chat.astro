@@ -147,6 +147,9 @@ const bootstrap = {
                         <li class="chat-tool-call" :class="{ 'is-error': !tc.result || !tc.result.ok }">
                           <span class="chat-tool-arrow">→</span>
                           <span class="chat-tool-text" x-text="renderToolCall(tc)"></span>
+                          <template x-if="toolCallSha(tc)">
+                            <span class="chat-tool-sha" :title="'commit ' + toolCallSha(tc)" x-text="toolCallShortSha(tc)"></span>
+                          </template>
                         </li>
                       </template>
                     </ul>
@@ -576,6 +579,17 @@ const bootstrap = {
     .chat-tool-text {
       word-break: break-word;
     }
+    .chat-tool-sha {
+      flex-shrink: 0;
+      margin-left: 0.45rem;
+      padding: 1px 6px;
+      border-radius: 3px;
+      background: var(--rule);
+      color: var(--ink-faint);
+      font-size: 11.5px;
+      font-family: ui-monospace, monospace;
+      letter-spacing: 0.02em;
+    }
 
     @media (max-width: 900px) {
       .chat-shell {
@@ -907,16 +921,35 @@ const bootstrap = {
         renderToolCall(tc) {
           // Each tool call renders as a one-liner. Success uses the
           // executor's `summary`; failures lead with the tool name + error.
+          // The trailing ` · <short-sha>` segment the tool appends on a
+          // successful audit commit is rendered separately in its own span,
+          // so strip it here to avoid duplication.
           if (!tc || typeof tc !== 'object') return '';
           const result = tc.result || {};
           if (result.ok) {
-            if (result.summary) return result.summary;
+            const summary = result.summary || '';
+            const stripped = summary.replace(/\s+·\s+[0-9a-f]{7,}\s*$/, '');
+            if (stripped) return stripped;
             const path = result.data && result.data.path;
             if (path) return `${tc.name}: ${path}`;
             return tc.name;
           }
           const err = result.error || 'failed';
           return `${tc.name} refused — ${err}`;
+        },
+        toolCallSha(tc) {
+          if (!tc || typeof tc !== 'object') return '';
+          const data = tc.result && tc.result.data;
+          if (!data) return '';
+          return data.commit_sha || '';
+        },
+        toolCallShortSha(tc) {
+          if (!tc || typeof tc !== 'object') return '';
+          const data = tc.result && tc.result.data;
+          if (!data) return '';
+          if (data.commit_short_sha) return data.commit_short_sha;
+          if (data.commit_sha) return data.commit_sha.slice(0, 7);
+          return '';
         },
 
         renderMarkdown(text) {

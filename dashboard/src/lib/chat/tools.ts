@@ -4,6 +4,7 @@ import path from 'node:path';
 
 import { z } from 'zod';
 
+import { commitChange, type CommitResult } from '../audit.js';
 import { isWriteAllowed } from './autonomy-gate.js';
 
 /**
@@ -131,7 +132,16 @@ export async function executeWriteMemory(
   ]) + `\n\n# ${title}\n\n${body.trimEnd()}\n`;
 
   await ensureDirAndWrite(abs, content);
-  return ok(`wrote ${rel}`, { path: rel, created: today });
+  const success = ok(`wrote ${rel}`, { path: rel, created: today });
+  const commit = await commitChange({
+    roleHome,
+    actor: 'role',
+    filePaths: [rel],
+    scope: 'memory',
+    subject: `note ${slug}`,
+    body: `Category: ${category}`,
+  });
+  return withAuditCommit(success, commit);
 }
 
 // ---- create_escalation ---------------------------------------------------
@@ -179,11 +189,25 @@ export async function executeCreateEscalation(
     `\n\n# ${data.summary}\n\n${data.body.trimEnd()}\n`;
 
   await ensureDirAndWrite(abs, content);
-  return ok(`filed ${data.kind} escalation: ${data.summary}`, {
+  const success = ok(`filed ${data.kind} escalation: ${data.summary}`, {
     path: rel,
     id,
     kind: data.kind,
   });
+  const summarySlug = slugify(data.summary).slice(0, 60) || 'untitled';
+  const commitBody = [
+    `Kind: ${data.kind}`,
+    `Urgency: ${data.urgency ?? 'normal'}`,
+  ].join('\n');
+  const commit = await commitChange({
+    roleHome,
+    actor: 'role',
+    filePaths: [rel],
+    scope: 'escalation',
+    subject: `file ${data.kind} — ${summarySlug}`,
+    body: commitBody,
+  });
+  return withAuditCommit(success, commit);
 }
 
 // ---- propose_verb --------------------------------------------------------
@@ -228,7 +252,15 @@ export async function executeProposeVerb(
     ]) + `\n\n${body.trimEnd()}\n`;
 
   await ensureDirAndWrite(abs, content);
-  return ok(`proposed verb: ${slug}`, { path: rel, slug });
+  const success = ok(`proposed verb: ${slug}`, { path: rel, slug });
+  const commit = await commitChange({
+    roleHome,
+    actor: 'role',
+    filePaths: [rel],
+    scope: 'verb',
+    subject: `propose ${slug}`,
+  });
+  return withAuditCommit(success, commit);
 }
 
 // ---- log_decision --------------------------------------------------------
@@ -290,10 +322,21 @@ export async function executeLogDecision(
   await fs.mkdir(path.dirname(abs), { recursive: true });
   await fs.appendFile(abs, `${line}\n`, 'utf-8');
 
-  return ok(`logged decision: ${data.decision_type}`, {
+  const success = ok(`logged decision: ${data.decision_type}`, {
     logged: true,
     path: rel,
   });
+  const decisionBody: string[] = [`Chosen: ${data.chosen}`];
+  if (data.confidence) decisionBody.push(`Confidence: ${data.confidence}`);
+  const commit = await commitChange({
+    roleHome,
+    actor: 'role',
+    filePaths: [rel],
+    scope: 'decision',
+    subject: `log ${data.decision_type}`,
+    body: decisionBody.join('\n'),
+  });
+  return withAuditCommit(success, commit);
 }
 
 // ---- dispatch + helpers --------------------------------------------------
@@ -341,6 +384,30 @@ export async function executeTool(
 }
 
 function ok(summary: string, data: Record<string, unknown>): ToolSuccess {
+  return { ok: true, summary, data };
+}
+
+/**
+ * Fold an audit-commit result into the tool's success envelope:
+ *   - on a successful commit, append `· <short-sha>` to the summary and stash
+ *     `commit_sha` / `commit_short_sha` in `data` for the chat UI to render
+ *   - on a skipped/failed commit, append `(commit skipped: <reason>)` to the
+ *     summary and stash `commit_warning` so the model can see the gap.
+ *
+ * The disk write already succeeded before this fold runs — we never demote a
+ * `ToolSuccess` to a failure because the audit log couldn't be written.
+ */
+function withAuditCommit(success: ToolSuccess, commit: CommitResult): ToolSuccess {
+  const data = { ...success.data };
+  let summary = success.summary;
+  if (commit.committed && commit.sha) {
+    data['commit_sha'] = commit.sha;
+    if (commit.shortSha) data['commit_short_sha'] = commit.shortSha;
+    summary = `${success.summary} · ${commit.shortSha ?? commit.sha.slice(0, 7)}`;
+  } else if (commit.warning) {
+    data['commit_warning'] = commit.warning;
+    summary = `${success.summary} (${commit.warning})`;
+  }
   return { ok: true, summary, data };
 }
 

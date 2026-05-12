@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
+import { simpleGit } from 'simple-git';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import {
@@ -354,5 +355,153 @@ describe('declineProposedVerb', () => {
     await expect(declineProposedVerb(tempDir, 'tidy-up', '  ')).rejects.toBeInstanceOf(
       TriageValidationError,
     );
+  });
+});
+
+describe('audit-log commits on triage actions', () => {
+  /**
+   * Triage actions commit as the operator (using the role repo's git
+   * identity). To get a usable identity in tests we plant a local
+   * user.name/user.email on the test repo and start from a baseline commit.
+   */
+  async function initRepoWithBaseline(): Promise<void> {
+    const git = simpleGit(tempDir);
+    await git.init();
+    await git.addConfig('user.name', 'Alex Operator', false, 'local');
+    await git.addConfig('user.email', 'alex@example.test', false, 'local');
+    await git.addConfig('commit.gpgsign', 'false', false, 'local');
+    // Bring everything currently in the temp dir under tracking.
+    await git.add(['-A', '.']);
+    await git.raw([
+      '-c',
+      'user.name=Alex Operator',
+      '-c',
+      'user.email=alex@example.test',
+      'commit',
+      '--author=Alex Operator <alex@example.test>',
+      '--no-gpg-sign',
+      '--allow-empty',
+      '-m',
+      'init',
+    ]);
+  }
+
+  it('acceptEscalation commits as the operator', async () => {
+    await writeEscalation(
+      '2026-05-01-a',
+      `---\nkind: improvement\nurgency: low\ncreated: 2026-05-01\nstatus: open\n---\n# A\n\nbody`,
+    );
+    await initRepoWithBaseline();
+    const detail = await acceptEscalation(tempDir, '2026-05-01-a', 'will do');
+    expect(detail.commit_sha).toMatch(/^[0-9a-f]{40}$/);
+    expect(detail.commit_warning).toBeUndefined();
+
+    const git = simpleGit(tempDir);
+    const head = (
+      await git.raw(['log', '-n', '1', '--pretty=format:%an <%ae>%x1f%s'])
+    ).split('\x1f');
+    expect(head[0]).toBe('Alex Operator <alex@example.test>');
+    expect(head[1]).toBe('operator(triage): accept escalation 2026-05-01-a');
+  });
+
+  it('declineEscalation commits with the reason in the body', async () => {
+    await writeEscalation(
+      '2026-05-01-a',
+      `---\nkind: improvement\nurgency: low\ncreated: 2026-05-01\nstatus: open\n---\n# A\n\nbody`,
+    );
+    await initRepoWithBaseline();
+    const detail = await declineEscalation(tempDir, '2026-05-01-a', 'duplicate of #42');
+    expect(detail.commit_sha).toMatch(/^[0-9a-f]{40}$/);
+
+    const git = simpleGit(tempDir);
+    const log = await git.raw(['log', '-n', '1', '--pretty=format:%s%x1f%b']);
+    const [subject, body] = log.split('\x1f');
+    expect(subject).toBe('operator(triage): decline escalation 2026-05-01-a');
+    expect(body).toContain('duplicate of #42');
+  });
+
+  it('commentOnEscalation commits the note', async () => {
+    await writeEscalation(
+      '2026-05-01-a',
+      `---\nkind: help\nurgency: normal\ncreated: 2026-05-01\nstatus: open\n---\n# A\n\nbody`,
+    );
+    await initRepoWithBaseline();
+    const detail = await commentOnEscalation(tempDir, '2026-05-01-a', 'looking into this');
+    expect(detail.commit_sha).toMatch(/^[0-9a-f]{40}$/);
+    const git = simpleGit(tempDir);
+    const subject = (await git.raw(['log', '-n', '1', '--pretty=format:%s'])).trim();
+    expect(subject).toBe('operator(triage): comment on escalation 2026-05-01-a');
+  });
+
+  it('acceptProposedVerb commits the rename + CLAUDE.md row in one commit', async () => {
+    await writeProposedVerb(
+      'tidy-up',
+      `---\ndescription: keep things clean\nproposed_by: chat\ncreated: 2026-05-01\nstatus: proposed\n---\n\nbody`,
+    );
+    await fs.writeFile(
+      path.join(tempDir, 'CLAUDE.md'),
+      [
+        '# Role',
+        '',
+        '| Verb | File | Input Stage | Output Stage |',
+        '|------|------|-------------|-------------|',
+        '| **Persona** | `persona.md` | _(loaded)_ | identity |',
+        '',
+      ].join('\n'),
+      'utf-8',
+    );
+    await initRepoWithBaseline();
+    const result = await acceptProposedVerb(tempDir, 'tidy-up');
+    expect(result.commit_sha).toMatch(/^[0-9a-f]{40}$/);
+    expect(result.claudeMdUpdated).toBe(true);
+
+    const git = simpleGit(tempDir);
+    const filesOut = await git.raw([
+      'diff-tree',
+      '--no-commit-id',
+      '--name-status',
+      '-r',
+      result.commit_sha!,
+    ]);
+    const names = filesOut
+      .split('\n')
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0)
+      .map((s) => s.split(/\s+/).pop());
+    // All three paths should appear in this single commit.
+    expect(names).toContain('verbs/tidy-up.md');
+    expect(names).toContain('verbs/proposed/tidy-up.md');
+    expect(names).toContain('CLAUDE.md');
+
+    const subject = (await git.raw(['log', '-n', '1', '--pretty=format:%s'])).trim();
+    expect(subject).toBe('operator(triage): accept proposed verb tidy-up');
+  });
+
+  it('declineProposedVerb commits with the reason', async () => {
+    await writeProposedVerb(
+      'tidy-up',
+      `---\ndescription: keep things clean\nproposed_by: chat\ncreated: 2026-05-01\nstatus: proposed\n---\n\nbody`,
+    );
+    await initRepoWithBaseline();
+    const detail = await declineProposedVerb(tempDir, 'tidy-up', 'too narrow');
+    expect(detail.commit_sha).toMatch(/^[0-9a-f]{40}$/);
+    const git = simpleGit(tempDir);
+    const log = await git.raw(['log', '-n', '1', '--pretty=format:%s%x1f%b']);
+    const [subject, body] = log.split('\x1f');
+    expect(subject).toBe('operator(triage): decline proposed verb tidy-up');
+    expect(body).toContain('too narrow');
+  });
+
+  it('editProposedVerb commits the edit', async () => {
+    await writeProposedVerb(
+      'tidy-up',
+      `---\ndescription: keep things clean\nproposed_by: chat\ncreated: 2026-05-01\nstatus: proposed\n---\n\nraw draft`,
+    );
+    await initRepoWithBaseline();
+    const detail = await editProposedVerb(tempDir, 'tidy-up', 'refined operator body');
+    expect(detail.commit_sha).toMatch(/^[0-9a-f]{40}$/);
+    const git = simpleGit(tempDir);
+    const subject = (await git.raw(['log', '-n', '1', '--pretty=format:%s'])).trim();
+    expect(subject).toBe('operator(triage): edit proposed verb tidy-up');
   });
 });
