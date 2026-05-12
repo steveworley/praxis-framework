@@ -363,7 +363,7 @@ const bootstrap = {
     .chat-transcript {
       flex: 1;
       overflow-y: auto;
-      padding: 1.4rem 0.5rem 1.6rem;
+      padding: 1.4rem 1.5rem 1.6rem;
     }
     .chat-empty-hint {
       padding: 1.5rem 0;
@@ -384,7 +384,7 @@ const bootstrap = {
     /* Both speakers share the same shape — distinguished by label only. */
     .chat-turn {
       display: block;
-      max-width: 680px;
+      max-width: 720px;
       margin: 0;
       padding: 0;
     }
@@ -412,159 +412,170 @@ const bootstrap = {
       color: var(--ink-faint);
       font-family: ui-monospace, monospace;
     }
+    /* The body shape itself stays scoped — `.chat-turn-body` is a server-rendered
+       element. But everything inside it is injected at runtime via
+       `x-html="turn.content_html"`, so descendant selectors must escape
+       Astro's scope (which is attribute-based) by wrapping the descendant
+       part in `:global()`. The parent class keeps the rules anchored to
+       this surface; the `:global()` lets them reach the markdown HTML. */
     .chat-turn-body {
-      font-size: 14.5px;
+      font-size: 15px;
       color: var(--ink);
-      line-height: 1.65;
+      line-height: 1.7;
     }
-    .chat-turn-body p {
+    .chat-turn-body :global(p) {
       margin: 0.4rem 0;
     }
-    .chat-turn-body > :first-child {
+    .chat-turn-body > :global(:first-child) {
       margin-top: 0;
     }
-    .chat-turn-body > :last-child {
+    .chat-turn-body > :global(:last-child) {
       margin-bottom: 0;
     }
-    .chat-turn-body ul,
-    .chat-turn-body ol {
+    .chat-turn-body :global(ul),
+    .chat-turn-body :global(ol) {
       margin: 0.5rem 0;
-      padding-left: 1.3rem;
+      padding-left: 1.5rem;
     }
-    .chat-turn-body li {
-      margin: 0.15rem 0;
+    .chat-turn-body :global(li) {
+      margin: 0.2rem 0;
     }
-    .chat-turn-body li > ul,
-    .chat-turn-body li > ol {
-      margin: 0.15rem 0;
-      padding-left: 1.1rem;
+    .chat-turn-body :global(li > ul),
+    .chat-turn-body :global(li > ol) {
+      margin: 0.2rem 0;
+      padding-left: 1.2rem;
     }
     /* Headings render as inline section markers, not page headings — scaled
        just slightly above body text so a turn reads as one reply, not a
        printed document. The first heading in a turn loses its top margin so
        it sits flush against the speaker label. */
-    .chat-turn-body h1,
-    .chat-turn-body h2,
-    .chat-turn-body h3,
-    .chat-turn-body h4,
-    .chat-turn-body h5,
-    .chat-turn-body h6 {
+    .chat-turn-body :global(h1),
+    .chat-turn-body :global(h2),
+    .chat-turn-body :global(h3),
+    .chat-turn-body :global(h4),
+    .chat-turn-body :global(h5),
+    .chat-turn-body :global(h6) {
       font-weight: 600;
-      margin: 1.2rem 0 0.4rem;
+      margin-top: 1.3rem;
+      margin-bottom: 0.45rem;
       color: var(--ink);
       line-height: 1.35;
     }
-    .chat-turn-body h1 {
+    .chat-turn-body :global(h1) {
+      font-size: 1.15rem;
+    }
+    .chat-turn-body :global(h2) {
       font-size: 1.05rem;
     }
-    .chat-turn-body h2 {
+    .chat-turn-body :global(h3) {
       font-size: 0.98rem;
     }
-    .chat-turn-body h3 {
-      font-size: 0.92rem;
+    .chat-turn-body :global(h4),
+    .chat-turn-body :global(h5),
+    .chat-turn-body :global(h6) {
+      font-size: 0.94rem;
     }
-    .chat-turn-body h4,
-    .chat-turn-body h5,
-    .chat-turn-body h6 {
-      font-size: 0.9rem;
-    }
-    .chat-turn-body hr {
+    .chat-turn-body :global(hr) {
       border: none;
       border-top: 1px dashed var(--rule);
-      margin: 1.4rem 0;
+      margin: 1.5rem 0;
     }
     /* If an <hr> is immediately followed by a heading the dashed rule + new
        section marker would double-gap. Collapse the heading's top margin so
        the pairing reads as one intentional break. */
-    .chat-turn-body hr + h1,
-    .chat-turn-body hr + h2,
-    .chat-turn-body hr + h3,
-    .chat-turn-body hr + h4,
-    .chat-turn-body hr + h5,
-    .chat-turn-body hr + h6 {
+    .chat-turn-body :global(hr + h1),
+    .chat-turn-body :global(hr + h2),
+    .chat-turn-body :global(hr + h3),
+    .chat-turn-body :global(hr + h4),
+    .chat-turn-body :global(hr + h5),
+    .chat-turn-body :global(hr + h6) {
       margin-top: 0.2rem;
     }
-    .chat-turn-body strong {
+    .chat-turn-body :global(strong) {
       font-weight: 600;
       color: var(--ink);
     }
-    .chat-turn-body blockquote {
-      margin: 0.6rem 0 0.6rem 0;
-      padding: 0.1rem 0 0.1rem 0.9rem;
+    .chat-turn-body :global(em) {
+      font-style: italic;
+    }
+    .chat-turn-body :global(blockquote) {
+      margin: 0.7rem 0;
+      padding: 0.2rem 0 0.2rem 1rem;
       border-left: 3px solid var(--rule-strong);
       color: var(--ink-soft);
-      font-size: 13.5px;
+      font-size: 14.5px;
     }
-    .chat-turn-body blockquote p {
+    .chat-turn-body :global(blockquote p) {
       margin: 0.3rem 0;
     }
-    .chat-turn-body blockquote p:first-child {
+    .chat-turn-body :global(blockquote p:first-child) {
       margin-top: 0;
     }
-    .chat-turn-body blockquote p:last-child {
+    .chat-turn-body :global(blockquote p:last-child) {
       margin-bottom: 0;
     }
-    .chat-turn-body blockquote blockquote {
+    .chat-turn-body :global(blockquote blockquote) {
       margin-top: 0.4rem;
       color: var(--ink-muted);
     }
-    .chat-turn-body table {
+    .chat-turn-body :global(table) {
       border-collapse: collapse;
       margin: 0.7rem 0 0.9rem;
       font-size: 13.5px;
       width: 100%;
       border: 1px solid var(--rule);
     }
-    .chat-turn-body thead {
+    .chat-turn-body :global(thead) {
       background: var(--surface-mute);
       border-bottom: 1px solid var(--rule-strong);
     }
-    .chat-turn-body th,
-    .chat-turn-body td {
+    .chat-turn-body :global(th),
+    .chat-turn-body :global(td) {
       text-align: left;
-      padding: 0.45rem 0.75rem;
+      padding: 0.5rem 0.85rem;
       vertical-align: top;
       border-right: 1px solid var(--rule);
     }
-    .chat-turn-body th:last-child,
-    .chat-turn-body td:last-child {
+    .chat-turn-body :global(th:last-child),
+    .chat-turn-body :global(td:last-child) {
       border-right: none;
     }
-    .chat-turn-body th {
+    .chat-turn-body :global(th) {
       font-weight: 600;
       color: var(--ink);
+      background: var(--surface-mute);
     }
-    .chat-turn-body tbody tr {
+    .chat-turn-body :global(tbody tr) {
       border-top: 1px solid var(--rule);
     }
-    .chat-turn-body pre {
+    .chat-turn-body :global(pre) {
       margin: 0.7rem 0 0.9rem;
-      padding: 0.7rem 0.9rem;
+      padding: 0.85rem 1rem;
       background: var(--surface-mute);
       border: 1px solid var(--rule);
       border-radius: 3px;
       overflow-x: auto;
       max-width: 100%;
       box-sizing: border-box;
-      font-size: 12px;
+      font-size: 12.5px;
       line-height: 1.55;
     }
-    .chat-turn-body pre code {
+    .chat-turn-body :global(pre code) {
       background: none;
       padding: 0;
       font-size: inherit;
       color: var(--ink);
     }
-    .chat-turn-body code {
+    .chat-turn-body :global(code) {
       font-family: ui-monospace, 'SF Mono', Menlo, monospace;
-      font-size: 0.9em;
+      font-size: 0.92em;
       background: var(--surface-mute);
       padding: 1px 5px;
       border-radius: 3px;
       color: var(--ink-soft);
     }
-    .chat-turn-body del,
-    .chat-turn-body s {
+    .chat-turn-body :global(del),
+    .chat-turn-body :global(s) {
       color: var(--ink-muted);
     }
     .chat-turn.pending .chat-turn-body {
