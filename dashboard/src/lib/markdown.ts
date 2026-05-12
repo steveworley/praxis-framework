@@ -6,12 +6,11 @@
  * lists, nested lists, horizontal rules, links, strikethrough, etc.) rather
  * than the hand-rolled subset the legacy interior shipped with.
  *
- * Used in two places:
- *   - server-rendered Astro components (MemoEntry, FullEscalation) via a
- *     direct ESM import,
- *   - the Alpine-driven `/chat` page, which re-imports the module in a
- *     client-side `<script type="module">` block and exposes a thin
- *     `renderMarkdown` shim on the Alpine root component.
+ * Used exclusively on the server:
+ *   - Astro components (MemoEntry, FullEscalation) call it directly,
+ *   - the `/api/chat/*` routes call it via `serializeTurn` so chat turns are
+ *     sent to the Alpine client pre-rendered as HTML (the chat page ships no
+ *     markdown renderer to the browser).
  *
  * Safety: `html: false` disables raw HTML inside the source markdown, which
  * is the only path through which model/user content could otherwise inject

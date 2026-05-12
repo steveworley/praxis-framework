@@ -52,13 +52,33 @@ describe('GET /api/chat/threads/[id]', () => {
     expect(res.status).toBe(200);
     const payload = (await res.json()) as {
       thread: { thread_id: string; title: string };
-      turns: Array<{ role: string; content: string }>;
+      turns: Array<{ role: string; content: string; content_html: string }>;
     };
     expect(payload.thread.thread_id).toBe(thread_id);
     expect(payload.thread.title).toBe('hello there');
     expect(payload.turns).toHaveLength(1);
     expect(payload.turns[0]!.role).toBe('user');
     expect(payload.turns[0]!.content).toBe('hello there');
+    // Markdown is rendered server-side so the chat client doesn't have to
+    // ship markdown-it. The body becomes a wrapped <p> via markdown-it.
+    expect(payload.turns[0]!.content_html).toBe('<p>hello there</p>\n');
+  });
+
+  it('renders markdown turns server-side into content_html', async () => {
+    const { thread_id } = await createThread(tempDir, 'rich');
+    await appendTurn(tempDir, thread_id, {
+      role: 'assistant',
+      content: '## Heading\n\n- one\n- two\n\n> a quote',
+    });
+    const res = await callGet(thread_id);
+    expect(res.status).toBe(200);
+    const payload = (await res.json()) as {
+      turns: Array<{ content_html: string }>;
+    };
+    const html = payload.turns[0]!.content_html;
+    expect(html).toContain('<h2>Heading</h2>');
+    expect(html).toContain('<li>one</li>');
+    expect(html).toContain('<blockquote>');
   });
 
   it('returns 400 on invalid thread id (path traversal)', async () => {

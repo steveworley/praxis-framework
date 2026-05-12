@@ -11,6 +11,7 @@ import {
 import {
   appendTurn,
   loadThread,
+  serializeTurn,
   type PersistedToolCall,
 } from '@/lib/chat/conversation.js';
 import { buildSystemPrompt } from '@/lib/chat/system-prompt.js';
@@ -138,9 +139,11 @@ export const POST: APIRoute = async ({ request }) => {
       content: reflectionBody,
       toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
     });
+    const serialized = serializeTurn(reflectionTurn);
     return json(200, {
       role: 'assistant',
       content: reflectionBody,
+      content_html: serialized.content_html,
       timestamp: reflectionTurn.timestamp,
       toolCalls,
       truncated,

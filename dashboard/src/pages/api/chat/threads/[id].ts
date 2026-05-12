@@ -1,6 +1,6 @@
 import type { APIRoute } from 'astro';
 
-import { deleteThread, loadThread } from '@/lib/chat/conversation.js';
+import { deleteThread, loadThread, serializeTurn } from '@/lib/chat/conversation.js';
 import { getRoleHome } from '@/lib/role-home.js';
 
 export const prerender = false;
@@ -12,7 +12,12 @@ export const GET: APIRoute = async ({ params }) => {
   }
   try {
     const detail = await loadThread(getRoleHome(), id);
-    return json(200, detail);
+    // Render each turn's markdown to HTML server-side so the Alpine client
+    // can `x-html` the body without bundling markdown-it. See serializeTurn.
+    return json(200, {
+      thread: detail.thread,
+      turns: detail.turns.map(serializeTurn),
+    });
   } catch (error: unknown) {
     if (isNotFound(error)) return json(404, { error: 'Thread not found' });
     return json(500, { error: errorMessage(error) });

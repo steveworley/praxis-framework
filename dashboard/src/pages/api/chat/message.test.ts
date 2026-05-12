@@ -106,9 +106,16 @@ describe('POST /api/chat/message', () => {
 
     const res = await callPost({ thread_id, content: 'second question' });
     expect(res.status).toBe(200);
-    const payload = (await res.json()) as { role: string; content: string };
+    const payload = (await res.json()) as {
+      role: string;
+      content: string;
+      content_html: string;
+    };
     expect(payload.role).toBe('assistant');
     expect(payload.content).toBe('My answer.');
+    // The assistant reply is also rendered server-side so the chat client can
+    // bind it via `x-html` without bundling markdown-it.
+    expect(payload.content_html).toBe('<p>My answer.</p>\n');
 
     const detail = await loadThread(tempDir, thread_id);
     expect(detail.turns.map((t) => t.role)).toEqual(['user', 'user', 'assistant']);

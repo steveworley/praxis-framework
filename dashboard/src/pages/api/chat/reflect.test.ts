@@ -131,11 +131,15 @@ describe('POST /api/chat/reflect', () => {
       kind: string;
       toolCalls: Array<{ name: string; result: { ok: boolean } }>;
       content: string;
+      content_html: string;
     };
     expect(payload.kind).toBe('reflection');
     expect(payload.content).toContain('Captured that voice shift.');
     expect(payload.toolCalls).toHaveLength(1);
     expect(payload.toolCalls[0]!.result.ok).toBe(true);
+    // Reflection bodies are also rendered server-side.
+    expect(payload.content_html).toContain('<strong>Reflection.</strong>');
+    expect(payload.content_html).toContain('Captured that voice shift.');
 
     // Memory file was created.
     const mem = await fs.readFile(

@@ -11,7 +11,12 @@ import {
   sendMessageWithTools,
   type ToolExecutor,
 } from '@/lib/chat/anthropic.js';
-import { appendTurn, loadThread, type PersistedToolCall } from '@/lib/chat/conversation.js';
+import {
+  appendTurn,
+  loadThread,
+  serializeTurn,
+  type PersistedToolCall,
+} from '@/lib/chat/conversation.js';
 import { buildSystemPrompt } from '@/lib/chat/system-prompt.js';
 import { CHAT_TOOLS } from '@/lib/chat/tool-schemas.js';
 import { executeTool } from '@/lib/chat/tools.js';
@@ -136,9 +141,11 @@ export const POST: APIRoute = async ({ request }) => {
       content: assistantText,
       toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
     });
+    const serialized = serializeTurn(assistantTurn);
     return json(200, {
       role: 'assistant',
       content: assistantText,
+      content_html: serialized.content_html,
       timestamp: assistantTurn.timestamp,
       toolCalls,
       truncated,

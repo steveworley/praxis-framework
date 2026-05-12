@@ -2,6 +2,8 @@ import { randomBytes } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
+import { renderMarkdown } from '@/lib/markdown.js';
+
 const CONVERSATIONS_REL = path.posix.join('memory', 'conversations');
 
 export type TurnRole = 'user' | 'assistant';
@@ -51,6 +53,27 @@ export interface ThreadSummary extends ThreadMeta {
 export interface ThreadDetail {
   thread: ThreadMeta;
   turns: Turn[];
+}
+
+/**
+ * Turn shape sent to the chat client. Identical to `Turn` plus a pre-rendered
+ * `content_html` string so the Alpine transcript can `x-html` the body
+ * directly — markdown rendering stays on the server and the chat page ships
+ * no markdown renderer to the browser. See `serializeTurn` below.
+ */
+export interface TurnForResponse extends Turn {
+  content_html: string;
+}
+
+/**
+ * Project a persisted `Turn` into the on-wire shape returned by the chat API
+ * routes. Renders `content` to HTML via the shared markdown pipeline (same
+ * renderer used by MemoEntry / FullEscalation). The raw `content` is left in
+ * place too so the client can still read it if it needs to (e.g. copying the
+ * markdown body to the clipboard).
+ */
+export function serializeTurn(turn: Turn): TurnForResponse {
+  return { ...turn, content_html: renderMarkdown(turn.content) };
 }
 
 /**

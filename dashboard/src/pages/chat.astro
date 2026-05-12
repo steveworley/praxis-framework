@@ -155,7 +155,7 @@ const bootstrap = {
                       </template>
                     </ul>
                   </template>
-                  <div class="chat-turn-body" x-html="renderMarkdown(turn.content)"></div>
+                  <div class="chat-turn-body" x-html="turn.content_html"></div>
                 </article>
               </template>
               <template x-if="pendingAssistant">
@@ -703,15 +703,9 @@ const bootstrap = {
   >
     window.__praxisChatBootstrap = bootstrap;
   </script>
-  {/* Bundle markdown-it via Vite so the same renderer that's used on the
-      server (MemoEntry, FullEscalation) drives the Alpine chat transcript
-      in the browser. Exposed on `window.praxisRenderMarkdown` so the inline
-      Alpine component below can call it without itself being a module. */}
-  <script>
-    import { renderMarkdown } from '@/lib/markdown.ts';
-    (window as unknown as { praxisRenderMarkdown: (text: string) => string }).praxisRenderMarkdown =
-      renderMarkdown;
-  </script>
+  {/* Markdown is rendered server-side: the API routes return each turn with a
+      pre-rendered `content_html` field, and the Alpine transcript binds via
+      `x-html="turn.content_html"`. No markdown renderer ships to the client. */}
   <script is:inline src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
   <script is:inline>
     function praxisChat() {
@@ -845,8 +839,11 @@ const bootstrap = {
               this.composer = '';
               this.updateUrl();
               // Show the user turn immediately while the assistant call is in flight.
+              // The body's `content_html` is generated locally with a plain-text
+              // escape so we never paint markdown syntax; the canonical
+              // server-rendered HTML replaces it after the assistant reply lands.
               const now = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
-              this.turns = [{ role: 'user', timestamp: now, content }];
+              this.turns = [{ role: 'user', timestamp: now, content, content_html: this.escapeAsHtml(content) }];
               this.pendingAssistant = true;
               this.$nextTick(() => this.scrollTranscriptToBottom());
               await this.runMessage(content);
@@ -860,7 +857,7 @@ const bootstrap = {
 
           // Existing thread — optimistically push user turn, fire request.
           const optimisticNow = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
-          this.turns.push({ role: 'user', timestamp: optimisticNow, content });
+          this.turns.push({ role: 'user', timestamp: optimisticNow, content, content_html: this.escapeAsHtml(content) });
           this.composer = '';
           this.pendingAssistant = true;
           this.$nextTick(() => this.scrollTranscriptToBottom());
@@ -887,6 +884,7 @@ const bootstrap = {
               role: 'assistant',
               timestamp: replyBody.timestamp || new Date().toISOString(),
               content: replyBody.content,
+              content_html: replyBody.content_html || this.escapeAsHtml(replyBody.content || ''),
             };
             if (Array.isArray(replyBody.toolCalls) && replyBody.toolCalls.length > 0) {
               assistantTurn.toolCalls = replyBody.toolCalls;
@@ -929,6 +927,7 @@ const bootstrap = {
               role: 'assistant',
               timestamp: replyBody.timestamp || new Date().toISOString(),
               content: replyBody.content,
+              content_html: replyBody.content_html || this.escapeAsHtml(replyBody.content || ''),
             };
             if (Array.isArray(replyBody.toolCalls) && replyBody.toolCalls.length > 0) {
               turn.toolCalls = replyBody.toolCalls;
@@ -1042,20 +1041,18 @@ const bootstrap = {
           return '';
         },
 
-        renderMarkdown(text) {
-          // Defers to the bundled markdown-it renderer (loaded via the
-          // <script type="module"> block above, stashed on window). When the
-          // module is still loading (Alpine evaluates `x-html` synchronously
-          // on first paint), fall back to an escape-only render so we never
-          // dump raw markup at the user.
+        escapeAsHtml(text) {
+          // Plain-text → safe HTML for optimistic user turns. The server-rendered
+          // `content_html` (produced by the shared markdown-it pipeline) is the
+          // canonical path for everything else; this helper only runs for the
+          // brief window between "user pressed send" and "assistant reply lands".
           if (!text) return '';
-          const fn = window.praxisRenderMarkdown;
-          if (typeof fn === 'function') return fn(text);
-          return text
+          const escaped = text
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;');
+          return `<p>${escaped.replace(/\n/g, '<br>')}</p>`;
         },
 
         relativeTime(iso) {
