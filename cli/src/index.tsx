@@ -12,6 +12,23 @@ program
   .command('init')
   .description('set up a new praxis role')
   .option('--path <path>', 'directory to scaffold the role into', process.cwd())
+  .option(
+    '--config <file>',
+    'seed non-interactively from a JSON file matching SeedInput (see cli/examples/sample-role.json)',
+  )
+  .option('--overwrite', 'overwrite existing files at the target (only with --config)', false)
+  .addHelpText(
+    'after',
+    `
+Examples:
+  $ praxis init                                          # interactive wizard
+  $ praxis init --config ./role.json --path ./my-role    # non-interactive seed
+  $ praxis init --config ./role.json --overwrite         # re-seed an existing dir
+
+A sample config lives at cli/examples/sample-role.json — copy and edit it
+as a starting template for the non-interactive flow.
+`,
+  )
   .action(initCommand);
 
 program
