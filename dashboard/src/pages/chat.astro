@@ -100,93 +100,87 @@ const bootstrap = {
         </aside>
 
         <section class="chat-main">
-          <template x-if="!activeThreadId">
-            <div class="empty-pane">
-              <h2>Start a conversation with your role.</h2>
-              <p>
-                You're talking to <strong x-text="roleName || 'this role'"></strong>.
-                Your conversation is saved as markdown under
-                <code>memory/conversations/</code> and stays inspectable like every
-                other piece of the role's interior.
-              </p>
-              <button type="button" class="btn btn-primary" @click="newChat()">
-                Start a new chat
-              </button>
-            </div>
-          </template>
-
-          <template x-if="activeThreadId">
-            <div class="chat-pane">
-              <div class="chat-pane-head">
-                <div class="chat-pane-title" x-text="activeTitle || 'New chat'"></div>
-                <div class="chat-pane-meta">
-                  <span x-text="activeUpdated ? `updated ${relativeTime(activeUpdated)}` : ''"></span>
-                </div>
-              </div>
-
-              <div class="chat-error" x-show="error" x-text="error"></div>
-
-              <div class="chat-transcript" x-ref="transcript">
-                <template x-if="loadingTurns">
-                  <div class="empty-sub">Loading…</div>
-                </template>
-                <template x-for="(turn, idx) in turns" :key="`${activeThreadId}-${idx}`">
-                  <div class="chat-turn" :class="`role-${turn.role}`">
-                    <div class="chat-turn-head">
-                      <span class="chat-turn-role" x-text="turn.role === 'user' ? 'You' : (roleName || 'Role')"></span>
-                      <span class="chat-turn-time" x-text="formatTimestamp(turn.timestamp)"></span>
-                    </div>
-                    <div class="chat-turn-body" x-html="renderMarkdown(turn.content)"></div>
-                  </div>
-                </template>
-                <template x-if="pendingAssistant">
-                  <div class="chat-turn role-assistant pending">
-                    <div class="chat-turn-head">
-                      <span class="chat-turn-role" x-text="roleName || 'Role'"></span>
-                      <span class="chat-turn-time">thinking…</span>
-                    </div>
-                    <div class="chat-turn-body"><span class="dot-pulse">·  ·  ·</span></div>
-                  </div>
-                </template>
-              </div>
-
-              <div class="chat-composer">
-                <template x-if="attachments.length > 0">
-                  <div class="chat-attachments">
-                    <template x-for="(att, idx) in attachments" :key="att.path">
-                      <span class="chat-attachment">
-                        <span x-text="att.filename"></span>
-                        <button type="button" class="icon-btn small" @click="attachments.splice(idx, 1)">×</button>
-                      </span>
-                    </template>
-                  </div>
-                </template>
-                <textarea
-                  x-model="composer"
-                  x-ref="composer"
-                  placeholder="Ask, share context, or hand over a task…"
-                  @keydown.cmd.enter="send()"
-                  @keydown.ctrl.enter="send()"
-                  rows="3"
-                ></textarea>
-                <div class="chat-composer-actions">
-                  <label class="btn btn-ghost">
-                    <input type="file" hidden @change="onPickFile($event)" />
-                    Attach
-                  </label>
-                  <button
-                    type="button"
-                    class="btn btn-primary"
-                    :disabled="!canSend"
-                    @click="send()"
-                  >
-                    <span x-show="!sending">Send</span>
-                    <span x-show="sending">Sending…</span>
-                  </button>
-                </div>
+          <div class="chat-pane">
+            <div class="chat-pane-head">
+              <div class="chat-pane-title" x-text="activeThreadId ? (activeTitle || 'New chat') : 'New conversation'"></div>
+              <div class="chat-pane-meta">
+                <span x-text="activeThreadId && activeUpdated ? `updated ${relativeTime(activeUpdated)}` : ''"></span>
               </div>
             </div>
-          </template>
+
+            <div class="chat-error" x-show="error" x-text="error"></div>
+
+            <div class="chat-transcript" x-ref="transcript">
+              <template x-if="!activeThreadId">
+                <div class="chat-empty-hint">
+                  <h2>Start a conversation with your role.</h2>
+                  <p>
+                    You're talking to <strong x-text="roleName || 'this role'"></strong>.
+                    Your conversation is saved as markdown under
+                    <code>memory/conversations/</code> and stays inspectable like every
+                    other piece of the role's interior.
+                  </p>
+                </div>
+              </template>
+              <template x-if="activeThreadId && loadingTurns">
+                <div class="empty-sub">Loading…</div>
+              </template>
+              <template x-for="(turn, idx) in turns" :key="`${activeThreadId}-${idx}`">
+                <div class="chat-turn" :class="`role-${turn.role}`">
+                  <div class="chat-turn-head">
+                    <span class="chat-turn-role" x-text="turn.role === 'user' ? 'You' : (roleName || 'Role')"></span>
+                    <span class="chat-turn-time" x-text="formatTimestamp(turn.timestamp)"></span>
+                  </div>
+                  <div class="chat-turn-body" x-html="renderMarkdown(turn.content)"></div>
+                </div>
+              </template>
+              <template x-if="pendingAssistant">
+                <div class="chat-turn role-assistant pending">
+                  <div class="chat-turn-head">
+                    <span class="chat-turn-role" x-text="roleName || 'Role'"></span>
+                    <span class="chat-turn-time">thinking…</span>
+                  </div>
+                  <div class="chat-turn-body"><span class="dot-pulse">·  ·  ·</span></div>
+                </div>
+              </template>
+            </div>
+
+            <div class="chat-composer">
+              <template x-if="attachments.length > 0">
+                <div class="chat-attachments">
+                  <template x-for="(att, idx) in attachments" :key="att.path">
+                    <span class="chat-attachment">
+                      <span x-text="att.filename"></span>
+                      <button type="button" class="icon-btn small" @click="attachments.splice(idx, 1)">×</button>
+                    </span>
+                  </template>
+                </div>
+              </template>
+              <textarea
+                x-model="composer"
+                x-ref="composer"
+                placeholder="Ask, share context, or hand over a task…"
+                @keydown.cmd.enter="send()"
+                @keydown.ctrl.enter="send()"
+                rows="3"
+              ></textarea>
+              <div class="chat-composer-actions">
+                <label class="btn btn-ghost">
+                  <input type="file" hidden @change="onPickFile($event)" />
+                  Attach
+                </label>
+                <button
+                  type="button"
+                  class="btn btn-primary"
+                  :disabled="!canSend"
+                  @click="send()"
+                >
+                  <span x-show="!sending">Send</span>
+                  <span x-show="sending">Sending…</span>
+                </button>
+              </div>
+            </div>
+          </div>
         </section>
       </div>
     )}
@@ -276,25 +270,20 @@ const bootstrap = {
     .chat-main {
       min-width: 0;
     }
-    .empty-pane {
-      border: 1px dashed var(--rule);
-      border-radius: 4px;
-      padding: 3rem 2rem;
-      background: var(--surface);
+    .chat-empty-hint {
+      padding: 1.5rem 0.5rem;
       text-align: center;
     }
-    .empty-pane h2 {
+    .chat-empty-hint h2 {
       font-size: 18px;
       font-weight: 500;
       margin-bottom: 0.7rem;
       color: var(--ink);
     }
-    .empty-pane p {
+    .chat-empty-hint p {
       color: var(--ink-soft);
-      margin-bottom: 1.2rem;
       max-width: 480px;
-      margin-left: auto;
-      margin-right: auto;
+      margin: 0 auto;
     }
     .chat-pane {
       display: flex;
