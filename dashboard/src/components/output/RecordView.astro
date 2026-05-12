@@ -1,0 +1,121 @@
+---
+import StatusPill from './StatusPill.astro';
+import type { OutputSummary } from '@/lib/output/types';
+
+/**
+ * Observation-tied-to-entity view. Records sit under
+ * `output/record/<entity_type>/<entity_id>/`, so we surface the entity
+ * identity prominently — that's the read's anchor — and follow with the
+ * observation date and body.
+ */
+interface Props {
+  meta: OutputSummary;
+  bodyHtml: string;
+}
+
+const { meta, bodyHtml } = Astro.props;
+const entityType = typeof meta.extras['entity_type'] === 'string' ? meta.extras['entity_type'] : '';
+const entityId = typeof meta.extras['entity_id'] === 'string' ? meta.extras['entity_id'] : '';
+const observedAt = typeof meta.extras['observed_at'] === 'string' ? meta.extras['observed_at'] : '';
+---
+
+<article class="out-detail">
+  <header class="out-head">
+    <div class="out-entity">
+      <span class="entity-type">{entityType}</span>
+      <span class="entity-sep">·</span>
+      <span class="entity-id">{entityId}</span>
+    </div>
+    <div class="out-title-row">
+      <h1>{meta.slug}</h1>
+      <StatusPill status={meta.status} />
+    </div>
+    <div class="out-meta">
+      <code>{meta.path}</code>
+      <span class="dot">·</span>
+      <span>observed {observedAt}</span>
+      <span class="dot">·</span>
+      <span>updated {meta.updated}</span>
+    </div>
+  </header>
+  <div class="out-prose" set:html={bodyHtml}></div>
+</article>
+
+<style>
+  .out-detail {
+    margin-top: 1.4rem;
+  }
+  .out-head {
+    margin-bottom: 1.6rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--rule);
+  }
+  .out-entity {
+    font-family: ui-monospace, monospace;
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    color: var(--ink-muted);
+    margin-bottom: 0.5rem;
+    text-transform: lowercase;
+  }
+  .entity-type {
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--ink-muted);
+    font-weight: 600;
+    font-size: 11px;
+  }
+  .entity-sep {
+    color: var(--ink-faint);
+    margin: 0 0.3rem;
+  }
+  .entity-id {
+    color: var(--ink);
+    font-weight: 500;
+  }
+  .out-title-row {
+    display: flex;
+    align-items: baseline;
+    gap: 0.8rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.4rem;
+  }
+  .out-title-row h1 {
+    font-size: 19px;
+    font-weight: 600;
+    color: var(--ink);
+    margin: 0;
+    line-height: 1.3;
+  }
+  .out-meta {
+    font-family: ui-monospace, monospace;
+    font-size: 11.5px;
+    color: var(--ink-muted);
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+  }
+  .out-meta code {
+    background: none;
+    padding: 0;
+    color: var(--ink-faint);
+    font-size: 11px;
+  }
+  .out-meta .dot {
+    color: var(--ink-faint);
+  }
+  .out-prose {
+    max-width: 720px;
+    font-size: 14.5px;
+    line-height: 1.65;
+    color: var(--ink-soft);
+  }
+  .out-prose :global(p) {
+    margin: 0.7rem 0;
+  }
+  .out-prose :global(h2),
+  .out-prose :global(h3) {
+    color: var(--ink);
+    margin-top: 1.4rem;
+  }
+</style>

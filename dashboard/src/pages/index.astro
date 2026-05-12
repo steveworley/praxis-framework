@@ -14,6 +14,8 @@ import {
 } from '@/lib/escalations-loader';
 import { assembleMemory, type MemoryEntry } from '@/lib/memory-loader';
 import { parsePersona, type Persona } from '@/lib/persona-parser';
+import { listOutputs } from '@/lib/output/loader';
+import { OUTPUT_TYPE_ENUM, type OutputSummary, type OutputType } from '@/lib/output/types';
 import { listProposedVerbs } from '@/lib/triage';
 import {
   daysSince,
@@ -38,7 +40,7 @@ const logGlob = getLogGlob();
 
 // Section-by-section error handling: one failed loader shouldn't blank the
 // page. We surface per-section errors below.
-const [personaRes, memoryRes, escalationsRes, activityRes, verbCountRes, recentRoleRes, proposedVerbsRes] = await Promise.allSettled([
+const [personaRes, memoryRes, escalationsRes, activityRes, verbCountRes, recentRoleRes, proposedVerbsRes, outputsRes] = await Promise.allSettled([
   parsePersona(roleHome),
   assembleMemory(roleHome),
   assembleEscalations(roleHome),
@@ -46,6 +48,7 @@ const [personaRes, memoryRes, escalationsRes, activityRes, verbCountRes, recentR
   countLiveVerbs(roleHome),
   collectRoleEdits(roleHome),
   listProposedVerbs(roleHome),
+  listOutputs(roleHome),
 ]);
 
 const persona: Persona | null = personaRes.status === 'fulfilled' ? personaRes.value : null;
@@ -58,6 +61,17 @@ const recentRoleEdits: RoleEditsSummary =
   recentRoleRes.status === 'fulfilled' ? recentRoleRes.value : { count: 0, lastFile: null, lastDays: null };
 const proposedVerbCount: number =
   proposedVerbsRes.status === 'fulfilled' ? proposedVerbsRes.value.length : 0;
+const outputs: OutputSummary[] =
+  outputsRes.status === 'fulfilled' ? outputsRes.value : [];
+const outputCountsByType: Record<OutputType, number> = {
+  document: 0,
+  draft: 0,
+  record: 0,
+  plan: 0,
+  reference: 0,
+};
+for (const o of outputs) outputCountsByType[o.type] += 1;
+const outputTotal = outputs.length;
 
 const updatedAt = nowIso();
 const personaName = personaNameFrom(persona);
@@ -217,6 +231,19 @@ async function collectRoleEdits(home: string): Promise<RoleEditsSummary> {
           breakdownLines={memoryBreakdownLines()}
           deepLinkHref="/notebook"
           deepLinkLabel="all entries →"
+        />
+        <SummaryCard
+          heading="Output"
+          num={String(outputTotal)}
+          breakdownLines={
+            outputTotal === 0
+              ? ['no output yet']
+              : OUTPUT_TYPE_ENUM.filter((t) => outputCountsByType[t] > 0).map(
+                  (t) => `${outputCountsByType[t]} ${t}`,
+                )
+          }
+          deepLinkHref="/output"
+          deepLinkLabel="view output →"
         />
         <SummaryCard
           heading="Activity (today)"

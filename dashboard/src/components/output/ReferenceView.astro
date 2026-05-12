@@ -1,0 +1,102 @@
+---
+import StatusPill from './StatusPill.astro';
+import type { OutputSummary } from '@/lib/output/types';
+
+/**
+ * Reference view. Topic stands in for the title; tags surface as inline
+ * pills under the head. Body renders as prose — references are reusable
+ * knowledge, so the body is typically a small piece of structured prose.
+ */
+interface Props {
+  meta: OutputSummary;
+  bodyHtml: string;
+}
+
+const { meta, bodyHtml } = Astro.props;
+const topic = typeof meta.extras['topic'] === 'string' ? meta.extras['topic'] : meta.slug;
+const tags = Array.isArray(meta.extras['tags']) ? meta.extras['tags'] : [];
+---
+
+<article class="out-detail">
+  <header class="out-head">
+    <div class="out-title-row">
+      <h1>{topic}</h1>
+      <StatusPill status={meta.status} />
+    </div>
+    <div class="out-meta">
+      <code>{meta.path}</code>
+      <span class="dot">·</span>
+      <span>updated {meta.updated}</span>
+    </div>
+    {tags.length > 0 && (
+      <div class="ref-tags">
+        {tags.map((t) => <span class="tag">{t}</span>)}
+      </div>
+    )}
+  </header>
+  <div class="out-prose" set:html={bodyHtml}></div>
+</article>
+
+<style>
+  .out-detail {
+    margin-top: 1.4rem;
+  }
+  .out-head {
+    margin-bottom: 1.6rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--rule);
+  }
+  .out-title-row {
+    display: flex;
+    align-items: baseline;
+    gap: 0.8rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.4rem;
+  }
+  .out-title-row h1 {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--ink);
+    margin: 0;
+  }
+  .out-meta {
+    font-family: ui-monospace, monospace;
+    font-size: 11.5px;
+    color: var(--ink-muted);
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+  }
+  .out-meta code {
+    background: none;
+    padding: 0;
+    color: var(--ink-faint);
+    font-size: 11px;
+  }
+  .out-meta .dot {
+    color: var(--ink-faint);
+  }
+  .ref-tags {
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    margin-top: 0.7rem;
+  }
+  .tag {
+    font-size: 11.5px;
+    padding: 1px 7px;
+    background: var(--surface-mute);
+    color: var(--ink-soft);
+    border-radius: 10px;
+    letter-spacing: 0.02em;
+  }
+  .out-prose {
+    max-width: 720px;
+    font-size: 14.5px;
+    line-height: 1.65;
+    color: var(--ink-soft);
+  }
+  .out-prose :global(p) {
+    margin: 0.7rem 0;
+  }
+</style>

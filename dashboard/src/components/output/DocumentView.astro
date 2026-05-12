@@ -1,0 +1,107 @@
+---
+import StatusPill from './StatusPill.astro';
+import type { OutputSummary } from '@/lib/output/types';
+
+/**
+ * Editorial detail view for a `document` output. Title is the H1; the body
+ * renders as prose via the server-side markdown pass. Audience meta sits
+ * inline with the status pill.
+ */
+interface Props {
+  meta: OutputSummary;
+  bodyHtml: string;
+}
+
+const { meta, bodyHtml } = Astro.props;
+const audience = typeof meta.extras['audience'] === 'string' ? meta.extras['audience'] : null;
+---
+
+<article class="out-detail">
+  <header class="out-head">
+    <div class="out-title-row">
+      <h1>{meta.title}</h1>
+      <StatusPill status={meta.status} />
+    </div>
+    <div class="out-meta">
+      <code>{meta.path}</code>
+      <span class="dot">·</span>
+      <span>updated {meta.updated}</span>
+      {audience && (
+        <>
+          <span class="dot">·</span>
+          <span>for {audience}</span>
+        </>
+      )}
+    </div>
+  </header>
+  <div class="out-prose" set:html={bodyHtml}></div>
+</article>
+
+<style>
+  .out-detail {
+    margin-top: 1.4rem;
+  }
+  .out-head {
+    margin-bottom: 1.6rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--rule);
+  }
+  .out-title-row {
+    display: flex;
+    align-items: baseline;
+    gap: 0.8rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.4rem;
+  }
+  .out-title-row h1 {
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--ink);
+    margin: 0;
+    line-height: 1.3;
+  }
+  .out-meta {
+    font-family: ui-monospace, monospace;
+    font-size: 11.5px;
+    color: var(--ink-muted);
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    align-items: baseline;
+  }
+  .out-meta code {
+    background: none;
+    padding: 0;
+    color: var(--ink-faint);
+    font-size: 11px;
+  }
+  .out-meta .dot {
+    color: var(--ink-faint);
+  }
+  .out-prose {
+    max-width: 720px;
+    font-size: 15px;
+    line-height: 1.65;
+    color: var(--ink-soft);
+  }
+  .out-prose :global(h1),
+  .out-prose :global(h2),
+  .out-prose :global(h3) {
+    color: var(--ink);
+    margin-top: 1.6rem;
+    margin-bottom: 0.6rem;
+  }
+  .out-prose :global(p) {
+    margin: 0.8rem 0;
+  }
+  .out-prose :global(ul),
+  .out-prose :global(ol) {
+    padding-left: 1.4rem;
+  }
+  .out-prose :global(code) {
+    font-size: 13px;
+    background: var(--surface-mute);
+    padding: 1px 5px;
+    border-radius: 2px;
+  }
+</style>

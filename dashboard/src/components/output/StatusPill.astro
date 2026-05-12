@@ -1,0 +1,55 @@
+---
+import type { OutputStatus } from '@/lib/output/types';
+
+/**
+ * Small inline status pill rendered next to every output entry. The colour
+ * mapping mirrors the lifecycle's direction — `draft` is muted, `review`
+ * stands out for the operator, `ready`/`sent`/`done` are progressively
+ * cooler, `archived` is faint.
+ */
+interface Props {
+  status: OutputStatus;
+}
+
+const { status } = Astro.props;
+---
+
+<span class:list={['out-pill', `st-${status}`]}>{status}</span>
+
+<style>
+  .out-pill {
+    display: inline-block;
+    font-family: ui-monospace, monospace;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 1px 6px;
+    border-radius: 2px;
+    background: var(--surface-mute);
+    color: var(--ink-muted);
+  }
+  .out-pill.st-draft {
+    background: var(--surface-mute);
+    color: var(--ink-muted);
+  }
+  .out-pill.st-review {
+    background: #fbeed4;
+    color: var(--warn, #946400);
+  }
+  .out-pill.st-ready {
+    background: #e8eef8;
+    color: var(--info, #3559a8);
+  }
+  .out-pill.st-sent {
+    background: #e2efe2;
+    color: #2e6c2e;
+  }
+  .out-pill.st-done {
+    background: #d9e6dc;
+    color: #1f5234;
+  }
+  .out-pill.st-archived {
+    background: var(--surface-deep);
+    color: var(--ink-faint);
+  }
+</style>

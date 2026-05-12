@@ -1,0 +1,204 @@
+---
+import StatusPill from './StatusPill.astro';
+import type { OutputSummary } from '@/lib/output/types';
+
+/**
+ * Email-envelope view for a `draft` output. Renders the To / Channel /
+ * Subject header rows above the body, with a "Mark as sent" action when
+ * the status is still draft / review / ready. The action POSTs to
+ * /api/output/[type]/[...slug] with {status: 'sent'} — the framework does
+ * NOT send anything; the operator handles delivery, this just records that
+ * delivery happened.
+ */
+interface Props {
+  meta: OutputSummary;
+  bodyHtml: string;
+}
+
+const { meta, bodyHtml } = Astro.props;
+const recipient = typeof meta.extras['recipient'] === 'string' ? meta.extras['recipient'] : null;
+const channel = typeof meta.extras['channel'] === 'string' ? meta.extras['channel'] : null;
+const subject = typeof meta.extras['subject'] === 'string' ? meta.extras['subject'] : null;
+
+const canMarkSent = meta.status !== 'sent' && meta.status !== 'archived';
+const updateUrl = `/api/output/${meta.type}/${meta.slug}`;
+---
+
+<article class="out-detail" data-update-url={updateUrl}>
+  <header class="out-head">
+    <div class="out-title-row">
+      <h1>{subject ?? meta.slug}</h1>
+      <StatusPill status={meta.status} />
+    </div>
+    <div class="out-meta">
+      <code>{meta.path}</code>
+      <span class="dot">·</span>
+      <span>updated {meta.updated}</span>
+    </div>
+  </header>
+
+  <dl class="envelope">
+    {recipient && (
+      <>
+        <dt>To</dt>
+        <dd>{recipient}</dd>
+      </>
+    )}
+    {channel && (
+      <>
+        <dt>Via</dt>
+        <dd>{channel}</dd>
+      </>
+    )}
+    {subject && (
+      <>
+        <dt>Subject</dt>
+        <dd>{subject}</dd>
+      </>
+    )}
+  </dl>
+
+  <div class="out-prose" set:html={bodyHtml}></div>
+
+  {canMarkSent && (
+    <div class="out-actions">
+      <button type="button" class="action-btn" data-action="mark-sent">
+        Mark as sent
+      </button>
+      <span class="action-hint" data-status-msg></span>
+    </div>
+  )}
+</article>
+
+<script is:inline>
+  (function () {
+    const article = document.currentScript?.previousElementSibling;
+    if (!article || !(article instanceof HTMLElement)) return;
+    const button = article.querySelector('[data-action="mark-sent"]');
+    if (!(button instanceof HTMLElement)) return;
+    const msg = article.querySelector('[data-status-msg]');
+    const url = article.dataset['updateUrl'];
+    if (!url) return;
+    button.addEventListener('click', async () => {
+      if (msg) msg.textContent = 'updating…';
+      button.setAttribute('disabled', 'disabled');
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'sent' }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || `Update failed (${res.status})`);
+        }
+        window.location.reload();
+      } catch (e) {
+        if (msg) msg.textContent = e instanceof Error ? e.message : String(e);
+        button.removeAttribute('disabled');
+      }
+    });
+  })();
+</script>
+
+<style>
+  .out-detail {
+    margin-top: 1.4rem;
+  }
+  .out-head {
+    margin-bottom: 1.2rem;
+  }
+  .out-title-row {
+    display: flex;
+    align-items: baseline;
+    gap: 0.8rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.4rem;
+  }
+  .out-title-row h1 {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--ink);
+    margin: 0;
+    line-height: 1.3;
+  }
+  .out-meta {
+    font-family: ui-monospace, monospace;
+    font-size: 11.5px;
+    color: var(--ink-muted);
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+  }
+  .out-meta code {
+    background: none;
+    padding: 0;
+    color: var(--ink-faint);
+    font-size: 11px;
+  }
+  .out-meta .dot {
+    color: var(--ink-faint);
+  }
+  .envelope {
+    display: grid;
+    grid-template-columns: 70px 1fr;
+    gap: 0.35rem 1rem;
+    margin: 0 0 1.4rem;
+    padding: 0.9rem 1.1rem;
+    background: var(--surface-mute);
+    border-radius: 3px;
+    font-size: 13.5px;
+  }
+  .envelope dt {
+    color: var(--ink-muted);
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin: 0;
+  }
+  .envelope dd {
+    margin: 0;
+    color: var(--ink);
+  }
+  .out-prose {
+    max-width: 680px;
+    font-size: 14.5px;
+    line-height: 1.65;
+    color: var(--ink-soft);
+    padding-left: 0.4rem;
+    border-left: 2px solid var(--rule);
+    padding-top: 0.2rem;
+    padding-bottom: 0.2rem;
+  }
+  .out-prose :global(p) {
+    margin: 0.7rem 0;
+  }
+  .out-actions {
+    margin-top: 1.6rem;
+    display: flex;
+    gap: 0.6rem;
+    align-items: baseline;
+  }
+  .action-btn {
+    background: var(--surface);
+    border: 1px solid var(--rule-strong);
+    border-radius: 3px;
+    padding: 0.4rem 0.95rem;
+    font-family: inherit;
+    font-size: 13px;
+    color: var(--ink);
+    cursor: pointer;
+  }
+  .action-btn:hover:not(:disabled) {
+    background: var(--ink);
+    color: var(--surface);
+  }
+  .action-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .action-hint {
+    font-size: 12px;
+    color: var(--ink-muted);
+  }
+</style>
