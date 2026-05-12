@@ -539,7 +539,13 @@ const bootstrap = {
         bannerWarning: '',
 
         init() {
-          // nothing to do — page renders from the server-side bootstrap.
+          // Reset per-card transient state on every page mount. Hot-reloads
+          // and aborted requests can leave busy[id] stuck truthy, which
+          // permanently disables the Confirm/Accept buttons until a hard
+          // refresh. Wiping at init keeps the action buttons clickable.
+          this.busy = {};
+          this.pending = {};
+          this.notes = {};
         },
 
         kindLabel(kind) {
