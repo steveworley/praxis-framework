@@ -54,7 +54,8 @@ All endpoints return JSON. Read endpoints exist for parity / external consumers,
 | POST | `/api/setup/role` | Wizard submit — seeds the role with two git commits |
 | GET, POST | `/api/chat/threads` | List or create a conversation |
 | GET, DELETE | `/api/chat/threads/{id}` | Read or remove one conversation |
-| POST | `/api/chat/message` | Run a chat turn; 503 when `ANTHROPIC_API_KEY` is missing |
+| POST | `/api/chat/message` | Run a chat turn; runs the tool-use loop and persists tool calls onto the assistant turn; 503 when `ANTHROPIC_API_KEY` is missing |
+| POST | `/api/chat/reflect` | Run the reflection beat on a thread; same loop as `/message` but seeded with the reflection prompt and the full conversation |
 | POST | `/api/chat/upload` | Attach a file (≤ 5 MB) to a conversation under `lib/uploads/<thread_id>/` |
 
 ## What the dashboard reads
@@ -86,7 +87,26 @@ Conversations land at `<role-home>/memory/conversations/<thread_id>.md` in the s
 
 Attachments uploaded from the composer land at `<role-home>/lib/uploads/<thread_id>/<safe_filename>` (≤ 5 MB per file). Text-shaped attachments under 10 KB are inlined into the user message; everything else is referenced by path.
 
-The chat does NOT have tool use in v1 — the model replies in text only. When it wants to take an action it surfaces what it would do rather than doing it.
+### The learning loop
+
+The chat surface is where the non-technical operator's role *grows*. Every chat turn runs an Anthropic tool-use loop with four growth tools exposed to the model:
+
+| Tool | Writes to |
+|---|---|
+| `write_memory` | `memory/<category>/<slug>.md` |
+| `create_escalation` | `escalations/<date>-<random>-<slug>.md` |
+| `propose_verb` | `verbs/proposed/<slug>.md` |
+| `log_decision` | `logs/<date>.jsonl` or `campaigns/<id>/logs/...` |
+
+Every tool call is gated by `lib/autonomy.yaml` *and* a hard-coded constitutional list. Constitutional surfaces (`persona.md`, `verbs/*.md` outside `verbs/proposed/`, `lib/customers.yaml`, `lib/compliance.yaml`, `lib/team.yaml`, `lib/autonomy.yaml`, `CLAUDE.md`) are refused regardless of yaml — the chat surface is never the place to mutate the role's constitution.
+
+Tool calls persist on the assistant turn as an HTML-comment-fenced JSON block inside the thread markdown file; the dashboard renders them inline below the turn label. Refusals (gated surface, duplicate slug, malformed input) render in the warning colour and tell the model why — the model can adjust and try again.
+
+### Reflection
+
+The chat pane header has a **Reflect** button. The reflection trigger is *manual*, not per-turn: the operator decides when a conversation has reached a natural reflection point and clicks. The model is then prompted to walk the four-question reflection beat over the whole thread — memory worth keeping, friction worth escalating, patterns worth proposing as verbs, decisions worth logging — and is free to reply with a brief summary if nothing earned its keep. The reflection block is persisted as another assistant turn so it survives reloads.
+
+The dashboard now closes the learning loop for non-technical operators: the role grows visibly in memory/escalations/proposed verbs/decision logs through conversation alone, with the same audit trail a technical operator's Claude Code session would produce.
 
 ## What the wizard writes
 

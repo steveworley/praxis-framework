@@ -105,6 +105,16 @@ const bootstrap = {
               <div class="chat-pane-title" x-text="activeThreadId ? (activeTitle || 'New conversation') : 'New conversation'"></div>
               <div class="chat-pane-meta">
                 <span x-text="activeThreadId && activeUpdated ? `updated ${relativeTime(activeUpdated)}` : ''"></span>
+                <button
+                  type="button"
+                  class="reflect-btn"
+                  :disabled="!activeThreadId || sending || reflecting || turns.length === 0"
+                  @click="reflect()"
+                  title="Ask the role to reflect on this conversation"
+                >
+                  <span x-show="!reflecting">Reflect</span>
+                  <span x-show="reflecting">Reflecting…</span>
+                </button>
               </div>
             </div>
 
@@ -131,6 +141,16 @@ const bootstrap = {
                     <span class="chat-turn-role" x-text="turn.role === 'user' ? 'You' : (roleName || 'Role')"></span>
                     <span class="chat-turn-time" x-text="formatTimestamp(turn.timestamp)"></span>
                   </header>
+                  <template x-if="Array.isArray(turn.toolCalls) && turn.toolCalls.length > 0">
+                    <ul class="chat-tool-calls">
+                      <template x-for="(tc, j) in turn.toolCalls" :key="j">
+                        <li class="chat-tool-call" :class="{ 'is-error': !tc.result || !tc.result.ok }">
+                          <span class="chat-tool-arrow">→</span>
+                          <span class="chat-tool-text" x-text="renderToolCall(tc)"></span>
+                        </li>
+                      </template>
+                    </ul>
+                  </template>
                   <div class="chat-turn-body" x-html="renderMarkdown(turn.content)"></div>
                 </article>
               </template>
@@ -139,6 +159,15 @@ const bootstrap = {
                   <header class="chat-turn-head">
                     <span class="chat-turn-role" x-text="roleName || 'Role'"></span>
                     <span class="chat-turn-time">thinking…</span>
+                  </header>
+                  <div class="chat-turn-body"><span class="dot-pulse">·  ·  ·</span></div>
+                </article>
+              </template>
+              <template x-if="reflecting">
+                <article class="chat-turn role-assistant pending">
+                  <header class="chat-turn-head">
+                    <span class="chat-turn-role" x-text="roleName || 'Role'"></span>
+                    <span class="chat-turn-time">reflecting…</span>
                   </header>
                   <div class="chat-turn-body"><span class="dot-pulse">·  ·  ·</span></div>
                 </article>
@@ -487,6 +516,67 @@ const bootstrap = {
       padding: 0.6rem 0;
     }
 
+    /* ---- reflect button + tool calls ----------------------------------- */
+    .chat-pane-meta {
+      display: flex;
+      gap: 0.8rem;
+      align-items: baseline;
+    }
+    .reflect-btn {
+      background: none;
+      border: 1px solid var(--rule);
+      border-radius: 3px;
+      padding: 0.2rem 0.55rem;
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--ink-soft);
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .reflect-btn:hover:not(:disabled) {
+      color: var(--ink);
+      border-color: var(--rule-strong);
+      background: var(--surface-mute);
+    }
+    .reflect-btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+    .chat-tool-calls {
+      list-style: none;
+      margin: 0 0 0.7rem 0;
+      padding: 0.4rem 0.7rem;
+      border-left: 2px solid var(--rule);
+      background: var(--surface-mute);
+      border-radius: 0 3px 3px 0;
+    }
+    .chat-tool-call {
+      display: flex;
+      gap: 0.45rem;
+      align-items: baseline;
+      font-size: 12.5px;
+      line-height: 1.5;
+      color: var(--ink-muted);
+      font-family: ui-monospace, monospace;
+    }
+    .chat-tool-call + .chat-tool-call {
+      margin-top: 0.2rem;
+    }
+    .chat-tool-call.is-error {
+      color: var(--warn, var(--danger));
+    }
+    .chat-tool-arrow {
+      flex-shrink: 0;
+      color: var(--ink-faint);
+    }
+    .chat-tool-call.is-error .chat-tool-arrow {
+      color: var(--warn, var(--danger));
+    }
+    .chat-tool-text {
+      word-break: break-word;
+    }
+
     @media (max-width: 900px) {
       .chat-shell {
         grid-template-columns: 1fr;
@@ -536,6 +626,7 @@ const bootstrap = {
         attachments: [],
         sending: false,
         pendingAssistant: false,
+        reflecting: false,
         loadingTurns: false,
         error: '',
 
@@ -688,11 +779,15 @@ const bootstrap = {
               throw new Error(errBody.error || `Send failed (${res.status})`);
             }
             const replyBody = await res.json();
-            this.turns.push({
+            const assistantTurn = {
               role: 'assistant',
               timestamp: replyBody.timestamp || new Date().toISOString(),
               content: replyBody.content,
-            });
+            };
+            if (Array.isArray(replyBody.toolCalls) && replyBody.toolCalls.length > 0) {
+              assistantTurn.toolCalls = replyBody.toolCalls;
+            }
+            this.turns.push(assistantTurn);
             this.attachments = [];
             await this.refreshThreadList();
             const refreshed = this.threads.find((t) => t.thread_id === this.activeThreadId);
@@ -706,6 +801,46 @@ const bootstrap = {
           } finally {
             this.sending = false;
             this.pendingAssistant = false;
+          }
+        },
+
+        async reflect() {
+          if (!this.activeThreadId || this.reflecting || this.sending) return;
+          if (this.turns.length === 0) return;
+          this.reflecting = true;
+          this.error = '';
+          this.$nextTick(() => this.scrollTranscriptToBottom());
+          try {
+            const res = await fetch('/api/chat/reflect', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ thread_id: this.activeThreadId }),
+            });
+            if (!res.ok) {
+              const errBody = await res.json().catch(() => ({}));
+              throw new Error(errBody.error || `Reflect failed (${res.status})`);
+            }
+            const replyBody = await res.json();
+            const turn = {
+              role: 'assistant',
+              timestamp: replyBody.timestamp || new Date().toISOString(),
+              content: replyBody.content,
+            };
+            if (Array.isArray(replyBody.toolCalls) && replyBody.toolCalls.length > 0) {
+              turn.toolCalls = replyBody.toolCalls;
+            }
+            this.turns.push(turn);
+            await this.refreshThreadList();
+            const refreshed = this.threads.find((t) => t.thread_id === this.activeThreadId);
+            if (refreshed) {
+              this.activeTitle = refreshed.title;
+              this.activeUpdated = refreshed.updated;
+            }
+            this.$nextTick(() => this.scrollTranscriptToBottom());
+          } catch (e) {
+            this.error = e instanceof Error ? e.message : String(e);
+          } finally {
+            this.reflecting = false;
           }
         },
 
@@ -768,6 +903,21 @@ const bootstrap = {
         },
 
         // ---- formatting helpers -------------------------------------------
+
+        renderToolCall(tc) {
+          // Each tool call renders as a one-liner. Success uses the
+          // executor's `summary`; failures lead with the tool name + error.
+          if (!tc || typeof tc !== 'object') return '';
+          const result = tc.result || {};
+          if (result.ok) {
+            if (result.summary) return result.summary;
+            const path = result.data && result.data.path;
+            if (path) return `${tc.name}: ${path}`;
+            return tc.name;
+          }
+          const err = result.error || 'failed';
+          return `${tc.name} refused — ${err}`;
+        },
 
         renderMarkdown(text) {
           if (!text) return '';

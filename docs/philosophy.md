@@ -52,7 +52,9 @@ Praxis distinguishes two operator profiles, each with their own runtime:
 - **Technical operators** open Claude Code in the role's directory. CLAUDE.md loads, the agent works against the conventions, and the operator has full leverage — they can edit files, run shell commands, audit logs, and iterate the role's constitution.
 - **Non-technical operators** open the dashboard's `/chat` surface. The model is fed the same role files as a system prompt (persona, verbs, hard rules, autonomy stance, tool catalog) so it embodies the role. Conversations persist as markdown under `memory/conversations/`, so they're inspectable like every other piece of the role's interior — the chat is another lens on the same role, not a separate product.
 
-The dashboard now spans supervision *and* conversation. Praxis remains conventions + scaffolding + dashboard; the dashboard does the conversational runtime for operators who shouldn't have to drop into a terminal.
+The chat surface exposes four growth tools (`write_memory`, `create_escalation`, `propose_verb`, `log_decision`) gated by `lib/autonomy.yaml` plus a hard-coded constitutional list. The role grows visibly through conversation alone — memory entries, escalations, proposed verbs, and decision logs all land on disk via the same shapes a technical operator would write to from Claude Code. The constitutional surfaces (persona, live verbs, customers, compliance, team, autonomy itself, CLAUDE.md) remain gated regardless of yaml — the chat is never the place to mutate the role's constitution.
+
+The dashboard now spans supervision, conversation, *and* the learning loop. Praxis remains conventions + scaffolding + dashboard; the dashboard does the conversational runtime — and the growth surface — for operators who shouldn't have to drop into a terminal.
 
 ## What Praxis is not
 

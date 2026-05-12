@@ -36,7 +36,25 @@ PRAXIS_ROLE_HOME=/path/to/some-role npm run dev
 
 - **Conversations** persist as markdown under `<role-home>/memory/conversations/<thread_id>.md` — inspectable like every other piece of the role's interior.
 - **Attachments** uploaded from the composer land under `<role-home>/lib/uploads/<thread_id>/<safe_filename>` and are inlined into the user message when they're small (≤ 10 KB) and text-shaped (`.md`, `.txt`, `.json`, `.yaml`, `.yml`, `.csv`, `.tsv`, `.log`). Upload cap is 5 MB.
-- **Tool use is intentionally disabled** for v1. The model replies in text only; if it wants to take an action it surfaces what it would do rather than doing it.
+
+### Learning loop
+
+The model has four growth tools available during every chat turn. They write into the role's growth surfaces (the same surfaces a technical operator would write to from Claude Code):
+
+| Tool | Writes to | Refuses on |
+|---|---|---|
+| `write_memory` | `memory/<category>/<slug>.md` | Existing file (memory is append-only at the file level) |
+| `create_escalation` | `escalations/<date>-<random>-<slug>.md` | — (ids include a random suffix to avoid collisions) |
+| `propose_verb` | `verbs/proposed/<slug>.md` | Slug already exists in `verbs/` or `verbs/proposed/` |
+| `log_decision` | `logs/<date>.jsonl` (or `campaigns/<id>/logs/...`) | Unknown campaign id |
+
+Every tool call is gated by `lib/autonomy.yaml` plus a hard-coded constitutional list. Constitutional surfaces (`persona.md`, `verbs/*.md` outside `verbs/proposed/`, `lib/customers.yaml`, `lib/compliance.yaml`, `lib/team.yaml`, `lib/autonomy.yaml`, `CLAUDE.md`) are refused regardless of what the yaml says — the chat surface is never the place to mutate the role's constitution.
+
+Tool calls persist on the assistant turn via an HTML-comment-fenced JSON block inside the thread markdown file, so the thread stays human-readable while the dashboard can replay calls when the conversation reloads.
+
+### Reflection
+
+The chat pane header has a **Reflect** button. Clicking it asks the role to walk the reflection beat over the whole thread: memory worth keeping, friction worth escalating, patterns worth proposing as new verbs, decisions worth logging. The model is free to reply with a short summary instead if nothing earned its keep.
 
 ## API surface
 
@@ -53,7 +71,8 @@ All endpoints return JSON. Read endpoints exist as routes for parity with the le
 | POST | `/api/chat/threads` | Creates a new conversation from `{ first_message }` |
 | GET | `/api/chat/threads/{id}` | Returns `{ thread, turns[] }` for one conversation |
 | DELETE | `/api/chat/threads/{id}` | Removes the conversation file |
-| POST | `/api/chat/message` | Runs one chat turn end-to-end (system prompt → Anthropic → persist user + assistant). Returns `{ role, content, timestamp }`. 503 when `ANTHROPIC_API_KEY` is missing. |
+| POST | `/api/chat/message` | Runs one chat turn end-to-end (system prompt → Anthropic tool-use loop → persist user + assistant). Returns `{ role, content, timestamp, toolCalls, truncated }`. 503 when `ANTHROPIC_API_KEY` is missing. |
+| POST | `/api/chat/reflect` | Asks the role to reflect on a thread. Same loop as `/message` but seeded with the reflection prompt and the full conversation; persists the reflection as another assistant turn. |
 | POST | `/api/chat/upload` | Multipart upload; writes the file under `lib/uploads/<thread_id>/` |
 
 ## Production build
