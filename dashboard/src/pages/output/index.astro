@@ -1,5 +1,7 @@
 ---
+import EmptyState from '@/components/EmptyState.astro';
 import RouteHeader from '@/components/RouteHeader.astro';
+import StatusPill from '@/components/output/StatusPill.astro';
 import BaseLayout from '@/layouts/BaseLayout.astro';
 import { personaNameFrom } from '@/lib/chat/persona-name';
 import { listOutputs } from '@/lib/output/loader';
@@ -78,7 +80,7 @@ function detailHref(o: OutputSummary): string {
       </p>
 
       {loadError && (
-        <div class="empty">Failed to load output: {loadError}</div>
+        <EmptyState>Failed to load output: {loadError}</EmptyState>
       )}
 
       <div class="type-grid">
@@ -115,7 +117,7 @@ function detailHref(o: OutputSummary): string {
                   <span class="feed-type">{o.type}</span>
                   <span class="feed-title">{o.title}</span>
                   <span class="feed-meta">
-                    <span class:list={['out-pill', `st-${o.status}`]}>{o.status}</span>
+                    <StatusPill status={o.status} />
                     <span class="feed-date">{o.updated}</span>
                   </span>
                 </a>
@@ -126,9 +128,9 @@ function detailHref(o: OutputSummary): string {
       )}
 
       {totalCount === 0 && !loadError && (
-        <div class="empty">
+        <EmptyState>
           No output yet. As {personaName.short || 'the role'} produces work — drafts, reads, plans — entries will surface here.
-        </div>
+        </EmptyState>
       )}
     </div>
   </main>
@@ -273,38 +275,6 @@ function detailHref(o: OutputSummary): string {
     .feed-date {
       font-family: ui-monospace, monospace;
       font-size: 11px;
-      color: var(--ink-faint);
-    }
-
-    .out-pill {
-      display: inline-block;
-      font-family: ui-monospace, monospace;
-      font-size: 10.5px;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      padding: 1px 6px;
-      border-radius: 2px;
-      background: var(--surface-mute);
-      color: var(--ink-muted);
-    }
-    .out-pill.st-review {
-      background: #fbeed4;
-      color: var(--warn, #946400);
-    }
-    .out-pill.st-ready {
-      background: #e8eef8;
-      color: var(--info, #3559a8);
-    }
-    .out-pill.st-sent {
-      background: #e2efe2;
-      color: #2e6c2e;
-    }
-    .out-pill.st-done {
-      background: #d9e6dc;
-      color: #1f5234;
-    }
-    .out-pill.st-archived {
-      background: var(--surface-deep);
       color: var(--ink-faint);
     }
   </style>

@@ -1,4 +1,6 @@
 ---
+import Banner from '@/components/Banner.astro';
+import EmptyState from '@/components/EmptyState.astro';
 import RouteHeader from '@/components/RouteHeader.astro';
 import BaseLayout from '@/layouts/BaseLayout.astro';
 import { personaNameFrom } from '@/lib/chat/persona-name';
@@ -75,8 +77,12 @@ const bootstrap = {
         Every action writes back to the same markdown files; nothing is hidden.
       </p>
 
-      <div class="triage-error" x-show="bannerError" x-text="bannerError"></div>
-      <div class="triage-warn" x-show="bannerWarning" x-text="bannerWarning"></div>
+      <template x-if="bannerError">
+        <Banner variant="error"><span x-text="bannerError"></span></Banner>
+      </template>
+      <template x-if="bannerWarning">
+        <Banner variant="warning"><span x-text="bannerWarning"></span></Banner>
+      </template>
 
       <div class="group">
         <div class="group-head">
@@ -85,13 +91,13 @@ const bootstrap = {
         </div>
 
         {escError && (
-          <div class="empty">Failed to load escalations: {escError}</div>
+          <EmptyState>Failed to load escalations: {escError}</EmptyState>
         )}
 
         <template x-if="escalations.length === 0 && !escError">
-          <div class="empty">
+          <EmptyState>
             <span x-text="`Nothing in the triage queue. ${personaShort} hasn't asked for anything.`"></span>
-          </div>
+          </EmptyState>
         </template>
 
         <template x-for="e in escalations" :key="e.id">
@@ -183,11 +189,11 @@ const bootstrap = {
         </div>
 
         {verbError && (
-          <div class="empty">Failed to load proposed verbs: {verbError}</div>
+          <EmptyState>Failed to load proposed verbs: {verbError}</EmptyState>
         )}
 
         <template x-if="proposedVerbs.length === 0 && !verbError">
-          <div class="empty">No proposed verbs.</div>
+          <EmptyState>No proposed verbs.</EmptyState>
         </template>
 
         <template x-for="v in proposedVerbs" :key="v.slug">
@@ -290,23 +296,6 @@ const bootstrap = {
       font-size: 13.5px;
       margin-bottom: 1.8rem;
       line-height: 1.6;
-    }
-    .triage-error {
-      background: #fbe2dc;
-      color: var(--danger);
-      padding: 0.65rem 0.95rem;
-      font-size: 13px;
-      border-radius: 3px;
-      margin-bottom: 1rem;
-    }
-    .triage-warn {
-      background: #fdf6ec;
-      color: var(--warn, #946400);
-      padding: 0.55rem 0.95rem;
-      font-size: 12.5px;
-      border-radius: 3px;
-      margin-bottom: 1rem;
-      border-left: 2px solid var(--warn, #d4a017);
     }
 
     .triage-item {

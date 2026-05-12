@@ -1,5 +1,9 @@
 ---
+import Breadcrumb from '@/components/Breadcrumb.astro';
+import EmptyState from '@/components/EmptyState.astro';
+import FilePath from '@/components/FilePath.astro';
 import RouteHeader from '@/components/RouteHeader.astro';
+import StatusPill from '@/components/output/StatusPill.astro';
 import BaseLayout from '@/layouts/BaseLayout.astro';
 import { personaNameFrom } from '@/lib/chat/persona-name';
 import { listOutputs } from '@/lib/output/loader';
@@ -125,11 +129,7 @@ const updatedAt = nowIso();
     />
 
     <div class="type-list">
-      <nav class="breadcrumb">
-        <a href="/output">output</a>
-        <span class="crumb-sep">/</span>
-        <span>{type}</span>
-      </nav>
+      <Breadcrumb crumbs={[{ label: 'output', href: '/output' }, { label: type }]} />
 
       <div class="group-head">
         <span class="group-title">{type}</span>
@@ -168,9 +168,9 @@ const updatedAt = nowIso();
       )}
 
       {entries.length === 0 ? (
-        <div class="empty">
+        <EmptyState>
           No {type} entries{statusFilter || entityTypeFilter ? ' matching this filter' : ''}.
-        </div>
+        </EmptyState>
       ) : (
         <ul class="entries">
           {entries.map((o) => (
@@ -178,10 +178,10 @@ const updatedAt = nowIso();
               <a href={detailHref(o)} class="entry-link">
                 <div class="entry-title-row">
                   <span class="entry-title">{o.title}</span>
-                  <span class:list={['out-pill', `st-${o.status}`]}>{o.status}</span>
+                  <StatusPill status={o.status} />
                 </div>
                 <div class="entry-meta">
-                  <code>{o.path}</code>
+                  <FilePath path={o.path} />
                   <span class="dot">·</span>
                   <span>updated {o.updated}</span>
                   {type === 'record' && o.extras['entity_type'] && (
@@ -208,23 +208,6 @@ const updatedAt = nowIso();
   <style>
     .type-list {
       margin-top: 1.2rem;
-    }
-    .breadcrumb {
-      font-family: ui-monospace, monospace;
-      font-size: 12px;
-      color: var(--ink-muted);
-      margin-bottom: 0.6rem;
-    }
-    .breadcrumb a {
-      color: var(--ink-soft);
-      text-decoration: none;
-    }
-    .breadcrumb a:hover {
-      text-decoration: underline;
-    }
-    .crumb-sep {
-      margin: 0 0.5rem;
-      color: var(--ink-faint);
     }
     .group-title {
       text-transform: capitalize;
@@ -311,45 +294,7 @@ const updatedAt = nowIso();
       gap: 0.4rem;
       flex-wrap: wrap;
     }
-    .entry-meta code {
-      background: none;
-      padding: 0;
-      color: var(--ink-faint);
-      font-size: 11px;
-    }
     .entry-meta .dot {
-      color: var(--ink-faint);
-    }
-
-    .out-pill {
-      display: inline-block;
-      font-family: ui-monospace, monospace;
-      font-size: 10.5px;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      padding: 1px 6px;
-      border-radius: 2px;
-      background: var(--surface-mute);
-      color: var(--ink-muted);
-    }
-    .out-pill.st-review {
-      background: #fbeed4;
-      color: var(--warn, #946400);
-    }
-    .out-pill.st-ready {
-      background: #e8eef8;
-      color: var(--info, #3559a8);
-    }
-    .out-pill.st-sent {
-      background: #e2efe2;
-      color: #2e6c2e;
-    }
-    .out-pill.st-done {
-      background: #d9e6dc;
-      color: #1f5234;
-    }
-    .out-pill.st-archived {
-      background: var(--surface-deep);
       color: var(--ink-faint);
     }
   </style>

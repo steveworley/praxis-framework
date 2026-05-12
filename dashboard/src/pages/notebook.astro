@@ -1,4 +1,5 @@
 ---
+import EmptyState from '@/components/EmptyState.astro';
 import MemoEntry from '@/components/MemoEntry.astro';
 import RouteHeader from '@/components/RouteHeader.astro';
 import BaseLayout from '@/layouts/BaseLayout.astro';
@@ -60,11 +61,11 @@ const lastUpdate = memoryEntries[0]?.updated ?? memoryEntries[0]?.created ?? 'ne
       </div>
 
       {memoryError ? (
-        <div class="empty">Failed to load notebook: {memoryError}</div>
+        <EmptyState>Failed to load notebook: {memoryError}</EmptyState>
       ) : memoryEntries.length === 0 ? (
-        <div class="empty">
+        <EmptyState>
           Notebook is empty. As the role works, observations about people, accounts, and patterns will land here.
-        </div>
+        </EmptyState>
       ) : (
         <>
           <div class="filter-row" data-filter-group="category" style="margin-top: 0.8rem;">

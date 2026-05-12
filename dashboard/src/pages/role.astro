@@ -1,4 +1,5 @@
 ---
+import EmptyState from '@/components/EmptyState.astro';
 import VerbRow from '@/components/VerbRow.astro';
 import IdentityStrip from '@/components/IdentityStrip.astro';
 import PersonaPane from '@/components/PersonaPane.astro';
@@ -97,9 +98,9 @@ function firstLine(message: string): string {
       {persona ? (
         <IdentityStrip persona={persona} showEmail={true} />
       ) : (
-        <div class="empty">
+        <EmptyState>
           Failed to parse persona: {personaError ?? 'no persona.md found'}
-        </div>
+        </EmptyState>
       )}
 
       <div class="group">
@@ -134,7 +135,7 @@ function firstLine(message: string): string {
           </span>
         </div>
         {verbs.live.length === 0 && verbs.proposed.length === 0 ? (
-          <div class="empty">No verbs authored yet. Add `.md` files under `verbs/`.</div>
+          <EmptyState>No verbs authored yet. Add `.md` files under `verbs/`.</EmptyState>
         ) : (
           <div class="verbs-list">
             {verbs.live.map((v) => <VerbRow verb={v} />)}
@@ -151,9 +152,9 @@ function firstLine(message: string): string {
           </span>
         </div>
         {!autonomy || edits.length === 0 ? (
-          <div class="empty">
+          <EmptyState>
             No autonomous edits yet. The role's grown surfaces are listed in lib/autonomy.yaml.
-          </div>
+          </EmptyState>
         ) : (
           <>
             {autonomySummary && (
@@ -184,7 +185,7 @@ function firstLine(message: string): string {
           <span class="group-counter">authored · lib/</span>
         </div>
         {libFiles.length === 0 ? (
-          <div class="empty">No reference data. Add YAML files to `lib/` to anchor the role's facts.</div>
+          <EmptyState>No reference data. Add YAML files to `lib/` to anchor the role's facts.</EmptyState>
         ) : (
           <div class="lib-list">
             {libFiles.map((f) => <code>{f}</code>)}

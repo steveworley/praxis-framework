@@ -1,4 +1,6 @@
 ---
+import Breadcrumb from '@/components/Breadcrumb.astro';
+import EmptyState from '@/components/EmptyState.astro';
 import DocumentView from '@/components/output/DocumentView.astro';
 import DraftView from '@/components/output/DraftView.astro';
 import PlanView from '@/components/output/PlanView.astro';
@@ -72,16 +74,16 @@ const pageTitle = detail ? `${detail.meta.title} · Output` : `Output · Praxis`
       updatedAt={updatedAt}
     />
 
-    <nav class="breadcrumb">
-      <a href="/output">output</a>
-      <span class="crumb-sep">/</span>
-      <a href={`/output/${type}`}>{type}</a>
-      <span class="crumb-sep">/</span>
-      <span>{slugParam}</span>
-    </nav>
+    <Breadcrumb
+      crumbs={[
+        { label: 'output', href: '/output' },
+        { label: type, href: `/output/${type}` },
+        { label: slugParam },
+      ]}
+    />
 
-    {notFound && <div class="empty">Output not found at this path.</div>}
-    {error && <div class="empty">Could not load output: {error}</div>}
+    {notFound && <EmptyState>Output not found at this path.</EmptyState>}
+    {error && <EmptyState>Could not load output: {error}</EmptyState>}
 
     {detail && type === 'document' && <DocumentView meta={detail.meta} bodyHtml={bodyHtml} />}
     {detail && type === 'draft' && <DraftView meta={detail.meta} bodyHtml={bodyHtml} />}
@@ -94,23 +96,4 @@ const pageTitle = detail ? `${detail.meta.title} · Output` : `Output · Praxis`
     )}
   </main>
 
-  <style>
-    .breadcrumb {
-      font-family: ui-monospace, monospace;
-      font-size: 12px;
-      color: var(--ink-muted);
-      margin: 1rem 0 0;
-    }
-    .breadcrumb a {
-      color: var(--ink-soft);
-      text-decoration: none;
-    }
-    .breadcrumb a:hover {
-      text-decoration: underline;
-    }
-    .crumb-sep {
-      margin: 0 0.5rem;
-      color: var(--ink-faint);
-    }
-  </style>
 </BaseLayout>

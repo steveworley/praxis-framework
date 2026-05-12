@@ -1,5 +1,5 @@
 ---
-import StatusPill from './StatusPill.astro';
+import OutputDetail from './OutputDetail.astro';
 import type { OutputSummary } from '@/lib/output/types';
 
 /**
@@ -17,65 +17,22 @@ const topic = typeof meta.extras['topic'] === 'string' ? meta.extras['topic'] : 
 const tags = Array.isArray(meta.extras['tags']) ? meta.extras['tags'] : [];
 ---
 
-<article class="out-detail">
-  <header class="out-head">
-    <div class="out-title-row">
-      <h1>{topic}</h1>
-      <StatusPill status={meta.status} />
+<OutputDetail
+  title={topic}
+  status={meta.status}
+  path={meta.path}
+  updated={meta.updated}
+  titleSize="md"
+>
+  {tags.length > 0 && (
+    <div slot="head-tail" class="ref-tags">
+      {tags.map((t) => <span class="tag">{t}</span>)}
     </div>
-    <div class="out-meta">
-      <code>{meta.path}</code>
-      <span class="dot">·</span>
-      <span>updated {meta.updated}</span>
-    </div>
-    {tags.length > 0 && (
-      <div class="ref-tags">
-        {tags.map((t) => <span class="tag">{t}</span>)}
-      </div>
-    )}
-  </header>
+  )}
   <div class="prose" set:html={bodyHtml}></div>
-</article>
+</OutputDetail>
 
 <style>
-  .out-detail {
-    margin-top: 1.4rem;
-  }
-  .out-head {
-    margin-bottom: 1.6rem;
-    padding-bottom: 1rem;
-    border-bottom: 1px solid var(--rule);
-  }
-  .out-title-row {
-    display: flex;
-    align-items: baseline;
-    gap: 0.8rem;
-    flex-wrap: wrap;
-    margin-bottom: 0.4rem;
-  }
-  .out-title-row h1 {
-    font-size: 20px;
-    font-weight: 600;
-    color: var(--ink);
-    margin: 0;
-  }
-  .out-meta {
-    font-family: ui-monospace, monospace;
-    font-size: 11.5px;
-    color: var(--ink-muted);
-    display: flex;
-    gap: 0.4rem;
-    flex-wrap: wrap;
-  }
-  .out-meta code {
-    background: none;
-    padding: 0;
-    color: var(--ink-faint);
-    font-size: 11px;
-  }
-  .out-meta .dot {
-    color: var(--ink-faint);
-  }
   .ref-tags {
     display: flex;
     gap: 0.4rem;
@@ -92,7 +49,7 @@ const tags = Array.isArray(meta.extras['tags']) ? meta.extras['tags'] : [];
   }
   /* The rendered body wears the canonical `.prose` class — typography lives
      in global.css. Constrain measure to a readable column on this surface. */
-  .out-detail .prose {
+  .prose {
     max-width: 720px;
   }
 </style>

@@ -1,0 +1,10 @@
+---
+/** A neutral empty/error state — dashed border on a muted surface, centred
+ * prose. Used across pages whenever a section has nothing to render or a
+ * loader failed (the latter via a leading "Failed to load …:" message).
+ * Authors pass the prose as children so it can mix code, links, or italics. */
+---
+
+<div class="empty">
+  <slot />
+</div>

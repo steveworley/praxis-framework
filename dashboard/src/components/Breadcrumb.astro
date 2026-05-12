@@ -1,0 +1,45 @@
+---
+/** Inline breadcrumb trail rendered at the top of nested pages (`/output/<type>`,
+ * `/output/<type>/<slug>`). Each `crumb` is either an anchor (when `href` is
+ * provided) or a plain final segment. Separators are inserted between every
+ * pair so callers just describe the trail. */
+interface Crumb {
+  label: string;
+  href?: string;
+}
+
+interface Props {
+  crumbs: Crumb[];
+}
+
+const { crumbs } = Astro.props;
+---
+
+<nav class="breadcrumb">
+  {crumbs.map((c, i) => (
+    <>
+      {i > 0 && <span class="crumb-sep">/</span>}
+      {c.href ? <a href={c.href}>{c.label}</a> : <span>{c.label}</span>}
+    </>
+  ))}
+</nav>
+
+<style>
+  .breadcrumb {
+    font-family: ui-monospace, monospace;
+    font-size: 12px;
+    color: var(--ink-muted);
+    margin: 1rem 0 0.6rem;
+  }
+  .breadcrumb a {
+    color: var(--ink-soft);
+    text-decoration: none;
+  }
+  .breadcrumb a:hover {
+    text-decoration: underline;
+  }
+  .crumb-sep {
+    margin: 0 0.5rem;
+    color: var(--ink-faint);
+  }
+</style>

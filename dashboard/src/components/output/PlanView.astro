@@ -1,5 +1,5 @@
 ---
-import StatusPill from './StatusPill.astro';
+import OutputDetail from './OutputDetail.astro';
 import type { OutputSummary } from '@/lib/output/types';
 
 /**
@@ -29,24 +29,20 @@ const total = checklistLines.length;
 const percent = total === 0 ? 0 : Math.round((completed / total) * 100);
 ---
 
-<article class="out-detail">
-  <header class="out-head">
-    <div class="out-title-row">
-      <h1>{goal}</h1>
-      <StatusPill status={meta.status} />
-    </div>
-    <div class="out-meta">
-      <code>{meta.path}</code>
+<OutputDetail
+  title={goal}
+  status={meta.status}
+  path={meta.path}
+  updated={meta.updated}
+  divider={false}
+  titleSize="md"
+>
+  {owner && (
+    <Fragment slot="meta-extra">
       <span class="dot">·</span>
-      <span>updated {meta.updated}</span>
-      {owner && (
-        <>
-          <span class="dot">·</span>
-          <span>owner: {owner}</span>
-        </>
-      )}
-    </div>
-  </header>
+      <span>owner: {owner}</span>
+    </Fragment>
+  )}
 
   {total > 0 && (
     <div class="plan-progress">
@@ -61,46 +57,9 @@ const percent = total === 0 ? 0 : Math.round((completed / total) * 100);
   )}
 
   <div class="prose" set:html={bodyHtml}></div>
-</article>
+</OutputDetail>
 
 <style>
-  .out-detail {
-    margin-top: 1.4rem;
-  }
-  .out-head {
-    margin-bottom: 1.2rem;
-  }
-  .out-title-row {
-    display: flex;
-    align-items: baseline;
-    gap: 0.8rem;
-    flex-wrap: wrap;
-    margin-bottom: 0.4rem;
-  }
-  .out-title-row h1 {
-    font-size: 20px;
-    font-weight: 600;
-    color: var(--ink);
-    margin: 0;
-    line-height: 1.3;
-  }
-  .out-meta {
-    font-family: ui-monospace, monospace;
-    font-size: 11.5px;
-    color: var(--ink-muted);
-    display: flex;
-    gap: 0.4rem;
-    flex-wrap: wrap;
-  }
-  .out-meta code {
-    background: none;
-    padding: 0;
-    color: var(--ink-faint);
-    font-size: 11px;
-  }
-  .out-meta .dot {
-    color: var(--ink-faint);
-  }
   .plan-progress {
     margin-bottom: 1.4rem;
     padding: 0.8rem 1rem;
@@ -134,14 +93,14 @@ const percent = total === 0 ? 0 : Math.round((completed / total) * 100);
      global.css. Plans are markdown checklists (`- [ ]` / `- [x]`), so strip
      the bullet from the top-level list — the bracket-tokens themselves carry
      the visual marker. */
-  .out-detail .prose {
+  .prose {
     max-width: 720px;
   }
-  .out-detail .prose ul {
+  .prose :global(ul) {
     list-style: none;
     padding-left: 0;
   }
-  .out-detail .prose li {
+  .prose :global(li) {
     margin: 0.3rem 0;
   }
 </style>

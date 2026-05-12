@@ -1,4 +1,5 @@
 ---
+import EmptyState from '@/components/EmptyState.astro';
 import IdentityStrip from '@/components/IdentityStrip.astro';
 import RouteHeader from '@/components/RouteHeader.astro';
 import SummaryCard from '@/components/SummaryCard.astro';
@@ -185,7 +186,7 @@ async function collectRoleEdits(home: string): Promise<RoleEditsSummary> {
         </span>
       </div>
       {openEscalations.length === 0 ? (
-        <div class="empty">Nothing waiting. Open escalations will surface here.</div>
+        <EmptyState>Nothing waiting. Open escalations will surface here.</EmptyState>
       ) : (
         openEscalations.map((e) => (
           <TriageCard

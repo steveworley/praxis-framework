@@ -1,4 +1,5 @@
 ---
+import EmptyState from '@/components/EmptyState.astro';
 import RouteHeader from '@/components/RouteHeader.astro';
 import BaseLayout from '@/layouts/BaseLayout.astro';
 import { assembleActivity, type ActivityEntry } from '@/lib/activity-loader';
@@ -96,9 +97,9 @@ function metaLine(e: ActivityEntry): string {
       </div>
 
       {activityError ? (
-        <div class="empty">Failed to load activity: {activityError}</div>
+        <EmptyState>Failed to load activity: {activityError}</EmptyState>
       ) : activity.length === 0 ? (
-        <div class="empty">No activity logged yet.</div>
+        <EmptyState>No activity logged yet.</EmptyState>
       ) : (
         <>
           <div class="filter-row" data-filter-group="action" style="margin-top: 0.8rem;">

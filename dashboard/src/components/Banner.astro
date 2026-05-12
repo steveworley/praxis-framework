@@ -1,0 +1,41 @@
+---
+/** Inline notification banner — error (red) by default, warning (amber) or
+ * success (green) on opt-in. Used at the top of pages or sections to surface
+ * loader failures, post-action soft warnings (e.g. commit warnings), and
+ * one-shot success confirmations. Authors pass the message as children. */
+interface Props {
+  variant?: 'error' | 'warning' | 'success';
+}
+
+const { variant = 'error' } = Astro.props;
+---
+
+<div class:list={['banner', `banner-${variant}`]}>
+  <slot />
+</div>
+
+<style>
+  .banner {
+    padding: 0.7rem 1rem;
+    border-radius: 4px;
+    font-size: 13px;
+    border: 1px solid transparent;
+    margin-bottom: 1rem;
+  }
+  .banner-error {
+    background: #fbe2dc;
+    color: var(--danger);
+    border-color: #ecdada;
+  }
+  .banner-warning {
+    background: #fdf6ec;
+    color: var(--warn);
+    border-left: 2px solid var(--warn);
+    border-radius: 3px;
+  }
+  .banner-success {
+    background: #dcefe2;
+    color: var(--good);
+    border-color: #c5e8dc;
+  }
+</style>
