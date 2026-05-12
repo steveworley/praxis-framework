@@ -2,7 +2,7 @@
 /** Top app head + nav, rendered identically on every route. The `current`
  * prop drives the active-tab underline; `escalationOpenCount` (when > 0)
  * surfaces the red badge next to the escalations tab. */
-export type RouteName = 'home' | 'escalations' | 'notebook' | 'activity' | 'role';
+export type RouteName = 'home' | 'chat' | 'escalations' | 'notebook' | 'activity' | 'role';
 
 interface Props {
   current: RouteName;
@@ -15,6 +15,7 @@ const { current, personaName, escalationOpenCount = 0, updatedAt } = Astro.props
 
 const tabs: Array<{ key: RouteName; href: string; label: string }> = [
   { key: 'home', href: '/', label: 'home' },
+  { key: 'chat', href: '/chat', label: 'chat' },
   { key: 'escalations', href: '/escalations', label: 'escalations' },
   { key: 'notebook', href: '/notebook', label: 'notebook' },
   { key: 'activity', href: '/activity', label: 'activity' },

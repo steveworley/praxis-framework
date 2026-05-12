@@ -1,0 +1,829 @@
+---
+import RouteHeader from '@/components/RouteHeader.astro';
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import { hasApiKey } from '@/lib/chat/anthropic.js';
+import { listThreads, type ThreadSummary } from '@/lib/chat/conversation.js';
+import { assembleEscalations } from '@/lib/escalations-loader.js';
+import { parsePersona } from '@/lib/persona-parser.js';
+import { detectMode, getRoleHome, nowIso } from '@/lib/role-home.js';
+
+export const prerender = false;
+
+const roleHome = getRoleHome();
+const mode = detectMode(roleHome);
+if (mode === 'seed') {
+  return Astro.redirect('/setup');
+}
+
+const [personaRes, threadsRes, escalationsRes] = await Promise.allSettled([
+  parsePersona(roleHome),
+  listThreads(roleHome),
+  assembleEscalations(roleHome),
+]);
+
+const persona = personaRes.status === 'fulfilled' ? personaRes.value : null;
+const threads: ThreadSummary[] = threadsRes.status === 'fulfilled' ? threadsRes.value : [];
+const openCount =
+  escalationsRes.status === 'fulfilled' ? escalationsRes.value.countsByStatus.open : 0;
+
+const fullName = persona?.identity['full_name'] ?? persona?.identity['name'] ?? '';
+const initialThreadId =
+  (Astro.url.searchParams.get('thread') ?? '').trim() || threads[0]?.thread_id || '';
+const apiKeyConfigured = hasApiKey();
+const updatedAt = nowIso();
+
+const bootstrap = {
+  threads,
+  initialThreadId,
+  apiKeyConfigured,
+  roleName: fullName,
+};
+---
+
+<BaseLayout title={fullName ? `Chat · ${fullName}` : 'Chat · Praxis'}>
+  <main class="container">
+    <RouteHeader
+      current="chat"
+      personaName={fullName}
+      escalationOpenCount={openCount}
+      updatedAt={updatedAt}
+    />
+
+    {!apiKeyConfigured ? (
+      <div class="chat-shell-missing">
+        <div class="empty">
+          <h2>Chat is disabled</h2>
+          <p>
+            The chat surface requires <code>ANTHROPIC_API_KEY</code> to be set in the
+            dashboard's environment. Set it and restart the dashboard to enable
+            conversations with this role.
+          </p>
+          <p>
+            Optionally set <code>PRAXIS_CHAT_MODEL</code> to override the default
+            (<code>claude-sonnet-4-6</code>).
+          </p>
+        </div>
+      </div>
+    ) : (
+      <div class="chat-shell" x-data="praxisChat()" x-init="init()">
+        <aside class="chat-sidebar">
+          <button type="button" class="btn btn-primary new-chat" @click="newChat()">
+            + New chat
+          </button>
+          <div class="thread-list">
+            <template x-if="threads.length === 0">
+              <div class="empty-sub">No conversations yet.</div>
+            </template>
+            <template x-for="thread in threads" :key="thread.thread_id">
+              <div
+                class="thread-row"
+                :class="{ active: thread.thread_id === activeThreadId }"
+                @click="selectThread(thread.thread_id)"
+              >
+                <div class="thread-row-main">
+                  <div class="thread-title" x-text="thread.title"></div>
+                  <div class="thread-meta">
+                    <span x-text="relativeTime(thread.updated)"></span>
+                    <span class="dot">·</span>
+                    <span x-text="`${thread.message_count} msg`"></span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  class="icon-btn"
+                  title="Delete conversation"
+                  @click.stop="deleteThread(thread.thread_id)"
+                >×</button>
+              </div>
+            </template>
+          </div>
+        </aside>
+
+        <section class="chat-main">
+          <template x-if="!activeThreadId">
+            <div class="empty-pane">
+              <h2>Start a conversation with your role.</h2>
+              <p>
+                You're talking to <strong x-text="roleName || 'this role'"></strong>.
+                Your conversation is saved as markdown under
+                <code>memory/conversations/</code> and stays inspectable like every
+                other piece of the role's interior.
+              </p>
+              <button type="button" class="btn btn-primary" @click="newChat()">
+                Start a new chat
+              </button>
+            </div>
+          </template>
+
+          <template x-if="activeThreadId">
+            <div class="chat-pane">
+              <div class="chat-pane-head">
+                <div class="chat-pane-title" x-text="activeTitle || 'New chat'"></div>
+                <div class="chat-pane-meta">
+                  <span x-text="activeUpdated ? `updated ${relativeTime(activeUpdated)}` : ''"></span>
+                </div>
+              </div>
+
+              <div class="chat-error" x-show="error" x-text="error"></div>
+
+              <div class="chat-transcript" x-ref="transcript">
+                <template x-if="loadingTurns">
+                  <div class="empty-sub">Loading…</div>
+                </template>
+                <template x-for="(turn, idx) in turns" :key="`${activeThreadId}-${idx}`">
+                  <div class="chat-turn" :class="`role-${turn.role}`">
+                    <div class="chat-turn-head">
+                      <span class="chat-turn-role" x-text="turn.role === 'user' ? 'You' : (roleName || 'Role')"></span>
+                      <span class="chat-turn-time" x-text="formatTimestamp(turn.timestamp)"></span>
+                    </div>
+                    <div class="chat-turn-body" x-html="renderMarkdown(turn.content)"></div>
+                  </div>
+                </template>
+                <template x-if="pendingAssistant">
+                  <div class="chat-turn role-assistant pending">
+                    <div class="chat-turn-head">
+                      <span class="chat-turn-role" x-text="roleName || 'Role'"></span>
+                      <span class="chat-turn-time">thinking…</span>
+                    </div>
+                    <div class="chat-turn-body"><span class="dot-pulse">·  ·  ·</span></div>
+                  </div>
+                </template>
+              </div>
+
+              <div class="chat-composer">
+                <template x-if="attachments.length > 0">
+                  <div class="chat-attachments">
+                    <template x-for="(att, idx) in attachments" :key="att.path">
+                      <span class="chat-attachment">
+                        <span x-text="att.filename"></span>
+                        <button type="button" class="icon-btn small" @click="attachments.splice(idx, 1)">×</button>
+                      </span>
+                    </template>
+                  </div>
+                </template>
+                <textarea
+                  x-model="composer"
+                  x-ref="composer"
+                  placeholder="Ask, share context, or hand over a task…"
+                  @keydown.cmd.enter="send()"
+                  @keydown.ctrl.enter="send()"
+                  rows="3"
+                ></textarea>
+                <div class="chat-composer-actions">
+                  <label class="btn btn-ghost">
+                    <input type="file" hidden @change="onPickFile($event)" />
+                    Attach
+                  </label>
+                  <button
+                    type="button"
+                    class="btn btn-primary"
+                    :disabled="!canSend"
+                    @click="send()"
+                  >
+                    <span x-show="!sending">Send</span>
+                    <span x-show="sending">Sending…</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </template>
+        </section>
+      </div>
+    )}
+  </main>
+
+  <style>
+    .chat-shell {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      gap: 1.5rem;
+      align-items: start;
+      margin-top: 1.5rem;
+      min-height: calc(100vh - 220px);
+    }
+    .chat-shell-missing {
+      margin-top: 2rem;
+    }
+    .chat-sidebar {
+      border-right: 1px solid var(--rule);
+      padding-right: 1rem;
+      position: sticky;
+      top: 1.5rem;
+    }
+    .new-chat {
+      width: 100%;
+      margin-bottom: 1rem;
+    }
+    .thread-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+    .thread-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.55rem 0.7rem;
+      border-radius: 4px;
+      cursor: pointer;
+      border: 1px solid transparent;
+    }
+    .thread-row:hover {
+      background: var(--surface-mute);
+    }
+    .thread-row.active {
+      background: var(--surface);
+      border-color: var(--rule);
+    }
+    .thread-row-main {
+      min-width: 0;
+    }
+    .thread-title {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--ink);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .thread-meta {
+      font-size: 11px;
+      color: var(--ink-muted);
+      font-family: ui-monospace, monospace;
+      margin-top: 0.15rem;
+    }
+    .thread-meta .dot {
+      margin: 0 0.3rem;
+    }
+    .icon-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--ink-faint);
+      font-size: 16px;
+      line-height: 1;
+      padding: 0.1rem 0.3rem;
+      border-radius: 2px;
+    }
+    .icon-btn:hover {
+      color: var(--danger);
+      background: var(--surface-mute);
+    }
+    .icon-btn.small {
+      font-size: 14px;
+    }
+    .chat-main {
+      min-width: 0;
+    }
+    .empty-pane {
+      border: 1px dashed var(--rule);
+      border-radius: 4px;
+      padding: 3rem 2rem;
+      background: var(--surface);
+      text-align: center;
+    }
+    .empty-pane h2 {
+      font-size: 18px;
+      font-weight: 500;
+      margin-bottom: 0.7rem;
+      color: var(--ink);
+    }
+    .empty-pane p {
+      color: var(--ink-soft);
+      margin-bottom: 1.2rem;
+      max-width: 480px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .chat-pane {
+      display: flex;
+      flex-direction: column;
+      height: calc(100vh - 220px);
+      min-height: 480px;
+      border: 1px solid var(--rule);
+      border-radius: 4px;
+      background: var(--surface);
+    }
+    .chat-pane-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      padding: 0.9rem 1.1rem;
+      border-bottom: 1px solid var(--rule);
+    }
+    .chat-pane-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--ink);
+    }
+    .chat-pane-meta {
+      font-size: 11px;
+      color: var(--ink-muted);
+      font-family: ui-monospace, monospace;
+    }
+    .chat-error {
+      background: #fbe2dc;
+      color: var(--danger);
+      padding: 0.7rem 1.1rem;
+      font-size: 13px;
+      border-bottom: 1px solid var(--rule);
+    }
+    .chat-transcript {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1.1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    .chat-turn {
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+      max-width: 80%;
+    }
+    .chat-turn.role-user {
+      align-self: flex-end;
+    }
+    .chat-turn.role-assistant {
+      align-self: flex-start;
+    }
+    .chat-turn-head {
+      display: flex;
+      gap: 0.5rem;
+      align-items: baseline;
+      font-size: 11px;
+      color: var(--ink-muted);
+      font-family: ui-monospace, monospace;
+    }
+    .chat-turn-role {
+      font-weight: 600;
+      color: var(--ink);
+    }
+    .chat-turn-body {
+      padding: 0.7rem 0.9rem;
+      border-radius: 6px;
+      font-size: 14px;
+      color: var(--ink);
+      line-height: 1.55;
+    }
+    .role-user .chat-turn-body {
+      background: var(--surface-mute);
+      border: 1px solid var(--rule);
+    }
+    .role-assistant .chat-turn-body {
+      background: var(--surface);
+      border: 1px solid var(--rule);
+    }
+    .chat-turn-body p {
+      margin-bottom: 0.6rem;
+    }
+    .chat-turn-body p:last-child {
+      margin-bottom: 0;
+    }
+    .chat-turn-body ul {
+      margin: 0.4rem 0 0.6rem 1.2rem;
+    }
+    .chat-turn-body h3 {
+      font-size: 14px;
+      font-weight: 600;
+      margin: 0.6rem 0 0.4rem;
+    }
+    .chat-turn.pending .chat-turn-body {
+      color: var(--ink-muted);
+    }
+    .dot-pulse {
+      letter-spacing: 0.4em;
+    }
+    .chat-composer {
+      border-top: 1px solid var(--rule);
+      padding: 0.8rem 1.1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+      background: var(--surface);
+    }
+    .chat-composer textarea {
+      resize: vertical;
+      min-height: 70px;
+      max-height: 220px;
+      width: 100%;
+      padding: 0.6rem 0.8rem;
+      font-family: inherit;
+      font-size: 14px;
+      line-height: 1.5;
+      border: 1px solid var(--rule);
+      border-radius: 4px;
+      background: var(--bg);
+      color: var(--ink);
+    }
+    .chat-composer textarea:focus {
+      outline: none;
+      border-color: var(--rule-strong);
+    }
+    .chat-composer-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.6rem;
+    }
+    .chat-attachments {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+    }
+    .chat-attachment {
+      display: inline-flex;
+      gap: 0.3rem;
+      align-items: center;
+      background: var(--surface-mute);
+      border: 1px solid var(--rule);
+      border-radius: 4px;
+      padding: 0.25rem 0.6rem;
+      font-size: 12px;
+      color: var(--ink-soft);
+      font-family: ui-monospace, monospace;
+    }
+    .btn-ghost {
+      background: none;
+      border: 1px solid var(--rule);
+      color: var(--ink-soft);
+      padding: 0.45rem 0.9rem;
+      font-size: 13px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .btn-ghost:hover {
+      background: var(--surface-mute);
+    }
+    .empty-sub {
+      color: var(--ink-muted);
+      font-size: 13px;
+      padding: 0.6rem 0;
+    }
+
+    @media (max-width: 900px) {
+      .chat-shell {
+        grid-template-columns: 1fr;
+      }
+      .chat-sidebar {
+        border-right: none;
+        padding-right: 0;
+        border-bottom: 1px solid var(--rule);
+        padding-bottom: 1rem;
+        position: static;
+      }
+      .chat-pane {
+        height: auto;
+        min-height: 520px;
+      }
+      .chat-turn {
+        max-width: 100%;
+      }
+    }
+  </style>
+
+  <script
+    is:inline
+    define:vars={{ bootstrap }}
+  >
+    window.__praxisChatBootstrap = bootstrap;
+  </script>
+  <script is:inline src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+  <script is:inline>
+    function praxisChat() {
+      const boot = window.__praxisChatBootstrap || { threads: [], initialThreadId: '', roleName: '' };
+      return {
+        threads: boot.threads || [],
+        activeThreadId: boot.initialThreadId || '',
+        activeTitle: '',
+        activeUpdated: '',
+        roleName: boot.roleName || '',
+        turns: [],
+        composer: '',
+        attachments: [],
+        sending: false,
+        pendingAssistant: false,
+        loadingTurns: false,
+        error: '',
+
+        init() {
+          const initialThread = this.threads.find((t) => t.thread_id === this.activeThreadId);
+          if (initialThread) {
+            this.activeTitle = initialThread.title;
+            this.activeUpdated = initialThread.updated;
+            this.loadActiveThread();
+          }
+        },
+
+        get canSend() {
+          return !this.sending && this.composer.trim().length > 0;
+        },
+
+        async loadActiveThread() {
+          if (!this.activeThreadId) {
+            this.turns = [];
+            return;
+          }
+          this.loadingTurns = true;
+          this.error = '';
+          try {
+            const res = await fetch(`/api/chat/threads/${encodeURIComponent(this.activeThreadId)}`);
+            if (!res.ok) throw new Error(`Thread fetch failed (${res.status})`);
+            const body = await res.json();
+            this.activeTitle = body.thread.title;
+            this.activeUpdated = body.thread.updated;
+            this.turns = body.turns || [];
+            this.$nextTick(() => this.scrollTranscriptToBottom());
+          } catch (e) {
+            this.error = `Could not load conversation: ${e instanceof Error ? e.message : String(e)}`;
+            this.turns = [];
+          } finally {
+            this.loadingTurns = false;
+          }
+        },
+
+        async refreshThreadList() {
+          try {
+            const res = await fetch('/api/chat/threads');
+            if (!res.ok) return;
+            const body = await res.json();
+            this.threads = body.threads || [];
+          } catch (_) {
+            /* keep stale list */
+          }
+        },
+
+        async selectThread(id) {
+          if (id === this.activeThreadId) return;
+          this.activeThreadId = id;
+          this.composer = '';
+          this.attachments = [];
+          this.error = '';
+          this.updateUrl();
+          await this.loadActiveThread();
+        },
+
+        async newChat() {
+          this.activeThreadId = '';
+          this.activeTitle = '';
+          this.activeUpdated = '';
+          this.turns = [];
+          this.composer = '';
+          this.attachments = [];
+          this.error = '';
+          this.updateUrl();
+          this.$nextTick(() => {
+            if (this.$refs.composer) this.$refs.composer.focus();
+          });
+        },
+
+        async deleteThread(id) {
+          if (!confirm('Delete this conversation?')) return;
+          try {
+            const res = await fetch(`/api/chat/threads/${encodeURIComponent(id)}`, {
+              method: 'DELETE',
+            });
+            if (!res.ok) throw new Error(`Delete failed (${res.status})`);
+            this.threads = this.threads.filter((t) => t.thread_id !== id);
+            if (id === this.activeThreadId) {
+              await this.newChat();
+            }
+          } catch (e) {
+            this.error = `Delete failed: ${e instanceof Error ? e.message : String(e)}`;
+          }
+        },
+
+        async send() {
+          const content = this.composer.trim();
+          if (!content || this.sending) return;
+          this.sending = true;
+          this.error = '';
+
+          // If no active thread, create one with this content as the first message.
+          if (!this.activeThreadId) {
+            try {
+              const res = await fetch('/api/chat/threads', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ first_message: content }),
+              });
+              if (!res.ok) {
+                const errBody = await res.json().catch(() => ({}));
+                throw new Error(errBody.error || `Could not create thread (${res.status})`);
+              }
+              const body = await res.json();
+              this.activeThreadId = body.thread_id;
+              this.activeTitle = body.title;
+              this.composer = '';
+              this.updateUrl();
+              // Show the user turn immediately while the assistant call is in flight.
+              const now = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+              this.turns = [{ role: 'user', timestamp: now, content }];
+              this.pendingAssistant = true;
+              this.$nextTick(() => this.scrollTranscriptToBottom());
+              await this.runMessage(content);
+            } catch (e) {
+              this.error = e instanceof Error ? e.message : String(e);
+              this.sending = false;
+              this.pendingAssistant = false;
+            }
+            return;
+          }
+
+          // Existing thread — optimistically push user turn, fire request.
+          const optimisticNow = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+          this.turns.push({ role: 'user', timestamp: optimisticNow, content });
+          this.composer = '';
+          this.pendingAssistant = true;
+          this.$nextTick(() => this.scrollTranscriptToBottom());
+          await this.runMessage(content);
+        },
+
+        async runMessage(content) {
+          try {
+            const body = { thread_id: this.activeThreadId, content };
+            if (this.attachments.length > 0) {
+              body.attachments = this.attachments.map((a) => a.path);
+            }
+            const res = await fetch('/api/chat/message', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(body),
+            });
+            if (!res.ok) {
+              const errBody = await res.json().catch(() => ({}));
+              throw new Error(errBody.error || `Send failed (${res.status})`);
+            }
+            const replyBody = await res.json();
+            this.turns.push({
+              role: 'assistant',
+              timestamp: replyBody.timestamp || new Date().toISOString(),
+              content: replyBody.content,
+            });
+            this.attachments = [];
+            await this.refreshThreadList();
+            const refreshed = this.threads.find((t) => t.thread_id === this.activeThreadId);
+            if (refreshed) {
+              this.activeTitle = refreshed.title;
+              this.activeUpdated = refreshed.updated;
+            }
+            this.$nextTick(() => this.scrollTranscriptToBottom());
+          } catch (e) {
+            this.error = e instanceof Error ? e.message : String(e);
+          } finally {
+            this.sending = false;
+            this.pendingAssistant = false;
+          }
+        },
+
+        async onPickFile(event) {
+          const file = event.target.files && event.target.files[0];
+          if (!file) return;
+          if (!this.activeThreadId) {
+            // Need a thread first — create a placeholder so the upload can land.
+            try {
+              const res = await fetch('/api/chat/threads', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ first_message: `Uploaded ${file.name}` }),
+              });
+              if (!res.ok) throw new Error('Could not create thread');
+              const body = await res.json();
+              this.activeThreadId = body.thread_id;
+              this.activeTitle = body.title;
+              this.updateUrl();
+              await this.loadActiveThread();
+              await this.refreshThreadList();
+            } catch (e) {
+              this.error = e instanceof Error ? e.message : String(e);
+              event.target.value = '';
+              return;
+            }
+          }
+
+          try {
+            const form = new FormData();
+            form.set('thread_id', this.activeThreadId);
+            form.set('file', file);
+            const res = await fetch('/api/chat/upload', { method: 'POST', body: form });
+            if (!res.ok) {
+              const errBody = await res.json().catch(() => ({}));
+              throw new Error(errBody.error || `Upload failed (${res.status})`);
+            }
+            const body = await res.json();
+            this.attachments.push({ path: body.path, filename: body.filename, size: body.size });
+          } catch (e) {
+            this.error = e instanceof Error ? e.message : String(e);
+          } finally {
+            event.target.value = '';
+          }
+        },
+
+        updateUrl() {
+          const url = new URL(window.location.href);
+          if (this.activeThreadId) {
+            url.searchParams.set('thread', this.activeThreadId);
+          } else {
+            url.searchParams.delete('thread');
+          }
+          window.history.replaceState({}, '', url.toString());
+        },
+
+        scrollTranscriptToBottom() {
+          const el = this.$refs.transcript;
+          if (el) el.scrollTop = el.scrollHeight;
+        },
+
+        // ---- formatting helpers -------------------------------------------
+
+        renderMarkdown(text) {
+          if (!text) return '';
+          const escape = (s) =>
+            s
+              .replace(/&/g, '&amp;')
+              .replace(/</g, '&lt;')
+              .replace(/>/g, '&gt;')
+              .replace(/"/g, '&quot;');
+          const inline = (s) =>
+            escape(s)
+              .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+              .replace(/`([^`]+)`/g, '<code>$1</code>');
+
+          const lines = text.split('\n');
+          const out = [];
+          let paragraph = [];
+          let inList = false;
+          const flushParagraph = () => {
+            if (paragraph.length > 0) {
+              out.push('<p>' + paragraph.map(inline).join(' ') + '</p>');
+              paragraph = [];
+            }
+          };
+          const closeList = () => {
+            if (inList) {
+              out.push('</ul>');
+              inList = false;
+            }
+          };
+          for (const raw of lines) {
+            const line = raw.trim();
+            if (line.length === 0) {
+              flushParagraph();
+              closeList();
+              continue;
+            }
+            const heading = /^(#{1,6})\s+(.+)$/.exec(line);
+            if (heading) {
+              flushParagraph();
+              closeList();
+              out.push('<h3>' + inline(heading[2] || '') + '</h3>');
+              continue;
+            }
+            if (line.startsWith('- ') || line.startsWith('* ')) {
+              flushParagraph();
+              if (!inList) {
+                out.push('<ul>');
+                inList = true;
+              }
+              out.push('<li>' + inline(line.slice(2)) + '</li>');
+              continue;
+            }
+            closeList();
+            paragraph.push(line);
+          }
+          flushParagraph();
+          closeList();
+          return out.join('');
+        },
+
+        relativeTime(iso) {
+          if (!iso) return '';
+          const then = new Date(iso).getTime();
+          if (Number.isNaN(then)) return iso;
+          const diff = Date.now() - then;
+          const min = Math.round(diff / 60000);
+          if (min < 1) return 'just now';
+          if (min < 60) return `${min}m ago`;
+          const hr = Math.round(min / 60);
+          if (hr < 24) return `${hr}h ago`;
+          const days = Math.round(hr / 24);
+          if (days < 7) return `${days}d ago`;
+          return iso.slice(0, 10);
+        },
+
+        formatTimestamp(iso) {
+          if (!iso) return '';
+          const d = new Date(iso);
+          if (Number.isNaN(d.getTime())) return iso;
+          return d.toLocaleString(undefined, {
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+          });
+        },
+      };
+    }
+  </script>
+</BaseLayout>
