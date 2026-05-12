@@ -418,43 +418,88 @@ const bootstrap = {
       line-height: 1.65;
     }
     .chat-turn-body p {
-      margin-bottom: 0.7rem;
+      margin: 0.4rem 0;
     }
-    .chat-turn-body p:last-child {
+    .chat-turn-body > :first-child {
+      margin-top: 0;
+    }
+    .chat-turn-body > :last-child {
       margin-bottom: 0;
     }
     .chat-turn-body ul,
     .chat-turn-body ol {
-      margin: 0.4rem 0 0.8rem 1.5rem;
+      margin: 0.5rem 0;
+      padding-left: 1.3rem;
     }
     .chat-turn-body li {
-      margin-bottom: 0.2rem;
+      margin: 0.15rem 0;
     }
     .chat-turn-body li > ul,
     .chat-turn-body li > ol {
-      margin: 0.2rem 0 0.3rem 1.2rem;
+      margin: 0.15rem 0;
+      padding-left: 1.1rem;
     }
+    /* Headings render as inline section markers, not page headings — scaled
+       just slightly above body text so a turn reads as one reply, not a
+       printed document. The first heading in a turn loses its top margin so
+       it sits flush against the speaker label. */
     .chat-turn-body h1,
     .chat-turn-body h2,
     .chat-turn-body h3,
     .chat-turn-body h4,
     .chat-turn-body h5,
     .chat-turn-body h6 {
-      font-size: 13.5px;
       font-weight: 600;
-      margin: 1rem 0 0.4rem;
+      margin: 1.2rem 0 0.4rem;
       color: var(--ink);
+      line-height: 1.35;
+    }
+    .chat-turn-body h1 {
+      font-size: 1.05rem;
+    }
+    .chat-turn-body h2 {
+      font-size: 0.98rem;
+    }
+    .chat-turn-body h3 {
+      font-size: 0.92rem;
+    }
+    .chat-turn-body h4,
+    .chat-turn-body h5,
+    .chat-turn-body h6 {
+      font-size: 0.9rem;
     }
     .chat-turn-body hr {
       border: none;
-      border-top: 1px solid var(--rule);
-      margin: 1.1rem 0;
+      border-top: 1px dashed var(--rule);
+      margin: 1.4rem 0;
+    }
+    /* If an <hr> is immediately followed by a heading the dashed rule + new
+       section marker would double-gap. Collapse the heading's top margin so
+       the pairing reads as one intentional break. */
+    .chat-turn-body hr + h1,
+    .chat-turn-body hr + h2,
+    .chat-turn-body hr + h3,
+    .chat-turn-body hr + h4,
+    .chat-turn-body hr + h5,
+    .chat-turn-body hr + h6 {
+      margin-top: 0.2rem;
+    }
+    .chat-turn-body strong {
+      font-weight: 600;
+      color: var(--ink);
     }
     .chat-turn-body blockquote {
-      margin: 0.6rem 0 0.8rem;
+      margin: 0.6rem 0 0.6rem 0;
       padding: 0.1rem 0 0.1rem 0.9rem;
-      border-left: 2px solid var(--rule-strong);
+      border-left: 3px solid var(--rule-strong);
       color: var(--ink-soft);
+      font-size: 13.5px;
+    }
+    .chat-turn-body blockquote p {
+      margin: 0.3rem 0;
+    }
+    .chat-turn-body blockquote p:first-child {
+      margin-top: 0;
     }
     .chat-turn-body blockquote p:last-child {
       margin-bottom: 0;
@@ -495,7 +540,9 @@ const bootstrap = {
       border: 1px solid var(--rule);
       border-radius: 3px;
       overflow-x: auto;
-      font-size: 12.5px;
+      max-width: 100%;
+      box-sizing: border-box;
+      font-size: 12px;
       line-height: 1.55;
     }
     .chat-turn-body pre code {
