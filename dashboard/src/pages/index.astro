@@ -13,6 +13,7 @@ import {
 } from '@/lib/escalations-loader';
 import { assembleMemory, type MemoryEntry } from '@/lib/memory-loader';
 import { parsePersona, type Persona } from '@/lib/persona-parser';
+import { listProposedVerbs } from '@/lib/triage';
 import {
   daysSince,
   isStale,
@@ -36,13 +37,14 @@ const logGlob = getLogGlob();
 
 // Section-by-section error handling: one failed loader shouldn't blank the
 // page. We surface per-section errors below.
-const [personaRes, memoryRes, escalationsRes, activityRes, verbCountRes, recentRoleRes] = await Promise.allSettled([
+const [personaRes, memoryRes, escalationsRes, activityRes, verbCountRes, recentRoleRes, proposedVerbsRes] = await Promise.allSettled([
   parsePersona(roleHome),
   assembleMemory(roleHome),
   assembleEscalations(roleHome),
   assembleActivity(roleHome, logGlob, 200),
   countLiveVerbs(roleHome),
   collectRoleEdits(roleHome),
+  listProposedVerbs(roleHome),
 ]);
 
 const persona: Persona | null = personaRes.status === 'fulfilled' ? personaRes.value : null;
@@ -53,6 +55,8 @@ const activity: ActivityEntry[] = activityRes.status === 'fulfilled' ? activityR
 const verbCount: number = verbCountRes.status === 'fulfilled' ? verbCountRes.value : 0;
 const recentRoleEdits: RoleEditsSummary =
   recentRoleRes.status === 'fulfilled' ? recentRoleRes.value : { count: 0, lastFile: null, lastDays: null };
+const proposedVerbCount: number =
+  proposedVerbsRes.status === 'fulfilled' ? proposedVerbsRes.value.length : 0;
 
 const updatedAt = nowIso();
 const fullName = persona?.identity['full_name'] ?? persona?.identity['name'] ?? '';
@@ -139,8 +143,22 @@ async function collectRoleEdits(home: string): Promise<RoleEditsSummary> {
       current="home"
       personaName={fullName}
       escalationOpenCount={openCount}
+      triageCount={openCount + proposedVerbCount}
       updatedAt={updatedAt}
     />
+
+    {(openCount + proposedVerbCount > 0) && (
+      <a class="triage-strip" href="/triage">
+        <span class="triage-strip-icon">→</span>
+        <span class="triage-strip-text">
+          <strong>{openCount + proposedVerbCount}</strong> {openCount + proposedVerbCount === 1 ? 'item' : 'items'} in triage:
+          {openCount > 0 && ` ${openCount} ${openCount === 1 ? 'escalation' : 'escalations'} open`}
+          {openCount > 0 && proposedVerbCount > 0 && ' · '}
+          {proposedVerbCount > 0 && ` ${proposedVerbCount} proposed ${proposedVerbCount === 1 ? 'verb' : 'verbs'}`}
+        </span>
+        <span class="triage-strip-action">review →</span>
+      </a>
+    )}
 
     <div class="group" style="margin-top: 2rem;">
       <div class="group-head">

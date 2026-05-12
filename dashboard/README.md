@@ -1,10 +1,11 @@
 # Praxis Interior dashboard
 
-Astro + Node SSR. Three surfaces:
+Astro + Node SSR. Four surfaces:
 
 - `/setup` — wizard that converts the framework repo into a populated role (two visible commits)
 - read-only role-watcher routes (`/`, `/role`, `/escalations`, `/notebook`, `/activity`)
 - `/chat` — conversational lens on the role (Anthropic SDK-backed)
+- `/triage` — operator review surface for the role's raise-your-hand outputs (escalations + proposed verbs)
 
 `/` redirects to `/setup` when no `persona.md` exists at the role home.
 
@@ -56,6 +57,17 @@ Tool calls persist on the assistant turn via an HTML-comment-fenced JSON block i
 
 The chat pane header has a **Reflect** button. Clicking it asks the role to walk the reflection beat over the whole thread: memory worth keeping, friction worth escalating, patterns worth proposing as new verbs, decisions worth logging. The model is free to reply with a short summary instead if nothing earned its keep.
 
+## Triage
+
+`/triage` closes the operator-side of the learning loop. When the role files an escalation or proposes a new verb (via chat tools, via Claude Code session, by hand), the operator reviews and resolves it here.
+
+The page has two sections:
+
+- **Open escalations** — `help`, `improvement`, and `proposed_skill` entries with `status: open`. Each card supports **Accept** (with optional operator note), **Decline** (with required reason), and **Comment** (append a note without changing status). All three actions append a timestamped `## Operator note` section to the underlying file so the history reads cleanly.
+- **Proposed verbs** — drafts under `verbs/proposed/`. **Accept** moves the draft to `verbs/<slug>.md`, flips frontmatter `status` to `accepted`, and (best-effort) appends a row to `CLAUDE.md`'s verbs table. **Edit before accept** opens an inline textarea so the operator can refine the prompt; **Save only** keeps the edits in `verbs/proposed/`, **Save + accept** writes the refined body straight to the live verb. **Decline** flips the frontmatter `status` to `declined` and records a reason — the file stays in `verbs/proposed/` as a record.
+
+All mutations are atomic (write to tmp + rename) and refuse path-traversal-y ids/slugs. The home page surfaces a "N items in triage" strip when the queue is non-empty, and the nav tab carries a red count badge.
+
 ## API surface
 
 All endpoints return JSON. Read endpoints exist as routes for parity with the legacy server, but the dashboard pages assemble data server-side via the same loader functions for fewer round-trips.
@@ -74,6 +86,16 @@ All endpoints return JSON. Read endpoints exist as routes for parity with the le
 | POST | `/api/chat/message` | Runs one chat turn end-to-end (system prompt → Anthropic tool-use loop → persist user + assistant). Returns `{ role, content, timestamp, toolCalls, truncated }`. 503 when `ANTHROPIC_API_KEY` is missing. |
 | POST | `/api/chat/reflect` | Asks the role to reflect on a thread. Same loop as `/message` but seeded with the reflection prompt and the full conversation; persists the reflection as another assistant turn. |
 | POST | `/api/chat/upload` | Multipart upload; writes the file under `lib/uploads/<thread_id>/` |
+| GET | `/api/triage/escalations?status=` | List escalations filtered by status (`open`, `accepted`, `declined`, `resolved`, `all`) |
+| GET | `/api/triage/escalations/{id}` | Returns the full detail (meta + body) for one escalation |
+| POST | `/api/triage/escalations/{id}/accept` | Optional `{ operator_note }`. Flips status to `accepted` and appends an operator-note section |
+| POST | `/api/triage/escalations/{id}/decline` | Required `{ reason }`. Flips status to `declined` and records the reason |
+| POST | `/api/triage/escalations/{id}/comment` | Required `{ note }`. Appends a note; status unchanged |
+| GET | `/api/triage/verbs/proposed` | List of drafts under `verbs/proposed/` (status `proposed` only — declined drafts are filtered out) |
+| GET | `/api/triage/verbs/proposed/{slug}` | Full detail of one draft |
+| POST | `/api/triage/verbs/proposed/{slug}/accept` | Optional `{ body_override }`. Moves the draft to `verbs/<slug>.md`, updates frontmatter, best-effort appends a row to `CLAUDE.md` |
+| POST | `/api/triage/verbs/proposed/{slug}/decline` | Required `{ reason }`. Flips status to `declined`; file stays in `verbs/proposed/` |
+| POST | `/api/triage/verbs/proposed/{slug}/edit` | Required `{ body }`. Replaces the body in place; frontmatter preserved |
 
 ## Production build
 

@@ -1,10 +1,11 @@
 # The Praxis dashboard
 
-Astro + Node SSR. Three surfaces:
+Astro + Node SSR. Four surfaces:
 
 - **`/setup`** — the wizard that converts the framework repo into a populated role. Writes two visible git commits.
 - **Read-only supervisor routes** (`/`, `/role`, `/escalations`, `/notebook`, `/activity`) — watch a populated role.
 - **`/chat`** — conversational lens on the role, backed by the Anthropic SDK. The non-technical operator's runtime.
+- **`/triage`** — operator review surface for the role's raise-your-hand outputs (escalations + proposed verbs). Closes the operator-side of the learning loop.
 
 `/` redirects to `/setup` when no `persona.md` exists at the role-home root.
 
@@ -57,6 +58,16 @@ All endpoints return JSON. Read endpoints exist for parity / external consumers,
 | POST | `/api/chat/message` | Run a chat turn; runs the tool-use loop and persists tool calls onto the assistant turn; 503 when `ANTHROPIC_API_KEY` is missing |
 | POST | `/api/chat/reflect` | Run the reflection beat on a thread; same loop as `/message` but seeded with the reflection prompt and the full conversation |
 | POST | `/api/chat/upload` | Attach a file (≤ 5 MB) to a conversation under `lib/uploads/<thread_id>/` |
+| GET | `/api/triage/escalations?status=` | List escalations filtered by status |
+| GET | `/api/triage/escalations/{id}` | Full detail (meta + body) for one escalation |
+| POST | `/api/triage/escalations/{id}/accept` | Optional `{operator_note}`; flips to `accepted`, appends a note |
+| POST | `/api/triage/escalations/{id}/decline` | Required `{reason}`; flips to `declined`, records the reason |
+| POST | `/api/triage/escalations/{id}/comment` | Required `{note}`; appends a note, status unchanged |
+| GET | `/api/triage/verbs/proposed` | List of `verbs/proposed/` drafts (declined drafts filtered out) |
+| GET | `/api/triage/verbs/proposed/{slug}` | Full detail of one draft |
+| POST | `/api/triage/verbs/proposed/{slug}/accept` | Optional `{body_override}`; moves to `verbs/<slug>.md`, best-effort appends to CLAUDE.md verbs table |
+| POST | `/api/triage/verbs/proposed/{slug}/decline` | Required `{reason}`; flips to `declined`, keeps file in place |
+| POST | `/api/triage/verbs/proposed/{slug}/edit` | Required `{body}`; replaces draft body, frontmatter preserved |
 
 ## What the dashboard reads
 
@@ -108,6 +119,19 @@ The chat pane header has a **Reflect** button. The reflection trigger is *manual
 
 The dashboard now closes the learning loop for non-technical operators: the role grows visibly in memory/escalations/proposed verbs/decision logs through conversation alone, with the same audit trail a technical operator's Claude Code session would produce.
 
+## Triage
+
+`/triage` is the operator's review surface for the role's raise-your-hand outputs — the matching half of the learning loop. The role files escalations and proposes verbs; the operator reviews and resolves them here.
+
+Two sections, both backed by the typed `/api/triage/*` routes:
+
+- **Open escalations** — `help` / `improvement` / `proposed_skill` entries with `status: open`, sorted by urgency. Each card supports **Accept** (with an optional operator note), **Decline** (with a required reason), and **Comment** (append a note while keeping status open). All three actions append a timestamped `## Operator note` section to the escalation file so the file's history reads as a conversation rather than a state machine.
+- **Proposed verbs** — drafts under `verbs/proposed/` with `status: proposed`. **Accept** atomically moves `verbs/proposed/<slug>.md` to `verbs/<slug>.md`, sets frontmatter `status: accepted`, and (best-effort) appends a row to `CLAUDE.md`'s verbs table. **Edit before accept** opens an inline textarea pre-filled with the draft body — operators can refine the prompt before promoting, then either **Save only** (keep refinements in `proposed/` without accepting) or **Save + accept** (the refined body goes straight into the new live verb). **Decline** flips the draft's frontmatter `status` to `declined` and records a reason; the file stays in `verbs/proposed/` as a record of what didn't make the cut.
+
+Every mutation is atomic (write-to-tmp + rename), every id/slug is regex-validated and path-traversal-checked, and the home page surfaces a "N items in triage" strip when the queue is non-empty. The nav tab carries a count badge.
+
+The triage surface does *not* yet commit per action — committing each accept/decline/comment as the operator (alongside the role's own commits) is dispatch #2 in the roadmap.
+
 ## What the wizard writes
 
 When the operator submits `/setup`, two commits land on the role's repo:
@@ -146,6 +170,6 @@ Both commits are visible in `git log` and can be reverted independently. The wiz
 
 ## What it isn't
 
-- Not a control plane — operators read but can't currently resolve / accept / decline escalations from the UI. (Escalation acceptance is an operator-edits-the-file action today.)
+- Not (yet) git-aware — `/triage` mutations land on disk but don't auto-commit as the operator. Commit-per-action is dispatch #2.
 - Not multi-role — one dashboard instance, one role. Multi-role = multiple framework clones.
 - Not a search interface — feeds are linear. Use grep against the role-home for targeted lookups.

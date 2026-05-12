@@ -291,6 +291,41 @@ button {
   font-size: 12px;
 }
 
+/* Home-page triage strip — surfaces "N items waiting" when the role has
+   raised its hand. Quiet by default, accent on hover. */
+.triage-strip {
+  display: flex;
+  gap: 0.7rem;
+  align-items: center;
+  padding: 0.8rem 1.1rem;
+  margin-top: 1.5rem;
+  background: var(--surface-mute);
+  border-left: 3px solid var(--info);
+  border-radius: 0 3px 3px 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+.triage-strip:hover {
+  text-decoration: none;
+  background: var(--surface-deep);
+  color: var(--ink);
+}
+.triage-strip .triage-strip-icon {
+  color: var(--info);
+  font-family: ui-monospace, monospace;
+}
+.triage-strip .triage-strip-text {
+  flex: 1;
+}
+.triage-strip .triage-strip-text strong {
+  color: var(--ink);
+}
+.triage-strip .triage-strip-action {
+  color: var(--link);
+  font-size: 12px;
+  font-family: ui-monospace, monospace;
+}
+
 /* Summary cards (home "Recently") */
 .summary {
   display: grid;

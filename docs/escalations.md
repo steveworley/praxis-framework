@@ -40,11 +40,21 @@ When the operator changes status, append a brief resolution note at the bottom o
 
 1. Role drafts the new playbook in `verbs/proposed/{slug}.md`.
 2. Role files the escalation referencing the draft.
-3. Operator reviews on the dashboard or in their session.
-4. **Accept**: operator moves the file from `verbs/proposed/` to `verbs/`, sets escalation `status: accepted`.
-5. **Decline**: operator sets `status: declined`, adds a one-line reason. The draft stays in `proposed/` as a record.
+3. Operator reviews on the dashboard (`/triage`) or in their session.
+4. **Accept**: from `/triage`, click *Accept* on the proposed verb. The dashboard atomically moves `verbs/proposed/{slug}.md` to `verbs/{slug}.md`, flips frontmatter `status: accepted`, and (best-effort) appends a row to `CLAUDE.md`'s verbs table. Optionally use *Edit before accept* to refine the prompt body before promoting.
+5. **Decline**: click *Decline* and supply a reason. The draft's frontmatter is updated to `status: declined` with the reason recorded, and the file stays in `verbs/proposed/` as a record.
 
 Don't delete declined drafts — the trajectory of what didn't make the cut, and why, is useful.
+
+## Operator review surface
+
+The dashboard's `/triage` page is the supported review surface. It supports:
+
+- **Accept / Decline / Comment** on any open escalation (`help`, `improvement`, `proposed_skill`). All three append a timestamped `## Operator note` block to the escalation file so the history reads as a conversation.
+- **Accept / Decline / Edit / Edit-and-accept** on any proposed verb. Edit opens an inline textarea pre-filled with the draft body.
+- The nav tab shows a count badge when the queue is non-empty; the home page shows a one-line "N items in triage" strip.
+
+Operators can also still resolve escalations by hand-editing the markdown — the dashboard is the convenient surface, not the only one. The disk shape is the source of truth.
 
 ## What escalations aren't
 

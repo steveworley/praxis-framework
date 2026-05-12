@@ -1,21 +1,24 @@
 ---
 /** Top app head + nav, rendered identically on every route. The `current`
  * prop drives the active-tab underline; `escalationOpenCount` (when > 0)
- * surfaces the red badge next to the escalations tab. */
-export type RouteName = 'home' | 'chat' | 'escalations' | 'notebook' | 'activity' | 'role';
+ * surfaces the red badge next to the escalations tab; `triageCount`
+ * (when > 0) does the same for the triage tab. */
+export type RouteName = 'home' | 'chat' | 'escalations' | 'triage' | 'notebook' | 'activity' | 'role';
 
 interface Props {
   current: RouteName;
   personaName?: string;
   escalationOpenCount?: number;
+  triageCount?: number;
   updatedAt?: string;
 }
 
-const { current, personaName, escalationOpenCount = 0, updatedAt } = Astro.props;
+const { current, personaName, escalationOpenCount = 0, triageCount = 0, updatedAt } = Astro.props;
 
 const tabs: Array<{ key: RouteName; href: string; label: string }> = [
   { key: 'home', href: '/', label: 'home' },
   { key: 'chat', href: '/chat', label: 'chat' },
+  { key: 'triage', href: '/triage', label: 'triage' },
   { key: 'escalations', href: '/escalations', label: 'escalations' },
   { key: 'notebook', href: '/notebook', label: 'notebook' },
   { key: 'activity', href: '/activity', label: 'activity' },
@@ -40,6 +43,9 @@ const tabs: Array<{ key: RouteName; href: string; label: string }> = [
       {t.label}
       {t.key === 'escalations' && escalationOpenCount > 0 && (
         <span class="open-count"> {escalationOpenCount}</span>
+      )}
+      {t.key === 'triage' && triageCount > 0 && (
+        <span class="open-count"> {triageCount}</span>
       )}
     </a>
   ))}

@@ -1,0 +1,753 @@
+---
+import RouteHeader from '@/components/RouteHeader.astro';
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import { parsePersona, type Persona } from '@/lib/persona-parser';
+import { detectMode, getRoleHome, nowIso } from '@/lib/role-home';
+import {
+  listOpenEscalations,
+  listProposedVerbs,
+  type EscalationSummary,
+  type ProposedVerbSummary,
+} from '@/lib/triage';
+
+/** /triage — the operator's review surface for the role's raise-your-hand
+ * outputs. Two sections:
+ *
+ *   1. "Open escalations" — help / improvement / proposed_skill, sorted by
+ *      urgency. Each card supports Accept, Decline (with reason), Comment
+ *      (append a note). Accepting/declining a proposed_skill escalation is
+ *      done through the proposed verb itself — the escalation's status is
+ *      then handled by the same flow that moves the draft.
+ *   2. "Proposed verbs" — drafts under verbs/proposed/, with Accept,
+ *      Decline, Edit-before-accept, and Edit-only flows.
+ *
+ * All actions hit the typed JSON routes under /api/triage and refresh the
+ * affected list on success. The page degrades to a clear empty state when
+ * the queue is empty. */
+
+export const prerender = false;
+
+const roleHome = getRoleHome();
+const mode = detectMode(roleHome);
+if (mode === 'seed') {
+  return Astro.redirect('/setup');
+}
+
+const [personaRes, openEscRes, proposedRes] = await Promise.allSettled([
+  parsePersona(roleHome),
+  listOpenEscalations(roleHome),
+  listProposedVerbs(roleHome),
+]);
+
+const persona: Persona | null = personaRes.status === 'fulfilled' ? personaRes.value : null;
+const fullName = persona?.identity['full_name'] ?? persona?.identity['name'] ?? '';
+const openEscalations: EscalationSummary[] =
+  openEscRes.status === 'fulfilled' ? openEscRes.value : [];
+const proposedVerbs: ProposedVerbSummary[] =
+  proposedRes.status === 'fulfilled' ? proposedRes.value : [];
+
+const escError = openEscRes.status === 'rejected' ? String(openEscRes.reason) : null;
+const verbError = proposedRes.status === 'rejected' ? String(proposedRes.reason) : null;
+
+const updatedAt = nowIso();
+const triageCount = openEscalations.length + proposedVerbs.length;
+
+const bootstrap = {
+  escalations: openEscalations,
+  proposedVerbs,
+  roleName: fullName,
+};
+---
+
+<BaseLayout title={fullName ? `Triage · ${fullName}` : 'Triage · Praxis'}>
+  <main class="container">
+    <RouteHeader
+      current="triage"
+      personaName={fullName}
+      triageCount={triageCount}
+      updatedAt={updatedAt}
+    />
+
+    <div class="triage-shell" x-data="praxisTriage()" x-init="init()">
+      <p class="triage-lede">
+        The role's raise-your-hand queue. Accept, decline, or comment on what the role brought to you.
+        Every action writes back to the same markdown files; nothing is hidden.
+      </p>
+
+      <div class="triage-error" x-show="bannerError" x-text="bannerError"></div>
+
+      <div class="group">
+        <div class="group-head">
+          <span class="group-title">Open escalations</span>
+          <span class="group-counter" x-text="`${escalations.length} ${escalations.length === 1 ? 'item' : 'items'}`"></span>
+        </div>
+
+        {escError && (
+          <div class="empty">Failed to load escalations: {escError}</div>
+        )}
+
+        <template x-if="escalations.length === 0 && !escError">
+          <div class="empty">
+            Nothing in the triage queue. The role hasn't asked for anything.
+          </div>
+        </template>
+
+        <template x-for="e in escalations" :key="e.id">
+          <article class="triage-item" :class="`kind-${e.kind}`">
+            <header class="triage-head">
+              <div class="speaker">
+                <span class="kind-label" x-text="kindLabel(e.kind)"></span>
+                <span class="title" x-text="e.title"></span>
+              </div>
+              <div class="meta">
+                <span x-text="e.created || ''"></span>
+                <template x-if="e.agent_context">
+                  <span><span class="dot">·</span><span x-text="`from ${e.agent_context}`"></span></span>
+                </template>
+                <template x-if="e.urgency === 'high'">
+                  <span class="urg-high">· high urgency</span>
+                </template>
+                <span class="dot">·</span>
+                <code x-text="e.path"></code>
+              </div>
+            </header>
+
+            <div class="triage-body">
+              <template x-if="!expanded[e.id]">
+                <button type="button" class="link-btn" @click="loadDetail(e.id)">
+                  read full body →
+                </button>
+              </template>
+              <template x-if="expanded[e.id]">
+                <div class="body-pre" x-text="bodies[e.id] || 'Loading…'"></div>
+              </template>
+            </div>
+
+            <div class="actions" x-show="pending[e.id] !== 'accept' && pending[e.id] !== 'decline' && pending[e.id] !== 'comment'">
+              <button type="button" class="action-btn" @click="pending[e.id] = 'accept'">Accept</button>
+              <button type="button" class="action-btn danger" @click="pending[e.id] = 'decline'">Decline</button>
+              <button type="button" class="action-btn" @click="pending[e.id] = 'comment'">Comment</button>
+            </div>
+
+            <template x-if="pending[e.id] === 'accept'">
+              <form class="action-form" @submit.prevent="acceptEscalation(e.id)">
+                <label>Optional operator note (will be appended to the file):</label>
+                <textarea x-model="notes[e.id]" rows="3" placeholder="will land this week"></textarea>
+                <div class="action-form-row">
+                  <button type="submit" class="action-btn primary" :disabled="busy[e.id]">
+                    <span x-show="!busy[e.id]">Confirm accept</span>
+                    <span x-show="busy[e.id]">Saving…</span>
+                  </button>
+                  <button type="button" class="action-btn ghost" @click="cancelAction(e.id)">Cancel</button>
+                </div>
+              </form>
+            </template>
+
+            <template x-if="pending[e.id] === 'decline'">
+              <form class="action-form" @submit.prevent="declineEscalation(e.id)">
+                <label>Decline reason (required):</label>
+                <textarea x-model="notes[e.id]" rows="3" placeholder="duplicate of existing verb; out of scope; etc."></textarea>
+                <div class="action-form-row">
+                  <button type="submit" class="action-btn danger" :disabled="busy[e.id] || !(notes[e.id] || '').trim()">
+                    <span x-show="!busy[e.id]">Confirm decline</span>
+                    <span x-show="busy[e.id]">Saving…</span>
+                  </button>
+                  <button type="button" class="action-btn ghost" @click="cancelAction(e.id)">Cancel</button>
+                </div>
+              </form>
+            </template>
+
+            <template x-if="pending[e.id] === 'comment'">
+              <form class="action-form" @submit.prevent="commentEscalation(e.id)">
+                <label>Append a note (keeps status open):</label>
+                <textarea x-model="notes[e.id]" rows="3" placeholder="looking at this; will get back tomorrow"></textarea>
+                <div class="action-form-row">
+                  <button type="submit" class="action-btn" :disabled="busy[e.id] || !(notes[e.id] || '').trim()">
+                    <span x-show="!busy[e.id]">Append</span>
+                    <span x-show="busy[e.id]">Saving…</span>
+                  </button>
+                  <button type="button" class="action-btn ghost" @click="cancelAction(e.id)">Cancel</button>
+                </div>
+              </form>
+            </template>
+          </article>
+        </template>
+      </div>
+
+      <div class="group">
+        <div class="group-head">
+          <span class="group-title">Proposed verbs</span>
+          <span class="group-counter" x-text="`${proposedVerbs.length} ${proposedVerbs.length === 1 ? 'draft' : 'drafts'}`"></span>
+        </div>
+
+        {verbError && (
+          <div class="empty">Failed to load proposed verbs: {verbError}</div>
+        )}
+
+        <template x-if="proposedVerbs.length === 0 && !verbError">
+          <div class="empty">No proposed verbs.</div>
+        </template>
+
+        <template x-for="v in proposedVerbs" :key="v.slug">
+          <article class="triage-item kind-proposed_skill">
+            <header class="triage-head">
+              <div class="speaker">
+                <span class="kind-label">VERB</span>
+                <span class="title" x-text="v.slug"></span>
+              </div>
+              <div class="meta">
+                <template x-if="v.description">
+                  <span x-text="v.description"></span>
+                </template>
+                <template x-if="v.created">
+                  <span><span class="dot">·</span><span x-text="v.created"></span></span>
+                </template>
+                <template x-if="v.proposed_by">
+                  <span><span class="dot">·</span><span x-text="`by ${v.proposed_by}`"></span></span>
+                </template>
+                <span class="dot">·</span>
+                <code x-text="v.path"></code>
+              </div>
+            </header>
+
+            <div class="triage-body">
+              <template x-if="!expanded[v.slug]">
+                <button type="button" class="link-btn" @click="loadVerbDetail(v.slug)">
+                  read draft →
+                </button>
+              </template>
+              <template x-if="expanded[v.slug] && !editing[v.slug]">
+                <div class="body-pre" x-text="bodies[v.slug] || 'Loading…'"></div>
+              </template>
+              <template x-if="editing[v.slug]">
+                <textarea
+                  class="edit-textarea"
+                  rows="14"
+                  x-model="bodies[v.slug]"
+                  placeholder="Refine the draft body before saving / accepting…"
+                ></textarea>
+              </template>
+            </div>
+
+            <div class="actions" x-show="pending[v.slug] !== 'decline'">
+              <template x-if="!editing[v.slug]">
+                <span class="actions-inline">
+                  <button type="button" class="action-btn primary" @click="acceptVerb(v.slug)" :disabled="busy[v.slug]">
+                    <span x-show="!busy[v.slug]">Accept (move to verbs/)</span>
+                    <span x-show="busy[v.slug]">Saving…</span>
+                  </button>
+                  <button type="button" class="action-btn" @click="startEdit(v.slug)">Edit before accept</button>
+                  <button type="button" class="action-btn danger" @click="pending[v.slug] = 'decline'">Decline</button>
+                </span>
+              </template>
+              <template x-if="editing[v.slug]">
+                <span class="actions-inline">
+                  <button type="button" class="action-btn" @click="saveEdit(v.slug)" :disabled="busy[v.slug]">
+                    <span x-show="!busy[v.slug]">Save only (keep in proposed/)</span>
+                    <span x-show="busy[v.slug]">Saving…</span>
+                  </button>
+                  <button type="button" class="action-btn primary" @click="saveAndAccept(v.slug)" :disabled="busy[v.slug]">
+                    <span x-show="!busy[v.slug]">Save + accept</span>
+                    <span x-show="busy[v.slug]">Saving…</span>
+                  </button>
+                  <button type="button" class="action-btn ghost" @click="cancelEdit(v.slug)">Cancel</button>
+                </span>
+              </template>
+            </div>
+
+            <template x-if="pending[v.slug] === 'decline'">
+              <form class="action-form" @submit.prevent="declineVerb(v.slug)">
+                <label>Decline reason (required, stays in proposed/ as a record):</label>
+                <textarea x-model="notes[v.slug]" rows="3" placeholder="duplicate of existing verb; too narrow; etc."></textarea>
+                <div class="action-form-row">
+                  <button type="submit" class="action-btn danger" :disabled="busy[v.slug] || !(notes[v.slug] || '').trim()">
+                    <span x-show="!busy[v.slug]">Confirm decline</span>
+                    <span x-show="busy[v.slug]">Saving…</span>
+                  </button>
+                  <button type="button" class="action-btn ghost" @click="cancelAction(v.slug)">Cancel</button>
+                </div>
+              </form>
+            </template>
+          </article>
+        </template>
+      </div>
+    </div>
+  </main>
+
+  <style>
+    /* /triage — review surface for escalations + proposed verbs. Matches
+       the editorial aesthetic of /chat: speaker label + muted metadata +
+       plain prose body. Action buttons are quiet by default, accent only
+       on hover. */
+    .triage-shell {
+      margin-top: 1.2rem;
+    }
+    .triage-lede {
+      max-width: 680px;
+      color: var(--ink-muted);
+      font-size: 13.5px;
+      margin-bottom: 1.8rem;
+      line-height: 1.6;
+    }
+    .triage-error {
+      background: #fbe2dc;
+      color: var(--danger);
+      padding: 0.65rem 0.95rem;
+      font-size: 13px;
+      border-radius: 3px;
+      margin-bottom: 1rem;
+    }
+
+    .triage-item {
+      padding: 1.4rem 0;
+      border-top: 1px solid var(--rule);
+    }
+    .triage-item:last-child {
+      border-bottom: 1px solid var(--rule);
+    }
+    .triage-head {
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.5rem 1rem;
+      margin-bottom: 0.7rem;
+      align-items: baseline;
+    }
+    .speaker {
+      display: flex;
+      gap: 0.7rem;
+      align-items: baseline;
+      flex-wrap: wrap;
+    }
+    .kind-label {
+      font-family: ui-monospace, monospace;
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 1px 5px;
+      border-radius: 2px;
+      background: var(--surface-mute);
+      color: var(--ink-muted);
+    }
+    .kind-help .kind-label {
+      background: #fbe2dc;
+      color: var(--danger);
+    }
+    .kind-improvement .kind-label {
+      background: #fbeed4;
+      color: var(--warn);
+    }
+    .kind-proposed_skill .kind-label {
+      background: #ece1f3;
+      color: var(--info);
+    }
+    .title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--ink);
+    }
+    .meta {
+      font-family: ui-monospace, monospace;
+      font-size: 11.5px;
+      color: var(--ink-muted);
+      display: flex;
+      gap: 0.35rem;
+      flex-wrap: wrap;
+      align-items: baseline;
+    }
+    .meta .dot {
+      color: var(--ink-faint);
+    }
+    .meta .urg-high {
+      color: var(--danger);
+      font-weight: 600;
+    }
+    .meta code {
+      font-size: 11px;
+      background: none;
+      padding: 0;
+      color: var(--ink-faint);
+    }
+
+    .triage-body {
+      margin-bottom: 0.8rem;
+    }
+    .body-pre {
+      white-space: pre-wrap;
+      font-family: ui-monospace, monospace;
+      font-size: 12.5px;
+      line-height: 1.55;
+      color: var(--ink-soft);
+      background: var(--surface-mute);
+      padding: 0.9rem 1rem;
+      border-radius: 3px;
+      max-height: 360px;
+      overflow-y: auto;
+    }
+    .edit-textarea {
+      width: 100%;
+      font-family: ui-monospace, monospace;
+      font-size: 12.5px;
+      line-height: 1.55;
+      padding: 0.7rem 0.9rem;
+      border: 1px solid var(--rule-strong);
+      border-radius: 3px;
+      background: var(--surface);
+      color: var(--ink);
+      resize: vertical;
+      min-height: 220px;
+    }
+    .edit-textarea:focus {
+      outline: none;
+      border-color: var(--ink-soft);
+    }
+    .link-btn {
+      background: none;
+      border: none;
+      color: var(--link);
+      font-family: inherit;
+      font-size: 12.5px;
+      cursor: pointer;
+      padding: 0;
+    }
+    .link-btn:hover {
+      text-decoration: underline;
+    }
+
+    .actions,
+    .actions-inline {
+      display: flex;
+      gap: 0.55rem;
+      flex-wrap: wrap;
+      align-items: baseline;
+    }
+    .action-btn {
+      background: var(--surface);
+      border: 1px solid var(--rule);
+      border-radius: 3px;
+      padding: 0.35rem 0.85rem;
+      font-family: inherit;
+      font-size: 12.5px;
+      color: var(--ink-soft);
+      cursor: pointer;
+    }
+    .action-btn:hover:not(:disabled) {
+      border-color: var(--rule-strong);
+      color: var(--ink);
+    }
+    .action-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .action-btn.primary {
+      border-color: var(--ink-soft);
+      color: var(--ink);
+      font-weight: 500;
+    }
+    .action-btn.primary:hover:not(:disabled) {
+      background: var(--ink);
+      color: var(--surface);
+    }
+    .action-btn.danger {
+      color: var(--danger);
+    }
+    .action-btn.danger:hover:not(:disabled) {
+      border-color: var(--danger);
+      background: var(--danger);
+      color: var(--surface);
+    }
+    .action-btn.ghost {
+      border-color: transparent;
+      color: var(--ink-muted);
+    }
+    .action-btn.ghost:hover {
+      color: var(--ink);
+    }
+
+    .action-form {
+      margin-top: 0.9rem;
+      padding: 0.9rem 1rem;
+      background: var(--surface-mute);
+      border-radius: 3px;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .action-form label {
+      font-size: 12px;
+      color: var(--ink-muted);
+    }
+    .action-form textarea {
+      width: 100%;
+      font-family: inherit;
+      font-size: 13.5px;
+      line-height: 1.55;
+      padding: 0.55rem 0.7rem;
+      border: 1px solid var(--rule);
+      border-radius: 3px;
+      background: var(--surface);
+      color: var(--ink);
+      resize: vertical;
+    }
+    .action-form textarea:focus {
+      outline: none;
+      border-color: var(--rule-strong);
+    }
+    .action-form-row {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+  </style>
+
+  <script
+    is:inline
+    define:vars={{ bootstrap }}
+  >
+    window.__praxisTriageBootstrap = bootstrap;
+  </script>
+  <script is:inline src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+  <script is:inline>
+    function praxisTriage() {
+      const boot = window.__praxisTriageBootstrap || { escalations: [], proposedVerbs: [], roleName: '' };
+      return {
+        escalations: boot.escalations || [],
+        proposedVerbs: boot.proposedVerbs || [],
+        // Per-item UI state (keyed by id/slug).
+        expanded: {},   // id -> bool
+        bodies: {},     // id -> string (body text)
+        notes: {},      // id -> string (operator note for the pending action)
+        pending: {},    // id -> 'accept' | 'decline' | 'comment' | undefined
+        editing: {},    // slug -> bool (only used for proposed verbs)
+        busy: {},       // id -> bool (in-flight network)
+        bannerError: '',
+
+        init() {
+          // nothing to do — page renders from the server-side bootstrap.
+        },
+
+        kindLabel(kind) {
+          if (kind === 'help') return 'HELP';
+          if (kind === 'improvement') return 'IMPROVEMENT';
+          if (kind === 'proposed_skill') return 'PROPOSED SKILL';
+          return (kind || '').toUpperCase();
+        },
+
+        async loadDetail(id) {
+          this.expanded[id] = true;
+          if (this.bodies[id]) return;
+          try {
+            const res = await fetch(`/api/triage/escalations/${encodeURIComponent(id)}`);
+            if (!res.ok) throw new Error(`Could not load (${res.status})`);
+            const body = await res.json();
+            this.bodies[id] = body.body || '';
+          } catch (e) {
+            this.bannerError = e instanceof Error ? e.message : String(e);
+            this.expanded[id] = false;
+          }
+        },
+
+        async loadVerbDetail(slug) {
+          this.expanded[slug] = true;
+          if (this.bodies[slug]) return;
+          try {
+            const res = await fetch(`/api/triage/verbs/proposed/${encodeURIComponent(slug)}`);
+            if (!res.ok) throw new Error(`Could not load (${res.status})`);
+            const body = await res.json();
+            this.bodies[slug] = body.body || '';
+          } catch (e) {
+            this.bannerError = e instanceof Error ? e.message : String(e);
+            this.expanded[slug] = false;
+          }
+        },
+
+        cancelAction(id) {
+          this.pending[id] = undefined;
+          this.notes[id] = '';
+        },
+
+        async acceptEscalation(id) {
+          this.busy[id] = true;
+          this.bannerError = '';
+          try {
+            const note = (this.notes[id] || '').trim();
+            const body = note ? { operator_note: note } : {};
+            const res = await fetch(`/api/triage/escalations/${encodeURIComponent(id)}/accept`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(body),
+            });
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({}));
+              throw new Error(err.error || `Accept failed (${res.status})`);
+            }
+            this.removeEscalation(id);
+          } catch (e) {
+            this.bannerError = e instanceof Error ? e.message : String(e);
+          } finally {
+            this.busy[id] = false;
+          }
+        },
+
+        async declineEscalation(id) {
+          const reason = (this.notes[id] || '').trim();
+          if (!reason) return;
+          this.busy[id] = true;
+          this.bannerError = '';
+          try {
+            const res = await fetch(`/api/triage/escalations/${encodeURIComponent(id)}/decline`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ reason }),
+            });
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({}));
+              throw new Error(err.error || `Decline failed (${res.status})`);
+            }
+            this.removeEscalation(id);
+          } catch (e) {
+            this.bannerError = e instanceof Error ? e.message : String(e);
+          } finally {
+            this.busy[id] = false;
+          }
+        },
+
+        async commentEscalation(id) {
+          const note = (this.notes[id] || '').trim();
+          if (!note) return;
+          this.busy[id] = true;
+          this.bannerError = '';
+          try {
+            const res = await fetch(`/api/triage/escalations/${encodeURIComponent(id)}/comment`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ note }),
+            });
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({}));
+              throw new Error(err.error || `Comment failed (${res.status})`);
+            }
+            this.pending[id] = undefined;
+            this.notes[id] = '';
+            // Body might have been expanded — refresh the cached copy.
+            if (this.expanded[id]) {
+              delete this.bodies[id];
+              await this.loadDetail(id);
+            }
+          } catch (e) {
+            this.bannerError = e instanceof Error ? e.message : String(e);
+          } finally {
+            this.busy[id] = false;
+          }
+        },
+
+        removeEscalation(id) {
+          this.escalations = this.escalations.filter((e) => e.id !== id);
+          this.pending[id] = undefined;
+          this.notes[id] = '';
+          this.expanded[id] = false;
+        },
+
+        // ---- proposed verbs ------------------------------------------------
+
+        async startEdit(slug) {
+          if (!this.bodies[slug]) {
+            await this.loadVerbDetail(slug);
+          }
+          this.expanded[slug] = true;
+          this.editing[slug] = true;
+        },
+
+        cancelEdit(slug) {
+          this.editing[slug] = false;
+          // Re-fetch to discard the unsaved edits in the textarea.
+          delete this.bodies[slug];
+          this.loadVerbDetail(slug);
+        },
+
+        async acceptVerb(slug, bodyOverride) {
+          this.busy[slug] = true;
+          this.bannerError = '';
+          try {
+            const body = bodyOverride !== undefined ? { body_override: bodyOverride } : {};
+            const res = await fetch(`/api/triage/verbs/proposed/${encodeURIComponent(slug)}/accept`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(body),
+            });
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({}));
+              throw new Error(err.error || `Accept failed (${res.status})`);
+            }
+            this.removeVerb(slug);
+          } catch (e) {
+            this.bannerError = e instanceof Error ? e.message : String(e);
+          } finally {
+            this.busy[slug] = false;
+          }
+        },
+
+        async saveEdit(slug) {
+          this.busy[slug] = true;
+          this.bannerError = '';
+          try {
+            const body = this.bodies[slug] || '';
+            const res = await fetch(`/api/triage/verbs/proposed/${encodeURIComponent(slug)}/edit`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ body }),
+            });
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({}));
+              throw new Error(err.error || `Save failed (${res.status})`);
+            }
+            this.editing[slug] = false;
+          } catch (e) {
+            this.bannerError = e instanceof Error ? e.message : String(e);
+          } finally {
+            this.busy[slug] = false;
+          }
+        },
+
+        async saveAndAccept(slug) {
+          // Use the textarea contents as body_override on accept — the
+          // accept route writes the new live verb in one step, so we don't
+          // need a separate save call.
+          const body = this.bodies[slug] || '';
+          await this.acceptVerb(slug, body);
+        },
+
+        async declineVerb(slug) {
+          const reason = (this.notes[slug] || '').trim();
+          if (!reason) return;
+          this.busy[slug] = true;
+          this.bannerError = '';
+          try {
+            const res = await fetch(`/api/triage/verbs/proposed/${encodeURIComponent(slug)}/decline`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ reason }),
+            });
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({}));
+              throw new Error(err.error || `Decline failed (${res.status})`);
+            }
+            this.removeVerb(slug);
+          } catch (e) {
+            this.bannerError = e instanceof Error ? e.message : String(e);
+          } finally {
+            this.busy[slug] = false;
+          }
+        },
+
+        removeVerb(slug) {
+          this.proposedVerbs = this.proposedVerbs.filter((v) => v.slug !== slug);
+          this.pending[slug] = undefined;
+          this.notes[slug] = '';
+          this.editing[slug] = false;
+          this.expanded[slug] = false;
+        },
+      };
+    }
+  </script>
+</BaseLayout>
