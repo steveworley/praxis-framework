@@ -15,6 +15,8 @@ import {
 import { assembleEscalations } from '@/lib/escalations-loader';
 import { parsePersona, type Persona } from '@/lib/persona-parser';
 import { detectMode, getRoleHome, nowIso } from '@/lib/role-home';
+import { formatIsoDate } from '@/lib/ui/time';
+import { firstLine } from '@/lib/ui/text';
 
 export const prerender = false;
 
@@ -72,17 +74,6 @@ const autonomySummary = autonomy && autonomy.surfaces.length > 0
   ? `${autonomy.surfaces.length} ${autonomy.surfaces.length === 1 ? 'surface' : 'surfaces'} opened — ${autonomy.surfaces.map(summariseSurface).join(', ')}`
   : '';
 
-function formatDate(iso: string): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso.slice(0, 10);
-  return d.toISOString().slice(0, 10);
-}
-
-function firstLine(message: string): string {
-  const idx = message.indexOf('\n');
-  return idx >= 0 ? message.slice(0, idx) : message;
-}
 ---
 
 <BaseLayout title={fullName ? `Role · ${fullName}` : 'Role · Praxis'}>
@@ -164,7 +155,7 @@ function firstLine(message: string): string {
               {edits.map((e) => (
                 <div class="edit-row">
                   <span class="sha">{e.short_sha}</span>
-                  <span class="date">{formatDate(e.date)}</span>
+                  <span class="date">{formatIsoDate(e.date)}</span>
                   <div class="what">
                     {firstLine(e.message)}
                     {e.files.length > 0 && (
