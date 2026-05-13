@@ -3,7 +3,7 @@
 Astro + Node SSR. Five surfaces:
 
 - **`/setup`** — the wizard that converts the framework repo into a populated role. Writes two visible git commits.
-- **Read-only supervisor routes** (`/`, `/role`, `/escalations`, `/notebook`, `/activity`) — watch a populated role.
+- **Read-only supervisor routes** (`/`, `/role`, `/escalations`, `/notebook`, `/activity`, `/health`) — watch a populated role.
 - **`/chat`** — conversational lens on the role, backed by the Anthropic SDK. The non-technical operator's runtime.
 - **`/triage`** — operator review surface for the role's raise-your-hand outputs (escalations + proposed verbs). Closes the operator-side of the learning loop.
 - **`/output`** — the typed work-product surface. Five primitives (document, draft, record, plan, reference) with per-type renderers and a closed-enum status lifecycle.
@@ -83,6 +83,7 @@ All endpoints return JSON. Read endpoints exist for parity / external consumers,
 | Memory | `memory/**/*.md` | Recency-sorted; filterable by category subdir |
 | Escalations | `escalations/*.md` | Sorted by status (open first) → urgency → date desc; filterable by status |
 | Activity | files matching `PRAXIS_LOG_GLOB` | Recent verb runs |
+| Health | memory + escalations + logs + git history | Read-only aggregations over the same sources: weekly memory writes, escalation file/resolve/decline buckets, median time-to-triage, 30-day tool-call distribution, role-author commit count + revert ratio. No charts — small monospace tables and `▁▃▅▇` block-glyph sparklines. |
 
 The dashboard handles missing files gracefully — section-by-section error handling, one failed loader doesn't blank the page.
 
