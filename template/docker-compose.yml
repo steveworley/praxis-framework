@@ -1,0 +1,44 @@
+# Praxis dashboard for this role.
+#
+# Usage:
+#   cp .env.example .env && vim .env   # set ANTHROPIC_API_KEY
+#   docker compose up                   # pulls the dashboard image
+#
+# Open http://localhost:4321
+#
+# Upgrading:
+#   docker compose pull && docker compose up -d
+#
+# MCP servers: add sibling services on the praxis network and list them
+# in PRAXIS_MCPS (format: name=http://service:port[,name=http://...]).
+# Per-server allow/deny lives in lib/autonomy.yaml under the `mcps:` block.
+
+services:
+  dashboard:
+    image: ghcr.io/steveworley/praxis-framework/dashboard:main
+    container_name: praxis-dashboard
+    ports:
+      - "127.0.0.1:4321:4321"
+    volumes:
+      - .:/role
+    environment:
+      PRAXIS_ROLE_HOME: /role
+      PRAXIS_LOG_GLOB: "**/logs/*.jsonl"
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # PRAXIS_MCPS: ""    # name=url[,name=url] — wire MCP servers here
+    networks:
+      - praxis
+    restart: unless-stopped
+
+  # Add MCP services below as siblings on the praxis network. Example:
+  #
+  # mcp-slack:
+  #   image: ghcr.io/your-org/mcp-slack:latest
+  #   environment:
+  #     SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN}
+  #   networks: [praxis]
+  #   restart: unless-stopped
+
+networks:
+  praxis:
+    driver: bridge

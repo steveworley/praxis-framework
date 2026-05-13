@@ -71,11 +71,16 @@ Three paths to a populated role, all of them write the same files.
 ### CLI
 
 ```bash
-npx praxis init                            # interactive Ink wizard
-npx praxis init --config ./role.json       # non-interactive (CI-safe)
+mkdir my-role && cd my-role
+npx @praxis-framework/cli init                         # interactive Ink wizard
+# or
+npx @praxis-framework/cli init --config ./role.json    # non-interactive (CI-safe)
+
+cp .env.example .env && vim .env                        # set ANTHROPIC_API_KEY
+docker compose up                                       # pulls the dashboard image
 ```
 
-A sample config lives at [`cli/examples/sample-role.json`](cli/examples/sample-role.json). The CLI also ships `praxis log` for appending JSONL decision lines from inside verb playbooks — see [`cli/README.md`](cli/README.md).
+The CLI writes `docker-compose.yml` + `.env.example` alongside the role files, so a fresh seed is one `docker compose up` away from a running dashboard — no framework clone required. A sample config lives at [`cli/examples/sample-role.json`](cli/examples/sample-role.json). The CLI also ships `praxis log` for appending JSONL decision lines from inside verb playbooks — see [`cli/README.md`](cli/README.md).
 
 ### Dashboard wizard
 

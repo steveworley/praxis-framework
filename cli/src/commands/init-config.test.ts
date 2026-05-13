@@ -67,6 +67,31 @@ describe('runInitConfig', () => {
     expect(persona).toContain('Acme BD');
   });
 
+  it('writes the runtime scaffolding (docker-compose.yml + .env.example + .gitignore)', async () => {
+    const configPath = path.join(tmp, 'role.json');
+    const targetPath = path.join(tmp, 'out');
+    await fs.mkdir(targetPath, { recursive: true });
+    await fs.writeFile(configPath, JSON.stringify(sampleConfig), 'utf-8');
+
+    const result = await runInitConfig({ configPath, targetPath });
+
+    expect(result.filesWritten).toContain('docker-compose.yml');
+    expect(result.filesWritten).toContain('.env.example');
+    expect(result.filesWritten).toContain('.gitignore');
+
+    const compose = await fs.readFile(
+      path.join(targetPath, 'docker-compose.yml'),
+      'utf-8',
+    );
+    expect(compose).toContain('ghcr.io/steveworley/praxis-framework/dashboard:main');
+
+    const env = await fs.readFile(path.join(targetPath, '.env.example'), 'utf-8');
+    expect(env).toContain('ANTHROPIC_API_KEY=');
+
+    const gitignore = await fs.readFile(path.join(targetPath, '.gitignore'), 'utf-8');
+    expect(gitignore.split('\n')).toContain('.env');
+  });
+
   it('rejects when the config file is missing', async () => {
     const configPath = path.join(tmp, 'does-not-exist.json');
     const targetPath = path.join(tmp, 'out');
