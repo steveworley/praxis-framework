@@ -41,3 +41,8 @@ coverage/
 # compiled JS into the source tree. Real build output goes to cli/dist/
 # which is already covered by the dist/ rule above.
 cli/src/**/*.js
+
+# Seed package's template copy — populated at build time by
+# packages/seed/scripts/copy-template.mjs so the tarball ships with the
+# template tree. Source of truth is the repo-root template/.
+packages/seed/template/

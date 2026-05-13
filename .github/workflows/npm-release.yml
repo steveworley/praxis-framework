@@ -1,0 +1,39 @@
+name: npm release
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build @praxis/seed
+        run: npm run build --workspace=@praxis/seed
+
+      - name: Build @praxis/cli
+        run: npm run build --workspace=@praxis/cli
+
+      - name: Publish @praxis/seed
+        run: npm publish --access public --workspace=@praxis/seed
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish @praxis/cli
+        run: npm publish --access public --workspace=@praxis/cli
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
