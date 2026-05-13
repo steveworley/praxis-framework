@@ -418,6 +418,55 @@ export const ARCHIVE_MEMORY_TOOL: Anthropic.Tool = {
   },
 };
 
+export const CONSOLIDATE_MEMORY_TOOL: Anthropic.Tool = {
+  name: 'consolidate_memory',
+  description:
+    'Fold two or more overlapping memory entries into a single canonical ' +
+    'entry. Use this when you notice multiple entries about the same person, ' +
+    'account, or topic that should live as one. The new entry lands at ' +
+    '`memory/<derived-slug>.md` (top level — consolidation may span ' +
+    'categories, so the canonical home is flat). Each source is moved under ' +
+    '`memory/archived/<original-subpath>` with an appended `## Consolidated` ' +
+    'block back-referencing the new slug. Refuses when fewer than 2 sources ' +
+    'are supplied, when any source slug is missing or already archived, or ' +
+    'when the derived new-slug collides with an existing entry (live or ' +
+    'archived).',
+  input_schema: {
+    type: 'object',
+    properties: {
+      source_slugs: {
+        type: 'array',
+        items: { type: 'string' },
+        description:
+          'Two or more slugs of existing memory entries to fold together. ' +
+          'Each slug is the filename stem under `memory/`. Already-archived ' +
+          'entries are not eligible.',
+      },
+      new_title: {
+        type: 'string',
+        description:
+          'Title for the canonical entry. Used as the H1 in the new file and ' +
+          'slugified for the filename (capped at 80 chars).',
+      },
+      new_body: {
+        type: 'string',
+        description:
+          'Markdown body for the canonical entry. Be the operator\'s future ' +
+          'reference — pull the load-bearing detail from each source so the ' +
+          'archived originals are recoverable but not needed for current work.',
+      },
+      reason: {
+        type: 'string',
+        description:
+          'Optional one-line rationale (e.g. "three observations about the ' +
+          'same procurement contact"). Written into each source\'s ' +
+          '`## Consolidated` back-reference block and into the commit body.',
+      },
+    },
+    required: ['source_slugs', 'new_title', 'new_body'],
+  },
+};
+
 export const UPDATE_OUTPUT_STATUS_TOOL: Anthropic.Tool = {
   name: 'update_output_status',
   description:
@@ -472,6 +521,7 @@ export const UPDATE_OUTPUT_STATUS_TOOL: Anthropic.Tool = {
 export const CHAT_TOOLS: readonly Anthropic.Tool[] = [
   WRITE_MEMORY_TOOL,
   ARCHIVE_MEMORY_TOOL,
+  CONSOLIDATE_MEMORY_TOOL,
   CREATE_ESCALATION_TOOL,
   PROPOSE_VERB_TOOL,
   APPEND_ENTRY_TOOL,

@@ -9,6 +9,7 @@ import { executeAdjustParam } from './adjust-param.js';
 import { executeAppendEntry } from './append-entry.js';
 import { executeArchiveMemory } from './archive-memory.js';
 import { isWriteAllowed } from './autonomy-gate.js';
+import { executeConsolidateMemory } from './consolidate-memory.js';
 import { executeEnrichEntry } from './enrich-entry.js';
 import {
   executeUpdateOutputStatus,
@@ -352,6 +353,7 @@ export async function executeLogDecision(
 export type ToolName =
   | 'write_memory'
   | 'archive_memory'
+  | 'consolidate_memory'
   | 'create_escalation'
   | 'propose_verb'
   | 'append_entry'
@@ -364,6 +366,7 @@ export type ToolName =
 const KNOWN_TOOLS: ReadonlySet<string> = new Set([
   'write_memory',
   'archive_memory',
+  'consolidate_memory',
   'create_escalation',
   'propose_verb',
   'append_entry',
@@ -393,6 +396,8 @@ export async function executeTool(
         return await executeWriteMemory(roleHome, input);
       case 'archive_memory':
         return await executeArchiveMemory(roleHome, input);
+      case 'consolidate_memory':
+        return await executeConsolidateMemory(roleHome, input);
       case 'create_escalation':
         return await executeCreateEscalation(roleHome, input);
       case 'propose_verb':
