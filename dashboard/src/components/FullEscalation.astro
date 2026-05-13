@@ -14,7 +14,21 @@ const { escalation: e } = Astro.props;
 
 const isProposed = e.kind === 'proposed_skill';
 const isResolved = e.status === 'resolved' || e.status === 'declined' || e.status === 'accepted';
-const bodyHtml = renderMarkdown(e.body);
+
+// Role-written escalation bodies frequently lead with `# <title>` as an H1.
+// We render the title as an <h3> above the prose, so the H1 duplicates it.
+// Strip a leading H1 from the body when it matches the title (case-insensitive,
+// whitespace-tolerant) before rendering markdown.
+function stripDuplicateTitleH1(body: string, title: string): string {
+  const titleNorm = title.trim().toLowerCase();
+  if (!titleNorm) return body;
+  const match = /^\s*#\s+(.+?)\s*$/m.exec(body);
+  if (match && match[1].trim().toLowerCase() === titleNorm) {
+    return body.replace(match[0], '').replace(/^\s*\n/, '');
+  }
+  return body;
+}
+const bodyHtml = renderMarkdown(stripDuplicateTitleH1(e.body, e.title));
 
 const metaBits: string[] = [];
 if (e.created) metaBits.push(e.created);
