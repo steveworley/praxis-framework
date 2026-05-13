@@ -27,9 +27,24 @@ const md: MarkdownIt = new MarkdownIt({
   typographer: false, // no smart quotes / dashes; we render code-heavy content
 });
 
+/**
+ * Strip framework-internal HTML-comment fences before rendering. The chat
+ * surface persists tool-call metadata inside `<!-- praxis:tool_calls ... -->`
+ * blocks on assistant turns; the chat API parses these separately to build
+ * the `turn.toolCalls` payload. But any OTHER caller reading the same file
+ * (notebook, escalation references, output cross-links) would otherwise see
+ * the fence rendered as escaped text because `html: false` makes markdown-it
+ * escape comments rather than drop them. Strip them centrally here.
+ */
+const PRAXIS_FENCE_RE = /<!--\s*praxis:[\s\S]*?-->\s*/g;
+
+export function stripPraxisFences(text: string): string {
+  return text.replace(PRAXIS_FENCE_RE, '');
+}
+
 export function renderMarkdown(text: string): string {
   if (!text) return '';
-  return md.render(text);
+  return md.render(stripPraxisFences(text));
 }
 
 /** Escape a raw string for safe interpolation into HTML attribute / text
