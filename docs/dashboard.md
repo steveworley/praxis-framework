@@ -69,8 +69,8 @@ All endpoints return JSON. Read endpoints exist for parity / external consumers,
 | POST | `/api/triage/verbs/proposed/{slug}/accept` | Optional `{body_override}`; moves to `verbs/<slug>.md`, best-effort appends to CLAUDE.md verbs table |
 | POST | `/api/triage/verbs/proposed/{slug}/decline` | Required `{reason}`; flips to `declined`, keeps file in place |
 | POST | `/api/triage/verbs/proposed/{slug}/edit` | Required `{body}`; replaces draft body, frontmatter preserved |
-| POST | `/api/triage/draft` | Body `{escalation_id, target, directive}`; calls the model with the current file + directive, returns `{target_path, current_content, proposed_content, diff_unified, rationale}`. No disk write; the operator reviews the proposal before applying. |
-| POST | `/api/triage/apply` | Body `{escalation_id, target_path, proposed_content}`; atomically writes the file and creates an operator-attributed commit with a `Co-Authored-By: Praxis Role` trailer. Returns `{ok, commit_sha, commit_short_sha, commit_warning?}`. |
+| POST | `/api/triage/propose` | Body `{escalation_id, hint?}`; the model reads the role's files and proposes 1..N file changes via the `propose_file_change` tool. Returns `{escalation_id, proposals: FileProposal[], summary, truncated?}` where each `FileProposal` carries `{path, current_content, proposed_content, diff_unified, rationale, kind}`. No disk write; the operator reviews before applying. |
+| POST | `/api/triage/apply` | Body `{escalation_id, proposals: [{path, proposed_content}, ...]}`; atomically writes every file (best-effort revert on partial failure) and creates ONE operator-attributed commit covering the whole set with a `Co-Authored-By: Praxis Role` trailer. Returns `{ok, commit_sha, commit_short_sha, files_changed, commit_warning?}`. |
 | GET | `/api/output?type=&status=&entity_type=&entity_id=&limit=` | List output entries, filterable by type / status / entity. Returns `OutputSummary[]` sorted by `updated` desc. |
 | GET | `/api/output/{type}/{...slug}` | Load one entry. For records, `{...slug}` is `<entity_type>/<entity_id>/<slug>`. Returns `{meta, body, body_html, frontmatter}`. |
 | POST | `/api/output/{type}/{...slug}` | Update status. Body `{status}` where status is one of the closed lifecycle enum. Operator-attributed commit via audit. |
@@ -143,14 +143,17 @@ Every mutation is atomic (write-to-tmp + rename), every id/slug is regex-validat
 
 ### Co-authoring constitutional changes (`/triage/draft/<id>`)
 
-Improvement escalations that land on constitutional surfaces (persona, CLAUDE.md, a live verb, a `lib/*` file) often deserve to become an actual text change, not just an "accepted, will action later" note. The triage card for each `improvement` escalation includes a **Draft constitutional change →** link that opens `/triage/draft/<escalation_id>`.
+Improvement escalations that land on constitutional surfaces (persona, CLAUDE.md, a live verb, a `lib/*` file) often deserve to become an actual text change, not just an "accepted, will action later" note. The triage card for each `improvement` escalation includes a **Have <persona> draft a proposal →** link that opens `/triage/draft/<escalation_id>`.
 
-The page is a two-pane layout:
+The page is single-pane and proposal-review-shaped (not picker-shaped). The operator never picks a target file or writes a directive — the model decides which file(s) to change, based on the escalation alone:
 
-- **Left — context.** The escalation rendered as prose (the same `.prose` typography used elsewhere), plus a target-file picker (radio buttons for persona / CLAUDE.md; a dropdown for live verbs; a basename input with `<datalist>` autocomplete for `lib/*` files) and a directive textarea ("What specifically should change?").
-- **Right — proposal.** Empty until the operator clicks **Draft proposal**. Once the model returns, the unified diff is rendered with per-line backgrounds (additions green, removals red, hunk headers info-purple). A tab switch swaps the diff for an editable textarea pre-filled with the model's proposed content — inline refinements before applying. **Apply** writes the file and commits.
+- **Escalation context** at top — the body rendered as prose, kind + urgency badges, date.
+- **Draft button** — when the page first loads. Clicking it sends the escalation id to `/api/triage/propose`; the model reads the role's files (persona, CLAUDE.md, every live verb, non-constitutional libs), then calls `propose_file_change` 1..N times to propose a coherent multi-file change set, ending with a one-paragraph summary.
+- **Proposal cards** — one per proposed file, each showing the path + kind badge (persona / CLAUDE.md / verb / lib), the model's one-sentence rationale, and a tabbed view (Diff / Edit inline). A small `×` button drops a file from the apply set. The diff renders with per-line backgrounds (additions green, removals red, hunk headers info-purple).
+- **Re-draft hint** — an optional "anything else to tell <persona>?" textarea. Used when the operator clicks **Re-draft** for a fresh proposal with extra guidance.
+- **Action row** — **Apply all (N files)** (primary), **Re-draft**, **Discard**.
 
-The flow bypasses the chat tools' autonomy gate by design: the operator is the actor, the model is just a drafting assistant. Every apply commits as the operator with the trailer `Co-Authored-By: Praxis Role <role@praxis.local>`, so `git log --grep='Co-Authored-By: Praxis Role'` recovers every co-authored edit. Discard / re-draft / edit-before-apply are all in-page operations; nothing is persisted server-side until **Apply** lands.
+The flow bypasses the chat tools' autonomy gate by design: the operator is the actor, the model is just a drafting assistant. Apply commits the whole set as ONE operator-attributed commit with the trailer `Co-Authored-By: Praxis Role <role@praxis.local>`, so `git log --grep='Co-Authored-By: Praxis Role'` recovers every co-authored edit. Drop / Re-draft / Edit inline / Discard are all in-page operations; nothing is persisted server-side until **Apply all** lands.
 
 The applied escalation isn't auto-resolved — the operator can comment on it (or close it) from `/triage` separately. The audit trail is the commit + the escalation; we don't need a second state mutation.
 
@@ -192,7 +195,7 @@ Every dashboard-mediated mutation — chat-side tool calls and operator-side tri
 | `POST /api/output/.../{slug}` (dashboard) | operator (from `git config`) | `operator(output): status <slug>: <prev> → <next>` |
 | accept / decline / comment escalation (triage) | operator (from `git config`) | `operator(triage): <action> escalation <id>` |
 | accept / decline / edit proposed verb (triage) | operator (from `git config`) | `operator(triage): <action> proposed verb <slug>` |
-| co-author apply (triage/draft) | operator (from `git config`) | `operator(<persona\|claude-md\|verb\|lib>): co-author <summary> (#<escalation_id>)` with a `Co-Authored-By: Praxis Role` trailer in the body |
+| co-author apply (triage/draft) | operator (from `git config`) | `operator(<persona\|claude-md\|verb\|lib\|coauthor>): apply proposal for <summary> (#<escalation_id>)` with a `Co-Authored-By: Praxis Role` trailer in the body. Single-kind proposal sets use the kind as the scope; mixed-kind sets fall back to `coauthor`. |
 
 The role's repo doesn't need to be a git repo on first launch — the audit module auto-initialises one and lays a `chore: praxis init audit baseline` commit before any mutation lands. If the operator hasn't set a git identity, operator-side commits fall back to `Operator <operator@praxis.local>` and the triage UI surfaces a soft banner inviting them to set `user.name`/`user.email`.
 

@@ -160,28 +160,32 @@ Whatever surfaces are open, three things hold:
 
 1. The role files an `improvement` escalation (e.g. *"my voice is too formal for engineering contacts; can we add a more concise mode?"*).
 2. The operator accepts the escalation on `/triage`.
-3. The operator clicks **Draft constitutional change →** on the same card, which opens `/triage/draft/<escalation_id>`.
-4. The operator picks a target — `persona.md`, `CLAUDE.md`, a live verb by slug, or a `lib/<filename>` — and writes a directive ("Add a concise mode for engineering contacts; keep the existing voice traits intact").
-5. The model returns a complete new file. The dashboard renders the unified diff. The operator can edit the proposed content inline, re-draft against a refined directive, or discard the proposal.
-6. Clicking **Apply** writes the file atomically and commits as the operator with a `Co-Authored-By: Praxis Role` trailer.
+3. The operator clicks **Have <persona> draft a proposal →** on the same card, which opens `/triage/draft/<escalation_id>`.
+4. The model reads the role's files (persona, CLAUDE.md, every live verb, non-constitutional libs) and decides which one(s) to change. It calls a `propose_file_change` tool 1..N times, returning each proposed file with a one-sentence rationale and a unified diff. A tone change might propose just `persona.md`; a deeper voice shift might propose `persona.md` + a verb together.
+5. The dashboard renders the proposals as a list of cards (one per file). For each, the operator can review the diff, switch to an inline editor to tweak the bytes, or drop the file from the apply set. An optional "anything else to tell <persona>?" textarea drives re-drafts.
+6. Clicking **Apply all** writes every remaining file atomically and commits the whole set as ONE operator-attributed commit with a `Co-Authored-By: Praxis Role` trailer.
 
 The model is a drafting assistant; the operator is the actor. The chat tools' autonomy gate is *not* bypassed — chat tools still can't touch the constitution. Co-authoring is a separate surface, accessed only through `/triage/draft/<id>`, and gated by:
 
-- **An escalation must exist.** Every draft and every apply is anchored to a `loadEscalation(id)` call. Co-authoring without an escalation isn't reachable.
-- **Targets are a closed enum.** `persona`, `claude-md`, `verb` (slug-validated), `lib` (basename-validated, allowlisted extensions). Path traversal is refused at both the resolver and the apply boundary.
-- **Frontmatter preservation.** If the original file has a `---` frontmatter block and the model drops it, the apply is refused with a clear error. The operator re-drafts.
+- **An escalation must exist.** Every propose call and every apply is anchored to a `loadEscalation(id)` call. Co-authoring without an escalation isn't reachable.
+- **Allowed targets are a closed set.** `persona.md`, `CLAUDE.md`, `verbs/<slug>.md` (live verbs only — not `verbs/proposed/`), `lib/<filename>` (non-constitutional libs only — `customers.yaml`, `compliance.yaml`, `autonomy.yaml`, `tools.yaml` are refused at the tool boundary). Path traversal is refused at both the propose and apply paths.
+- **Frontmatter preservation.** If the original file has a `---` frontmatter block and the model drops it, the proposal is refused (and the model can retry) — and the same check runs again at apply time as belt-and-braces.
 
 ### Commit shape
 
-Co-authored applies use the operator's git identity as author + committer (same fallback chain as triage actions), with a conventional-commit subject scoped to the target surface:
+Co-authored applies use the operator's git identity as author + committer (same fallback chain as triage actions), with a conventional-commit subject scoped to the target surface. Single-kind proposals (all files in the same category) use that category as the scope; mixed-kind proposals use `coauthor`:
 
 ```
-operator(persona): co-author Voice too formal for engineering contacts (#2026-05-08-tone)
+operator(persona): apply proposal for Voice too formal for engineering contacts (#2026-05-08-tone)
 
-Applied co-authored change to persona.md.
+Applied co-authored multi-file change for escalation 2026-05-08-tone.
 
 Escalation: 2026-05-08-tone (improvement)
 Title: Voice too formal for engineering contacts
+
+Files changed:
+  - persona.md
+  - verbs/escalate.md
 
 Co-Authored-By: Praxis Role <role@praxis.local>
 ```
@@ -193,8 +197,8 @@ Co-Authored-By: Praxis Role <role@praxis.local>
 The role doesn't earn the ability to edit its constitution. The operator does it *for* the role, with the model's drafting help. Three reads of the same boundary:
 
 - The role's autonomous toolset (`write_memory`, `create_escalation`, `propose_verb`, `append_entry`, `enrich_entry`, `adjust_param`) is unchanged. The constitution is still gated.
-- The operator's existing options (open an editor, commit directly) are unchanged. The wizard-style flow is an additional path, not a replacement.
-- The model's role in co-authoring is bounded by the prompt: produce the new file body, no tool use, no multi-turn conversation. It can't reach outside the file it was asked to draft.
+- The operator's existing options (open an editor, commit directly) are unchanged. The proposal-review flow is an additional path, not a replacement.
+- The model's role in co-authoring is bounded by the tool: it returns proposed file content for paths on the allowlist via `propose_file_change`, and an iteration cap (8) keeps any single proposal from runaway. It can't reach outside the propose-and-summarise loop, can't commit, and can't touch constitutional lib files.
 
 If the surface is the wrong abstraction for a given role's needs, the operator skips it and edits by hand. Co-authoring is a convenience, not a contract.
 

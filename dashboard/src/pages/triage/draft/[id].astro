@@ -12,23 +12,22 @@ import {
   TriageNotFoundError,
   type EscalationDetail,
 } from '@/lib/triage';
-import { listLibFiles, loadVerbs } from '@/lib/verbs-loader';
 
 /**
- * /triage/draft/[id] — operator co-authoring surface.
+ * /triage/draft/[id] — operator's proposal-review surface for co-authoring
+ * constitutional changes.
  *
- * Anchored to a single escalation (path param `id`). Two panes:
+ * The model is the drafter: it reads the role's files, picks which one(s) to
+ * change, and proposes a multi-file diff set. The operator's job here is to
+ * review each proposed file's diff (optionally editing inline or dropping it
+ * from the apply set), then click Apply to land everything as one
+ * operator-attributed commit with a `Co-Authored-By: Praxis Role` trailer.
  *
- *   - Left: the escalation as context, plus the target-file picker and the
- *     operator's directive textarea.
- *   - Right: the model's proposal — unified diff by default, swappable to an
- *     editable textarea pre-filled with `proposed_content`.
+ * State machine: idle → drafting → drafted → applying → applied. From
+ * `drafted` the operator can also Re-draft (sending an optional hint back to
+ * the model) or Discard back to `idle`.
  *
- * Both panes are server-rendered to first paint; Alpine handles the
- * drafting / re-drafting / applying interactions client-side via the
- * /api/triage/draft and /api/triage/apply endpoints.
- *
- * The page bypasses the chat-side autonomy gate by design: the operator is
+ * The page bypasses the chat-side autonomy gate by design — the operator is
  * the actor here, the model is just a drafting assistant. Every apply commits
  * as the operator with `Co-Authored-By: Praxis Role` so the audit story is
  * still legible.
@@ -61,17 +60,6 @@ const persona: Persona | null = personaRes ?? null;
 const personaName = personaNameFrom(persona);
 const updatedAt = nowIso();
 
-const [verbsRes, libFilesRes] = await Promise.allSettled([
-  loadVerbs(roleHome),
-  listLibFiles(roleHome),
-]);
-const liveVerbSlugs: string[] =
-  verbsRes.status === 'fulfilled'
-    ? verbsRes.value.live.map((v) => v.file.replace(/\.md$/i, '')).filter((s) => !s.includes('/'))
-    : [];
-const libFiles: string[] =
-  libFilesRes.status === 'fulfilled' ? libFilesRes.value.map((p) => p.replace(/^lib\//, '')) : [];
-
 const escalationBodyHtml = escalation
   ? renderMarkdown(stripDuplicateTitleH1(escalation.body, escalation.title))
   : '';
@@ -88,12 +76,11 @@ function stripDuplicateTitleH1(body: string, title: string): string {
 
 const bootstrap = {
   escalationId: escalation?.id ?? idParam,
-  liveVerbSlugs,
-  libFiles,
+  personaName,
 };
 ---
 
-<BaseLayout title={escalation ? `Draft change · ${escalation.title}` : 'Draft change · Praxis'}>
+<BaseLayout title={escalation ? `Draft proposal · ${escalation.title}` : 'Draft proposal · Praxis'}>
   <main class="container">
     <RouteHeader
       current="triage"
@@ -104,7 +91,7 @@ const bootstrap = {
     <Breadcrumb
       crumbs={[
         { label: 'triage', href: '/triage' },
-        { label: 'draft change' },
+        { label: 'draft proposal' },
         { label: escalation?.id ?? idParam },
       ]}
     />
@@ -116,11 +103,11 @@ const bootstrap = {
     {escalation && (
       <div
         class="draft-shell"
-        x-data="praxisCoauthor()"
+        x-data="praxisProposalReview()"
         x-init="init()"
       >
         <p class="page-lede large">
-          The role asked for this; you've accepted. Direct the model to draft the specific edit, review the diff, then apply it as a co-authored commit.
+          <span x-text="`The role asked for this; you've accepted. ${personaShort} drafts the specific file changes, you review the diffs, then apply.`"></span>
         </p>
 
         <template x-if="bannerError">
@@ -133,198 +120,172 @@ const bootstrap = {
           <Banner variant="success"><span x-text="bannerSuccess"></span></Banner>
         </template>
 
-        <div class="panes">
-          <section class="pane pane-left">
-            <h2 class="pane-title">Context</h2>
-
-            <article class="esc-card">
-              <div class="esc-meta">
-                <span class="kind-label" x-text="kindLabel">{escalation.kind.toUpperCase()}</span>
-                <span class="esc-created">{escalation.created ?? ''}</span>
-                {escalation.urgency === 'high' && <span class="urg-high">high urgency</span>}
-              </div>
-              <h3 class="esc-title">{escalation.title}</h3>
-              <div class="prose esc-body" set:html={escalationBodyHtml}></div>
-            </article>
-
-            <fieldset class="picker">
-              <legend>Target file</legend>
-              <label class="radio-row">
-                <input type="radio" name="target_kind" value="persona" x-model="targetKind" />
-                <span><code>persona.md</code> — voice, identity, capabilities, hard inhibitions</span>
-              </label>
-              <label class="radio-row">
-                <input type="radio" name="target_kind" value="claude-md" x-model="targetKind" />
-                <span><code>CLAUDE.md</code> — operating manual</span>
-              </label>
-              <label class="radio-row">
-                <input type="radio" name="target_kind" value="verb" x-model="targetKind" />
-                <span>
-                  Verb (<code>verbs/&lt;slug&gt;.md</code>) —
-                  <select x-model="verbSlug" :disabled="targetKind !== 'verb'">
-                    <option value="">(pick a verb)</option>
-                    <template x-for="slug in liveVerbSlugs" :key="slug">
-                      <option :value="slug" x-text="slug"></option>
-                    </template>
-                  </select>
-                </span>
-              </label>
-              <label class="radio-row">
-                <input type="radio" name="target_kind" value="lib" x-model="targetKind" />
-                <span>
-                  Lib file (<code>lib/&lt;filename&gt;</code>) —
-                  <input
-                    type="text"
-                    x-model="libFilename"
-                    :disabled="targetKind !== 'lib'"
-                    placeholder="team.yaml"
-                    list="lib-files-suggest"
-                    class="lib-input"
-                  />
-                  <datalist id="lib-files-suggest">
-                    <template x-for="f in libFiles" :key="f">
-                      <option :value="f"></option>
-                    </template>
-                  </datalist>
-                </span>
-              </label>
-            </fieldset>
-
-            <label class="directive-block">
-              <span class="block-label">Directive</span>
-              <span class="block-help">
-                What specifically should change? Keep it concrete — the model will rewrite the
-                whole file to match.
-              </span>
-              <textarea
-                x-model="directive"
-                rows="6"
-                placeholder="Add a more concise mode for engineering contacts; keep the existing voice traits intact."
-              ></textarea>
-            </label>
-
-            <div class="action-row">
-              <button
-                type="button"
-                class="action-btn primary"
-                :disabled="!canDraft || state === 'drafting'"
-                @click="draft()"
-              >
-                <span x-show="state !== 'drafting'" x-text="state === 'drafted' ? 'Re-draft' : 'Draft proposal'"></span>
-                <span x-show="state === 'drafting'">Drafting...</span>
-              </button>
-              <template x-if="state === 'drafted'">
-                <button type="button" class="action-btn ghost" @click="discard()">Discard</button>
-              </template>
+        <section class="esc-section">
+          <h2 class="section-title">Escalation</h2>
+          <article class="esc-card">
+            <div class="esc-meta">
+              <span class="kind-label">{(escalation.kind ?? '').toUpperCase()}</span>
+              <span class="esc-created">{escalation.created ?? ''}</span>
+              {escalation.urgency === 'high' && <span class="urg-high">high urgency</span>}
             </div>
-          </section>
+            <h3 class="esc-title">{escalation.title}</h3>
+            <div class="prose esc-body" set:html={escalationBodyHtml}></div>
+          </article>
+        </section>
 
-          <section class="pane pane-right">
-            <h2 class="pane-title">
-              Proposal
-              <template x-if="state === 'drafted'">
-                <span class="target-path">→ <code x-text="proposal.target_path"></code></span>
+        <section class="proposal-section">
+          <h2 class="section-title">
+            Proposal
+            <template x-if="state === 'drafted' && proposals.length > 0">
+              <span class="section-counter" x-text="`${proposals.length} ${proposals.length === 1 ? 'file' : 'files'}`"></span>
+            </template>
+          </h2>
+
+          <template x-if="state === 'idle'">
+            <div class="empty-pane">
+              <p>
+                <span x-text="`Click below to have ${personaShort} draft a proposal. ${personaShort} will read the role's files and decide which one(s) to change.`"></span>
+              </p>
+              <button type="button" class="action-btn primary" @click="draft()">
+                <span x-text="`Have ${personaShort} draft a proposal`"></span>
+              </button>
+            </div>
+          </template>
+
+          <template x-if="state === 'drafting'">
+            <div class="empty-pane">
+              <p>
+                <span x-text="`Drafting via ${personaShort}. This usually takes 10–30 seconds…`"></span>
+              </p>
+              <div class="spinner-row">
+                <span class="spinner"></span>
+              </div>
+            </div>
+          </template>
+
+          <template x-if="state === 'drafted' || state === 'applying'">
+            <div class="proposal-pane">
+              <template x-if="summary">
+                <div class="proposal-summary" x-text="summary"></div>
               </template>
-            </h2>
 
-            <template x-if="state === 'idle'">
-              <div class="empty-pane">
-                Pick a target and write a directive, then click <em>Draft proposal</em>.
-                The model will return a complete new file; you'll see the diff here.
-              </div>
-            </template>
-
-            <template x-if="state === 'drafting'">
-              <div class="empty-pane">Drafting via the model. This usually takes a few seconds...</div>
-            </template>
-
-            <template x-if="state === 'drafted'">
-              <div class="proposal-block">
-                <div class="proposal-tabs">
-                  <button
-                    type="button"
-                    class="tab-btn"
-                    :class="{ active: viewMode === 'diff' }"
-                    @click="viewMode = 'diff'"
-                  >
-                    Unified diff
-                  </button>
-                  <button
-                    type="button"
-                    class="tab-btn"
-                    :class="{ active: viewMode === 'edit' }"
-                    @click="viewMode = 'edit'"
-                  >
-                    Edit before applying
-                  </button>
+              <template x-if="proposals.length === 0">
+                <div class="empty-pane">
+                  All proposed files were dropped. Re-draft to start over.
                 </div>
+              </template>
 
-                <template x-if="viewMode === 'diff'">
-                  <div class="diff-view" x-html="renderDiff(proposal.diff_unified)"></div>
-                </template>
+              <template x-for="(p, idx) in proposals" :key="p.path">
+                <article class="proposal-card">
+                  <header class="proposal-head">
+                    <div class="proposal-id">
+                      <span class="kind-badge" :class="`kind-${p.kind}`" x-text="kindLabel(p.kind)"></span>
+                      <code class="file-path" x-text="p.path"></code>
+                    </div>
+                    <button
+                      type="button"
+                      class="drop-btn"
+                      title="Drop this file from the proposal"
+                      @click="dropProposal(idx)"
+                    >&times;</button>
+                  </header>
 
-                <template x-if="viewMode === 'edit'">
+                  <p class="rationale" x-text="p.rationale"></p>
+
+                  <div class="proposal-tabs">
+                    <button
+                      type="button"
+                      class="tab-btn"
+                      :class="{ active: (viewMode[p.path] || 'diff') === 'diff' }"
+                      @click="setViewMode(p.path, 'diff')"
+                    >Diff</button>
+                    <button
+                      type="button"
+                      class="tab-btn"
+                      :class="{ active: viewMode[p.path] === 'edit' }"
+                      @click="setViewMode(p.path, 'edit')"
+                    >Edit inline</button>
+                  </div>
+
+                  <template x-if="(viewMode[p.path] || 'diff') === 'diff'">
+                    <div class="diff-view" x-html="renderDiff(p.diff_unified)"></div>
+                  </template>
+
+                  <template x-if="viewMode[p.path] === 'edit'">
+                    <textarea
+                      class="edit-textarea"
+                      rows="20"
+                      x-model="editedContent[p.path]"
+                      spellcheck="false"
+                    ></textarea>
+                  </template>
+                </article>
+              </template>
+
+              <div class="hint-block" x-show="proposals.length > 0 || state === 'drafted'">
+                <label class="hint-label">
+                  <span class="hint-title">
+                    <span x-text="`Anything else to tell ${personaShort} for a re-draft?`"></span>
+                  </span>
+                  <span class="hint-help">Optional. Used only if you click Re-draft.</span>
                   <textarea
-                    class="edit-textarea"
-                    rows="24"
-                    x-model="editedContent"
-                    spellcheck="false"
+                    x-model="hint"
+                    rows="3"
+                    placeholder="Keep the existing greeting line; tighten the tone calibration."
                   ></textarea>
-                </template>
-
-                <div class="apply-row">
-                  <button
-                    type="button"
-                    class="action-btn primary"
-                    :disabled="state !== 'drafted' || applying"
-                    @click="apply()"
-                  >
-                    <span x-show="!applying">Apply (commits as you, co-authored by the role)</span>
-                    <span x-show="applying">Applying...</span>
-                  </button>
-                </div>
+                </label>
               </div>
-            </template>
 
-            <template x-if="state === 'applied'">
-              <div class="applied-block">
-                <p>
-                  Applied as commit <code x-text="applied.commit_short_sha"></code>. Redirecting to triage...
-                </p>
+              <div class="apply-row">
+                <button
+                  type="button"
+                  class="action-btn primary"
+                  :disabled="proposals.length === 0 || applying"
+                  @click="apply()"
+                >
+                  <span x-show="!applying" x-text="`Apply all (${proposals.length} ${proposals.length === 1 ? 'file' : 'files'})`"></span>
+                  <span x-show="applying">Applying…</span>
+                </button>
+                <button
+                  type="button"
+                  class="action-btn"
+                  :disabled="applying"
+                  @click="draft()"
+                >Re-draft</button>
+                <button
+                  type="button"
+                  class="action-btn ghost"
+                  :disabled="applying"
+                  @click="discard()"
+                >Discard</button>
               </div>
-            </template>
-          </section>
-        </div>
+            </div>
+          </template>
+
+          <template x-if="state === 'applied'">
+            <div class="applied-block">
+              <p>
+                Applied as commit <code x-text="applied.commit_short_sha || '(no sha)'"></code>
+                · <span x-text="`${applied.files_changed?.length || 0} file${(applied.files_changed?.length || 0) === 1 ? '' : 's'} changed`"></span>.
+                Redirecting to triage…
+              </p>
+            </div>
+          </template>
+        </section>
       </div>
     )}
   </main>
 
   <style>
-    /* /triage/draft/[id] — two-pane co-authoring surface. Inherits the
-       editorial aesthetic of /triage: monospace meta, plain prose body,
-       quiet action buttons. The diff view uses per-line backgrounds with
-       no flashy chrome — the goal is to read the change, not the renderer. */
+    /* /triage/draft/[id] — single-pane proposal-review surface. Escalation
+       context at top, a list of proposal cards (one per file the model
+       wants to change), an optional re-draft hint, and an apply/re-draft/
+       discard action row. Diff colours match /chat / /triage tinted
+       backgrounds (no flashy chrome — the goal is to read the change). */
     .draft-shell {
       margin-top: 1rem;
     }
-    .panes {
-      display: grid;
-      grid-template-columns: minmax(320px, 1fr) minmax(420px, 1.2fr);
-      gap: 1.5rem;
-      align-items: start;
-    }
-    @media (max-width: 900px) {
-      .panes {
-        grid-template-columns: 1fr;
-      }
-    }
-    .pane {
-      border: 1px solid var(--rule);
-      background: var(--surface);
-      border-radius: 4px;
-      padding: 1.2rem 1.3rem;
-    }
-    .pane-title {
+    .section-title {
       font-size: 13px;
       font-weight: 600;
       letter-spacing: 0.06em;
@@ -335,23 +296,23 @@ const bootstrap = {
       align-items: baseline;
       gap: 0.5rem;
     }
-    .target-path {
+    .section-counter {
       font-family: ui-monospace, monospace;
-      font-size: 11.5px;
+      font-size: 11px;
       font-weight: 400;
       letter-spacing: 0;
       text-transform: none;
       color: var(--ink-muted);
     }
-    .target-path code {
-      font-size: 11px;
+    .esc-section,
+    .proposal-section {
+      margin-bottom: 2rem;
     }
 
     .esc-card {
-      padding: 0.9rem 1rem;
+      padding: 1rem 1.1rem;
       background: var(--surface-mute);
       border-radius: 3px;
-      margin-bottom: 1.2rem;
     }
     .esc-meta {
       display: flex;
@@ -385,149 +346,130 @@ const bootstrap = {
       margin-bottom: 0.5rem;
     }
     .esc-body {
-      max-height: 220px;
-      overflow-y: auto;
       font-size: 13px;
-    }
-
-    .picker {
-      border: 1px solid var(--rule);
-      border-radius: 3px;
-      padding: 0.7rem 0.9rem 0.9rem;
-      margin-bottom: 1rem;
-    }
-    .picker legend {
-      padding: 0 0.4rem;
-      font-size: 12px;
-      color: var(--ink-muted);
-    }
-    .radio-row {
-      display: flex;
-      gap: 0.55rem;
-      align-items: baseline;
-      padding: 0.3rem 0;
-      font-size: 13px;
-      color: var(--ink-soft);
-      flex-wrap: wrap;
-    }
-    .radio-row input[type='radio'] {
-      flex-shrink: 0;
-      margin-top: 0.15rem;
-    }
-    .radio-row select,
-    .radio-row input.lib-input {
-      font-family: inherit;
-      font-size: 12.5px;
-      padding: 0.2rem 0.4rem;
-      border: 1px solid var(--rule);
-      border-radius: 3px;
-      background: var(--surface);
-      color: var(--ink);
-      margin-left: 0.4rem;
-    }
-    .radio-row select:disabled,
-    .radio-row input.lib-input:disabled {
-      opacity: 0.45;
-    }
-
-    .directive-block {
-      display: block;
-      margin-bottom: 1rem;
-    }
-    .block-label {
-      display: block;
-      font-size: 12px;
-      color: var(--ink-muted);
-      margin-bottom: 0.2rem;
-      font-weight: 500;
-    }
-    .block-help {
-      display: block;
-      font-size: 11.5px;
-      color: var(--ink-faint);
-      margin-bottom: 0.45rem;
-    }
-    .directive-block textarea {
-      width: 100%;
-      font-family: inherit;
-      font-size: 13.5px;
-      line-height: 1.5;
-      padding: 0.55rem 0.7rem;
-      border: 1px solid var(--rule);
-      border-radius: 3px;
-      background: var(--surface);
-      color: var(--ink);
-      resize: vertical;
-    }
-    .directive-block textarea:focus {
-      outline: none;
-      border-color: var(--rule-strong);
-    }
-
-    .action-row,
-    .apply-row {
-      display: flex;
-      gap: 0.55rem;
-      flex-wrap: wrap;
-      align-items: baseline;
-      margin-top: 0.4rem;
-    }
-    .apply-row {
-      margin-top: 1rem;
-    }
-    .action-btn {
-      background: var(--surface);
-      border: 1px solid var(--rule);
-      border-radius: 3px;
-      padding: 0.4rem 0.95rem;
-      font-family: inherit;
-      font-size: 12.5px;
-      color: var(--ink-soft);
-      cursor: pointer;
-    }
-    .action-btn:hover:not(:disabled) {
-      border-color: var(--rule-strong);
-      color: var(--ink);
-    }
-    .action-btn:disabled {
-      opacity: 0.45;
-      cursor: not-allowed;
-    }
-    .action-btn.primary {
-      border-color: var(--ink-soft);
-      color: var(--ink);
-      font-weight: 500;
-    }
-    .action-btn.primary:hover:not(:disabled) {
-      background: var(--ink);
-      color: var(--surface);
-    }
-    .action-btn.ghost {
-      border-color: transparent;
-      color: var(--ink-muted);
-    }
-    .action-btn.ghost:hover {
-      color: var(--ink);
     }
 
     .empty-pane {
       padding: 1.5rem 0;
+      font-size: 13.5px;
+      color: var(--ink-muted);
+    }
+    .empty-pane p {
+      margin-bottom: 0.8rem;
+    }
+
+    .spinner-row {
+      margin-top: 0.5rem;
+    }
+    .spinner {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid var(--rule);
+      border-top-color: var(--ink-muted);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .proposal-summary {
+      padding: 0.7rem 0.9rem;
+      background: var(--surface-mute);
+      border-left: 3px solid var(--info);
+      border-radius: 2px;
       font-size: 13px;
+      color: var(--ink-soft);
+      margin-bottom: 1.2rem;
+      font-style: italic;
+    }
+
+    .proposal-card {
+      border: 1px solid var(--rule);
+      border-radius: 4px;
+      background: var(--surface);
+      padding: 1rem 1.1rem 1.1rem;
+      margin-bottom: 1rem;
+    }
+    .proposal-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 0.6rem;
+      margin-bottom: 0.4rem;
+    }
+    .proposal-id {
+      display: flex;
+      gap: 0.55rem;
+      align-items: baseline;
+      flex-wrap: wrap;
+    }
+    .kind-badge {
+      font-family: ui-monospace, monospace;
+      font-size: 10.5px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 1px 5px;
+      border-radius: 2px;
+      background: var(--surface-mute);
+      color: var(--ink-muted);
+    }
+    .kind-badge.kind-persona {
+      background: #e6e2f4;
+      color: var(--info);
+    }
+    .kind-badge.kind-claude-md {
+      background: #e0ebf3;
+      color: #1a5680;
+    }
+    .kind-badge.kind-verb {
+      background: #e6f4ea;
+      color: #0e5a25;
+    }
+    .kind-badge.kind-lib {
+      background: #fbeed4;
+      color: var(--warn);
+    }
+    .file-path {
+      font-family: ui-monospace, monospace;
+      font-size: 12px;
+      background: none;
+      padding: 0;
+      color: var(--ink);
+    }
+    .drop-btn {
+      background: none;
+      border: none;
+      color: var(--ink-faint);
+      font-size: 18px;
+      line-height: 1;
+      padding: 0 0.3rem;
+      cursor: pointer;
+    }
+    .drop-btn:hover {
+      color: var(--danger);
+    }
+    .rationale {
+      font-size: 12.5px;
       color: var(--ink-muted);
       font-style: italic;
+      margin-bottom: 0.7rem;
     }
 
     .proposal-tabs {
       display: flex;
       gap: 0.4rem;
       border-bottom: 1px solid var(--rule);
-      margin-bottom: 0.7rem;
+      margin-bottom: 0.6rem;
     }
     .tab-btn {
       background: none;
       border: none;
       border-bottom: 2px solid transparent;
-      padding: 0.4rem 0.6rem;
+      padding: 0.35rem 0.55rem;
       font-family: inherit;
       font-size: 12.5px;
       color: var(--ink-muted);
@@ -548,7 +490,7 @@ const bootstrap = {
       background: var(--surface-mute);
       border-radius: 3px;
       padding: 0.55rem 0;
-      max-height: 540px;
+      max-height: 480px;
       overflow: auto;
     }
     :global(.diff-view .diff-line) {
@@ -591,6 +533,85 @@ const bootstrap = {
       border-color: var(--rule-strong);
     }
 
+    .hint-block {
+      margin-top: 1.2rem;
+      margin-bottom: 0.8rem;
+    }
+    .hint-label {
+      display: block;
+    }
+    .hint-title {
+      display: block;
+      font-size: 12px;
+      color: var(--ink-muted);
+      margin-bottom: 0.2rem;
+      font-weight: 500;
+    }
+    .hint-help {
+      display: block;
+      font-size: 11.5px;
+      color: var(--ink-faint);
+      margin-bottom: 0.45rem;
+    }
+    .hint-block textarea {
+      width: 100%;
+      font-family: inherit;
+      font-size: 13.5px;
+      line-height: 1.5;
+      padding: 0.55rem 0.7rem;
+      border: 1px solid var(--rule);
+      border-radius: 3px;
+      background: var(--surface);
+      color: var(--ink);
+      resize: vertical;
+    }
+    .hint-block textarea:focus {
+      outline: none;
+      border-color: var(--rule-strong);
+    }
+
+    .apply-row {
+      display: flex;
+      gap: 0.55rem;
+      flex-wrap: wrap;
+      align-items: baseline;
+      margin-top: 0.8rem;
+    }
+    .action-btn {
+      background: var(--surface);
+      border: 1px solid var(--rule);
+      border-radius: 3px;
+      padding: 0.4rem 0.95rem;
+      font-family: inherit;
+      font-size: 12.5px;
+      color: var(--ink-soft);
+      cursor: pointer;
+    }
+    .action-btn:hover:not(:disabled) {
+      border-color: var(--rule-strong);
+      color: var(--ink);
+    }
+    .action-btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+    .action-btn.primary {
+      border-color: var(--ink-soft);
+      color: var(--ink);
+      font-weight: 500;
+    }
+    .action-btn.primary:hover:not(:disabled) {
+      background: var(--ink);
+      color: var(--surface);
+    }
+    .action-btn.ghost {
+      border-color: transparent;
+      color: var(--ink-muted);
+    }
+    .action-btn.ghost:hover {
+      color: var(--ink);
+    }
+
     .applied-block {
       padding: 1rem 0;
       font-size: 13.5px;
@@ -605,34 +626,36 @@ const bootstrap = {
     is:inline
     define:vars={{ bootstrap }}
   >
-    window.__praxisCoauthorBootstrap = bootstrap;
+    window.__praxisProposalBootstrap = bootstrap;
   </script>
   <script is:inline src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
   <script is:inline>
-    function praxisCoauthor() {
-      const boot = window.__praxisCoauthorBootstrap || { escalationId: '', liveVerbSlugs: [], libFiles: [] };
+    function praxisProposalReview() {
+      const boot = window.__praxisProposalBootstrap || { escalationId: '', personaName: null };
+      const persona = boot.personaName || { full: 'the role', short: 'the role' };
       return {
         escalationId: boot.escalationId,
-        liveVerbSlugs: boot.liveVerbSlugs || [],
-        libFiles: boot.libFiles || [],
+        personaShort: persona.short,
+        personaFull: persona.full,
 
-        // Target picker state.
-        targetKind: 'persona',
-        verbSlug: '',
-        libFilename: '',
-
-        // Operator directive.
-        directive: '',
-
-        // Lifecycle: idle | drafting | drafted | applied.
+        // Lifecycle: idle | drafting | drafted | applying | applied.
         state: 'idle',
-        viewMode: 'diff',
-        proposal: null,
-        editedContent: '',
+        // Hint text for the re-draft path.
+        hint: '',
+        // proposals: array of { path, current_content, proposed_content,
+        //   diff_unified, rationale, kind }.
+        proposals: [],
+        // viewMode[path]: 'diff' | 'edit' — defaults to 'diff' when absent.
+        viewMode: {},
+        // editedContent[path]: operator's inline edit (stays empty until
+        // the operator switches to the 'edit' tab and types).
+        editedContent: {},
+        // Summary text from the model (one paragraph).
+        summary: '',
+        // Set after a successful apply.
         applied: null,
         applying: false,
 
-        // Banners.
         bannerError: '',
         bannerWarning: '',
         bannerSuccess: '',
@@ -641,74 +664,94 @@ const bootstrap = {
           this.state = 'idle';
         },
 
-        get canDraft() {
-          if (this.directive.trim().length === 0) return false;
-          if (this.targetKind === 'verb' && this.verbSlug.trim().length === 0) return false;
-          if (this.targetKind === 'lib' && this.libFilename.trim().length === 0) return false;
-          return true;
+        kindLabel(kind) {
+          if (kind === 'persona') return 'persona';
+          if (kind === 'claude-md') return 'CLAUDE.md';
+          if (kind === 'verb') return 'verb';
+          if (kind === 'lib') return 'lib';
+          return kind || '';
         },
 
-        currentTarget() {
-          if (this.targetKind === 'persona') return { kind: 'persona' };
-          if (this.targetKind === 'claude-md') return { kind: 'claude-md' };
-          if (this.targetKind === 'verb') return { kind: 'verb', slug: this.verbSlug.trim() };
-          if (this.targetKind === 'lib') return { kind: 'lib', filename: this.libFilename.trim() };
-          return null;
+        setViewMode(path, mode) {
+          this.viewMode[path] = mode;
+          // When switching to 'edit' the first time, seed the textarea with
+          // the current proposed_content so the operator can edit from it.
+          if (mode === 'edit' && this.editedContent[path] === undefined) {
+            const p = this.proposals.find((q) => q.path === path);
+            if (p) this.editedContent[path] = p.proposed_content;
+          }
         },
 
         async draft() {
-          if (!this.canDraft) return;
           this.bannerError = '';
           this.bannerWarning = '';
           this.bannerSuccess = '';
           this.state = 'drafting';
           try {
-            const res = await fetch('/api/triage/draft', {
+            const body = { escalation_id: this.escalationId };
+            if (this.hint && this.hint.trim().length > 0) {
+              body.hint = this.hint.trim();
+            }
+            const res = await fetch('/api/triage/propose', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                escalation_id: this.escalationId,
-                target: this.currentTarget(),
-                directive: this.directive,
-              }),
+              body: JSON.stringify(body),
             });
             if (!res.ok) {
               const err = await res.json().catch(() => ({}));
-              throw new Error(err.error || `Draft failed (${res.status})`);
+              throw new Error(err.error || `Propose failed (${res.status})`);
             }
-            const body = await res.json();
-            this.proposal = body;
-            this.editedContent = body.proposed_content || '';
-            this.viewMode = 'diff';
+            const body2 = await res.json();
+            this.proposals = body2.proposals || [];
+            this.summary = body2.summary || '';
+            this.viewMode = {};
+            this.editedContent = {};
+            if (body2.truncated) {
+              this.bannerWarning = `${this.personaShort} hit the iteration cap — the proposal may be incomplete.`;
+            }
             this.state = 'drafted';
           } catch (e) {
             this.bannerError = e instanceof Error ? e.message : String(e);
-            this.state = 'idle';
+            // Keep any previous proposals on screen — partial regression
+            // hurts less than wiping. Fall back to idle if there were none.
+            this.state = this.proposals.length > 0 ? 'drafted' : 'idle';
           }
         },
 
+        dropProposal(idx) {
+          this.proposals.splice(idx, 1);
+        },
+
         discard() {
-          this.proposal = null;
-          this.editedContent = '';
+          this.proposals = [];
+          this.summary = '';
+          this.viewMode = {};
+          this.editedContent = {};
+          this.hint = '';
           this.state = 'idle';
-          this.viewMode = 'diff';
         },
 
         async apply() {
-          if (!this.proposal || this.state !== 'drafted') return;
+          if (this.proposals.length === 0 || this.applying) return;
           this.bannerError = '';
           this.bannerWarning = '';
           this.applying = true;
-          const finalContent = this.viewMode === 'edit' ? this.editedContent : this.proposal.proposed_content;
+          this.state = 'applying';
           try {
+            const payload = {
+              escalation_id: this.escalationId,
+              proposals: this.proposals.map((p) => ({
+                path: p.path,
+                proposed_content:
+                  this.viewMode[p.path] === 'edit' && this.editedContent[p.path] !== undefined
+                    ? this.editedContent[p.path]
+                    : p.proposed_content,
+              })),
+            };
             const res = await fetch('/api/triage/apply', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                escalation_id: this.escalationId,
-                target_path: this.proposal.target_path,
-                proposed_content: finalContent,
-              }),
+              body: JSON.stringify(payload),
             });
             if (!res.ok) {
               const err = await res.json().catch(() => ({}));
@@ -717,33 +760,28 @@ const bootstrap = {
             const body = await res.json();
             this.applied = body;
             if (body.commit_warning) this.bannerWarning = body.commit_warning;
-            this.bannerSuccess = `Applied as commit ${body.commit_short_sha || '(no sha)'}.`;
+            this.bannerSuccess = `Applied as commit ${body.commit_short_sha || '(no sha)'} · ${(body.files_changed || []).length} file${(body.files_changed || []).length === 1 ? '' : 's'} changed.`;
             this.state = 'applied';
-            // Give the operator a beat to see the success banner before bouncing.
+            // Give the operator a beat to see the success banner before
+            // bouncing back to the triage queue.
             setTimeout(() => {
               window.location.href = '/triage';
             }, 1500);
           } catch (e) {
             this.bannerError = e instanceof Error ? e.message : String(e);
+            this.state = 'drafted';
           } finally {
             this.applying = false;
           }
         },
 
-        get kindLabel() {
-          // Trivial getter so the Alpine template's x-text matches the
-          // rendered initial value without flashing during hydration.
-          return '';
-        },
-
         /**
-         * Render a unified-diff string as colored per-line spans. Line
-         * classes are picked from the leading character:
-         *   ' '   context     → no class
-         *   '+'   addition    → .added (but skip the `+++` file marker)
-         *   '-'   removal     → .removed (but skip the `---` file marker)
-         *   '@@'  hunk header → .hunk
-         *   else  meta/index  → .meta
+         * Render a unified-diff string as colored per-line spans. Inlined
+         * here so the Alpine template can call it via x-html without a
+         * round-trip; mirrors the logic of lib/ui/diff.ts (kept in sync by
+         * convention — this is a small enough surface that we accept the
+         * duplication rather than wire an ESM helper into a CDN-loaded
+         * Alpine context).
          */
         renderDiff(diffText) {
           if (!diffText) return '';

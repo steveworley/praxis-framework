@@ -137,7 +137,7 @@ const bootstrap = {
               <button type="button" class="action-btn" @click="openAction(e.id, 'comment')">Comment</button>
               <template x-if="e.kind === 'improvement'">
                 <a class="action-btn coauthor" :href="`/triage/draft/${encodeURIComponent(e.id)}`">
-                  Draft constitutional change →
+                  Have <span x-text="personaShort"></span> draft a proposal →
                 </a>
               </template>
             </div>
