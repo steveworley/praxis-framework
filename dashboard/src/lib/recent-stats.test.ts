@@ -97,6 +97,7 @@ describe('recentMemoryCount', () => {
       updated: '2026-05-04',
       body: '',
       frontmatter: {},
+      archived: false,
     },
     {
       category: 'notes',
@@ -107,6 +108,7 @@ describe('recentMemoryCount', () => {
       updated: '2026-04-15',
       body: '',
       frontmatter: {},
+      archived: false,
     },
   ];
 
