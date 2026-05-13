@@ -3,9 +3,11 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { simpleGit } from 'simple-git';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { loadCapabilities } from './capabilities-loader.ts';
+import * as autonomyGate from './chat/autonomy-gate.ts';
+import * as mcpCatalog from './chat/mcp-catalog.ts';
 
 let tempDir: string;
 
@@ -223,11 +225,158 @@ describe('loadCapabilities — reference data', () => {
   });
 });
 
-describe('loadCapabilities — mcp placeholder', () => {
-  it('returns the unconfigured placeholder shape', async () => {
+describe('loadCapabilities — mcps', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('returns configured:false when PRAXIS_MCPS is empty', async () => {
     const now = new Date('2026-05-13T10:00:00Z');
+    vi.spyOn(mcpCatalog, 'getMcpCatalog').mockResolvedValue({ servers: [], tools: [] });
+
     const report = await loadCapabilities(tempDir, now);
     expect(report.mcps.configured).toBe(false);
-    expect(report.mcps.message).toMatch(/MCP support in issue #25/);
+    if (!report.mcps.configured) {
+      expect(report.mcps.message).toMatch(/Add servers to docker-compose\.yml/);
+    }
+  });
+
+  it('builds per-server / per-method capability rows with usage aggregation', async () => {
+    const now = new Date('2026-05-13T10:00:00Z');
+    await writeJsonl(tempDir, 'logs/2026-05-13.jsonl', [
+      { timestamp: '2026-05-13T07:00:00Z', action: 'tool_call', tool: 'echo__echo' },
+      { timestamp: '2026-05-13T07:30:00Z', action: 'tool_call', tool: 'echo__echo' },
+      { timestamp: '2026-05-12T07:00:00Z', action: 'tool_call', tool: 'echo__add' },
+      // Out of the 30-day window — should NOT count toward call count but
+      // SHOULD remain as last-invoked.
+      { timestamp: '2026-04-01T07:00:00Z', action: 'tool_call', tool: 'echo__current_time' },
+    ]);
+
+    vi.spyOn(mcpCatalog, 'getMcpCatalog').mockResolvedValue({
+      servers: [
+        {
+          name: 'echo',
+          url: 'http://mcp-echo:8080',
+          status: 'connected',
+          toolCount: 3,
+          lastFetchedAt: '2026-05-13T09:55:00Z',
+        },
+      ],
+      tools: [
+        {
+          serverName: 'echo',
+          methodName: 'echo',
+          toolName: 'echo__echo',
+          description: 'Echo a message back.',
+          inputSchema: { type: 'object' },
+        },
+        {
+          serverName: 'echo',
+          methodName: 'add',
+          toolName: 'echo__add',
+          description: 'Add two numbers.',
+          inputSchema: { type: 'object' },
+        },
+        {
+          serverName: 'echo',
+          methodName: 'current_time',
+          toolName: 'echo__current_time',
+          description: 'Return the server clock.',
+          inputSchema: { type: 'object' },
+        },
+      ],
+    });
+    vi.spyOn(autonomyGate, 'isMcpAllowed').mockResolvedValue({ allowed: true });
+
+    const report = await loadCapabilities(tempDir, now);
+    expect(report.mcps.configured).toBe(true);
+    if (!report.mcps.configured) return;
+    expect(report.mcps.servers).toHaveLength(1);
+    const echo = report.mcps.servers[0]!;
+    expect(echo.name).toBe('echo');
+    expect(echo.status).toBe('connected');
+    expect(echo.allowed).toBe(true);
+    expect(echo.methodCount).toBe(3);
+    expect(echo.methods).toHaveLength(3);
+
+    const byMethod = new Map(echo.methods.map((m) => [m.methodName, m]));
+    expect(byMethod.get('echo')?.callCount30d).toBe(2);
+    expect(byMethod.get('echo')?.lastInvoked).toBe('2026-05-13T07:30:00Z');
+    expect(byMethod.get('echo')?.toolName).toBe('echo__echo');
+    expect(byMethod.get('add')?.callCount30d).toBe(1);
+    expect(byMethod.get('add')?.lastInvoked).toBe('2026-05-12T07:00:00Z');
+    expect(byMethod.get('current_time')?.callCount30d).toBe(0);
+    expect(byMethod.get('current_time')?.lastInvoked).toBe('2026-04-01T07:00:00Z');
+  });
+
+  it('surfaces unreachable servers with empty methods and an errorMessage', async () => {
+    const now = new Date('2026-05-13T10:00:00Z');
+    vi.spyOn(mcpCatalog, 'getMcpCatalog').mockResolvedValue({
+      servers: [
+        {
+          name: 'gmail',
+          url: 'http://mcp-gmail:8080',
+          status: 'unreachable',
+          toolCount: 0,
+          errorMessage: 'fetch failed',
+          lastFetchedAt: '2026-05-13T09:55:00Z',
+        },
+      ],
+      tools: [],
+    });
+    vi.spyOn(autonomyGate, 'isMcpAllowed').mockResolvedValue({ allowed: true });
+
+    const report = await loadCapabilities(tempDir, now);
+    expect(report.mcps.configured).toBe(true);
+    if (!report.mcps.configured) return;
+    const gmail = report.mcps.servers[0]!;
+    expect(gmail.status).toBe('unreachable');
+    expect(gmail.methods).toEqual([]);
+    expect(gmail.methodCount).toBe(0);
+    expect(gmail.errorMessage).toBe('fetch failed');
+  });
+
+  it('applies per-server allow/deny from autonomy.yaml', async () => {
+    const now = new Date('2026-05-13T10:00:00Z');
+    vi.spyOn(mcpCatalog, 'getMcpCatalog').mockResolvedValue({
+      servers: [
+        {
+          name: 'slack',
+          url: 'http://mcp-slack:8080',
+          status: 'connected',
+          toolCount: 0,
+        },
+        {
+          name: 'gmail',
+          url: 'http://mcp-gmail:8080',
+          status: 'connected',
+          toolCount: 0,
+        },
+      ],
+      tools: [],
+    });
+    vi.spyOn(autonomyGate, 'isMcpAllowed').mockImplementation(async (_roleHome, name) => {
+      if (name === 'slack') return { allowed: true };
+      return { allowed: false, reason: 'denied in autonomy.yaml' };
+    });
+
+    const report = await loadCapabilities(tempDir, now);
+    expect(report.mcps.configured).toBe(true);
+    if (!report.mcps.configured) return;
+    const byName = new Map(report.mcps.servers.map((s) => [s.name, s]));
+    expect(byName.get('slack')?.allowed).toBe(true);
+    expect(byName.get('gmail')?.allowed).toBe(false);
+  });
+
+  it('falls back to configured:false when the catalog fetch throws', async () => {
+    const now = new Date('2026-05-13T10:00:00Z');
+    vi.spyOn(mcpCatalog, 'getMcpCatalog').mockRejectedValue(new Error('boom'));
+
+    const report = await loadCapabilities(tempDir, now);
+    expect(report.mcps.configured).toBe(false);
+    if (!report.mcps.configured) {
+      expect(report.mcps.message).toMatch(/Failed to load MCP catalog/);
+      expect(report.mcps.message).toMatch(/boom/);
+    }
   });
 });
