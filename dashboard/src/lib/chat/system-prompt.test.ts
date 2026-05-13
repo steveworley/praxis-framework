@@ -223,7 +223,22 @@ describe('buildSystemPrompt', () => {
     await seedPersona();
     const prompt = await buildSystemPrompt(tempDir);
     expect(prompt).toContain('`enrich_entry`');
-    expect(prompt).toContain('eleven tools available');
+    expect(prompt).toContain('thirteen tools available');
+  });
+
+  it('lists run_verb and complete_verb in the operator-greeting tool block', async () => {
+    await seedPersona();
+    const prompt = await buildSystemPrompt(tempDir);
+    expect(prompt).toContain('`run_verb`');
+    expect(prompt).toContain('`complete_verb`');
+  });
+
+  it('includes the Running a verb guidance section', async () => {
+    await seedPersona();
+    const prompt = await buildSystemPrompt(tempDir);
+    expect(prompt).toContain('### Running a verb');
+    expect(prompt).toContain("call `run_verb(slug)`");
+    expect(prompt).toContain('`verb_started` activity event');
   });
 
   it('lists archive_memory in the operator-greeting tool block', async () => {

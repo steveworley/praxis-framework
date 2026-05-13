@@ -467,6 +467,80 @@ export const CONSOLIDATE_MEMORY_TOOL: Anthropic.Tool = {
   },
 };
 
+export const RUN_VERB_TOOL: Anthropic.Tool = {
+  name: 'run_verb',
+  description:
+    'Invoke one of your live verbs (playbooks under `verbs/`). Returns the ' +
+    "verb's prose as your next set of instructions, and logs a `verb_started` " +
+    'activity entry — making the verb invocation a named, audited delegation ' +
+    'rather than markdown the model silently reads inline. Prefer this over ' +
+    'reading the verb file yourself: the activity feed will reflect the verb ' +
+    'use and your operator gains the audit trail. Refuses if the slug is not a ' +
+    'live verb (proposed-but-unaccepted verbs are not eligible — the operator ' +
+    'must accept the proposal first via /triage). Pair with `complete_verb` ' +
+    'when the work the playbook describes is done.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      slug: {
+        type: 'string',
+        description:
+          'Slug of the live verb (filename stem of `verbs/<slug>.md`). ' +
+          'Lowercase letters, digits, hyphens; starts with a letter.',
+      },
+    },
+    required: ['slug'],
+  },
+};
+
+export const COMPLETE_VERB_TOOL: Anthropic.Tool = {
+  name: 'complete_verb',
+  description:
+    'Close the loop on a verb invocation. Logs a `verb_completed` activity ' +
+    'entry with an outcome — making the (run_verb → complete_verb) pair a ' +
+    'clean delegation record in the activity feed. Call this when the work ' +
+    'the playbook describes is done, whether the result was a clean success ' +
+    "or not — the outcome enum captures the shape so your operator's view " +
+    "isn't a binary did-it-finish flag. Doesn't require the verb file to " +
+    'still exist; operators rename or draft verbs, and the recorder captures ' +
+    'what the role tells it.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      slug: {
+        type: 'string',
+        description:
+          'Slug of the verb being completed (same shape as run_verb).',
+      },
+      outcome: {
+        type: 'string',
+        enum: ['success', 'partial', 'failed', 'skipped'],
+        description:
+          "How the work ended. 'success' = playbook finished cleanly; " +
+          "'partial' = some work completed but more remains or a step was " +
+          "deferred; 'failed' = blocked or refused; 'skipped' = decided not " +
+          'to run after starting (e.g. preconditions absent).',
+      },
+      notes: {
+        type: 'string',
+        description:
+          'Optional one-line-ish note for the activity entry. Useful when ' +
+          'outcome is `partial` or `failed` to capture what remained or why.',
+      },
+      produced: {
+        type: 'array',
+        items: { type: 'string' },
+        description:
+          'Optional list of artifact paths or identifiers the verb produced ' +
+          '(e.g. `output/draft/foo.md`, `escalations/2026-05-13-ab12-x.md`). ' +
+          'Recorded on the activity entry so the operator can follow the ' +
+          'invocation through to its outputs.',
+      },
+    },
+    required: ['slug', 'outcome'],
+  },
+};
+
 export const UPDATE_OUTPUT_STATUS_TOOL: Anthropic.Tool = {
   name: 'update_output_status',
   description:
@@ -512,11 +586,13 @@ export const UPDATE_OUTPUT_STATUS_TOOL: Anthropic.Tool = {
 
 /**
  * The full toolset, in the order the model sees them. Memory first — most
- * common action; logging last — least conversational. The lib-surgery tools
+ * common action; logging last — least conversational. The verb-invocation
+ * pair (`run_verb`, `complete_verb`) sits next to `propose_verb` because
+ * they share the verb-as-delegation framing. The lib-surgery tools
  * (`append_entry`, `enrich_entry`, `adjust_param`) sit together after the
- * high-frequency growth tools and before the output tools. The output tools
- * sit between the role-growth tools and the audit tools — they're work
- * product, not introspection.
+ * verb tools and before the output tools. The output tools sit between the
+ * role-growth tools and the audit tools — they're work product, not
+ * introspection.
  */
 export const CHAT_TOOLS: readonly Anthropic.Tool[] = [
   WRITE_MEMORY_TOOL,
@@ -524,6 +600,8 @@ export const CHAT_TOOLS: readonly Anthropic.Tool[] = [
   CONSOLIDATE_MEMORY_TOOL,
   CREATE_ESCALATION_TOOL,
   PROPOSE_VERB_TOOL,
+  RUN_VERB_TOOL,
+  COMPLETE_VERB_TOOL,
   APPEND_ENTRY_TOOL,
   ENRICH_ENTRY_TOOL,
   ADJUST_PARAM_TOOL,

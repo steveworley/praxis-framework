@@ -626,6 +626,40 @@ describe('auto-emit activity for tool calls', () => {
     expect(lines.some((l) => l['action'] === 'tool_call')).toBe(false);
   });
 
+  it('run_verb does NOT double-log (only its own verb_started entry)', async () => {
+    await initRepoWithBaseline();
+    await fs.mkdir(path.join(tempDir, 'verbs'), { recursive: true });
+    await fs.writeFile(
+      path.join(tempDir, 'verbs', 'account-read.md'),
+      '---\ndescription: weekly read\n---\n\n# Account Read\n\nbody\n',
+      'utf-8',
+    );
+    const r = await executeTool('run_verb', { slug: 'account-read' }, tempDir);
+    expect(r.ok).toBe(true);
+    const lines = await readTodayActivityLines();
+    // Exactly one entry, and it's `verb_started` (not a `tool_call` wrapper).
+    expect(lines).toHaveLength(1);
+    expect(lines[0]!['action']).toBe('verb_started');
+    expect(lines[0]!['verb']).toBe('account-read');
+    expect(lines.some((l) => l['action'] === 'tool_call')).toBe(false);
+  });
+
+  it('complete_verb does NOT double-log (only its own verb_completed entry)', async () => {
+    await initRepoWithBaseline();
+    const r = await executeTool(
+      'complete_verb',
+      { slug: 'account-read', outcome: 'success' },
+      tempDir,
+    );
+    expect(r.ok).toBe(true);
+    const lines = await readTodayActivityLines();
+    expect(lines).toHaveLength(1);
+    expect(lines[0]!['action']).toBe('verb_completed');
+    expect(lines[0]!['verb']).toBe('account-read');
+    expect(lines[0]!['outcome']).toBe('success');
+    expect(lines.some((l) => l['action'] === 'tool_call')).toBe(false);
+  });
+
   it('a failed tool does NOT emit activity', async () => {
     await initRepoWithBaseline();
     // Invalid category (must be lowercase) — dispatcher routes, executor
