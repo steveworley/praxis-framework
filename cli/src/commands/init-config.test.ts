@@ -8,7 +8,7 @@ import { InitConfigError, runInitConfig } from './init-config.js';
 
 /**
  * End-to-end tests for the non-interactive seed path. We exercise the real
- * `seedRole` from `@praxis/seed` against the live framework template, mirroring
+ * `seedRole` from `@praxis-framework/seed` against the live framework template, mirroring
  * the seed package's own test strategy — if anyone breaks the template, this
  * suite catches it too.
  */

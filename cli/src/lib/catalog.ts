@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-import { resolveTemplatePath } from '@praxis/seed';
+import { resolveTemplatePath } from '@praxis-framework/seed';
 import { z } from 'zod';
 
 /**

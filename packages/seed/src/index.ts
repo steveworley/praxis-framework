@@ -1,5 +1,5 @@
 /**
- * @praxis/seed — shared role-seeding logic.
+ * @praxis-framework/seed — shared role-seeding logic.
  *
  * The dashboard's setup wizard and the CLI's `praxis init` both call
  * `seedRole(input, targetPath, options?)` to materialise a populated

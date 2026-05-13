@@ -1,11 +1,11 @@
-# @praxis/cli
+# @praxis-framework/cli
 
 Operator CLI for the [praxis-framework](https://github.com/steveworley/praxis-framework). Scaffolds a populated agent role from interactive prompts (or a JSON config), ready to drop into a compose stack.
 
 ## Install
 
 ```bash
-npm install -g @praxis/cli
+npm install -g @praxis-framework/cli
 ```
 
 Requires Node.js 20 or newer.

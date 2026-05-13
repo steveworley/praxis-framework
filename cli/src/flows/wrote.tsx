@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import Spinner from 'ink-spinner';
 
-import { SeedError, seedRole, type SeedInput, type SeedResult } from '@praxis/seed';
+import { SeedError, seedRole, type SeedInput, type SeedResult } from '@praxis-framework/seed';
 
 import { accent, danger, muted, ok, warn } from '../ui/theme.js';
 

@@ -21,9 +21,9 @@ jobs:
         run: npm ci
 
       - name: Build seed package
-        # The CLI + dashboard import @praxis/seed via the workspace link,
+        # The CLI + dashboard import @praxis-framework/seed via the workspace link,
         # which resolves to the package's dist/ — so it must be built first.
-        run: npm run build --workspace=@praxis/seed
+        run: npm run build --workspace=@praxis-framework/seed
 
       - name: Typecheck (all workspaces)
         run: npm run check
@@ -35,4 +35,4 @@ jobs:
         run: npm run build --workspace=praxis-dashboard
 
       - name: Build CLI
-        run: npm run build --workspace=@praxis/cli
+        run: npm run build --workspace=@praxis-framework/cli

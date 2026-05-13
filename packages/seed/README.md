@@ -1,25 +1,25 @@
-# @praxis/seed
+# @praxis-framework/seed
 
-Role-scaffolding library that powers [`@praxis/cli`](https://www.npmjs.com/package/@praxis/cli)'s `init` command.
+Role-scaffolding library that powers [`@praxis-framework/cli`](https://www.npmjs.com/package/@praxis-framework/cli)'s `init` command.
 
 Given a validated role definition, `seedRole()` writes a populated [praxis-framework](https://github.com/steveworley/praxis-framework) role into a target directory: `persona.md`, `CLAUDE.md`, `verbs/`, `lib/`, `memory/`, `escalations/`, and `output/`.
 
 ## Who should use this
 
-Most operators should reach for [`@praxis/cli`](https://www.npmjs.com/package/@praxis/cli) instead — it wraps this library in an interactive wizard and handles input collection, validation feedback, and git integration. The CLI is the supported entry point.
+Most operators should reach for [`@praxis-framework/cli`](https://www.npmjs.com/package/@praxis-framework/cli) instead — it wraps this library in an interactive wizard and handles input collection, validation feedback, and git integration. The CLI is the supported entry point.
 
 This package is published separately so the framework's dashboard can also call `seedRole()` directly from its in-browser setup flow. If you're building tooling on top of praxis and need programmatic scaffolding, import from here. Otherwise use the CLI.
 
 ## Install
 
 ```bash
-npm install @praxis/seed
+npm install @praxis-framework/seed
 ```
 
 ## Usage
 
 ```ts
-import { seedRole, type SeedInput } from '@praxis/seed';
+import { seedRole, type SeedInput } from '@praxis-framework/seed';
 
 const input: SeedInput = {
   organisation: { name: 'Acme', size: 'small' },

@@ -1,5 +1,5 @@
 {
-  "name": "@praxis/seed",
+  "name": "@praxis-framework/seed",
   "version": "0.1.0",
   "private": false,
   "type": "module",
