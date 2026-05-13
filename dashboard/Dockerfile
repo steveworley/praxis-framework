@@ -39,6 +39,12 @@ RUN npm ci --no-audit --no-fund
 COPY packages/seed ./packages/seed
 COPY dashboard ./dashboard
 
+# The seed package's build step (`scripts/copy-template.mjs`) copies the
+# framework's root-level template/ into the seed package tree so it ships
+# with the npm tarball. Without this layer, the seed build fails inside the
+# container because template/ isn't in the build context.
+COPY template ./template
+
 # The seed package emits compiled output to packages/seed/dist — the dashboard
 # imports that, so it must be built first.
 RUN npm run build --workspace=@praxis-framework/seed
