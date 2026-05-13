@@ -6,7 +6,7 @@
 # serves the Astro Node-SSR standalone output.
 #
 # The build context is the framework repo root (not dashboard/) because the
-# dashboard pulls `@praxis/seed` in via the npm workspace link — resolving
+# dashboard pulls `@praxis-framework/seed` in via the npm workspace link — resolving
 # that requires the workspace root.
 #
 # Build:
@@ -26,7 +26,7 @@ FROM node:20-alpine AS builder
 WORKDIR /repo
 
 # Install workspace deps from the repo root so workspace protocol links
-# (`@praxis/seed`) resolve correctly. Copy lockfile + every workspace's
+# (`@praxis-framework/seed`) resolve correctly. Copy lockfile + every workspace's
 # package.json first so this layer caches when source changes but deps don't.
 COPY package.json package-lock.json ./
 COPY dashboard/package.json ./dashboard/
@@ -41,7 +41,7 @@ COPY dashboard ./dashboard
 
 # The seed package emits compiled output to packages/seed/dist — the dashboard
 # imports that, so it must be built first.
-RUN npm run build --workspace=@praxis/seed
+RUN npm run build --workspace=@praxis-framework/seed
 RUN npm run build --workspace=praxis-dashboard
 
 # Drop dev dependencies from the workspace tree so the runtime stage carries
