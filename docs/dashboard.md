@@ -3,7 +3,7 @@
 Astro + Node SSR. Five surfaces:
 
 - **`/setup`** — the wizard that converts the framework repo into a populated role. Writes two visible git commits.
-- **Read-only supervisor routes** (`/`, `/role`, `/escalations`, `/notebook`, `/activity`, `/health`) — watch a populated role.
+- **Read-only supervisor routes** (`/`, `/role`, `/escalations`, `/notebook`, `/activity`, `/capabilities`, `/health`) — watch a populated role.
 - **`/chat`** — conversational lens on the role, backed by the Anthropic SDK. The non-technical operator's runtime.
 - **`/triage`** — operator review surface for the role's raise-your-hand outputs (escalations + proposed verbs). Closes the operator-side of the learning loop.
 - **`/output`** — the typed work-product surface. Five primitives (document, draft, record, plan, reference) with per-type renderers and a closed-enum status lifecycle.
@@ -83,6 +83,7 @@ All endpoints return JSON. Read endpoints exist for parity / external consumers,
 | Memory | `memory/**/*.md` | Recency-sorted; filterable by category subdir |
 | Escalations | `escalations/*.md` | Sorted by status (open first) → urgency → date desc; filterable by status |
 | Activity | files matching `PRAXIS_LOG_GLOB` | Recent verb runs |
+| Capabilities | `tool-schemas.ts` + `verbs/*.md` + `lib/*` + activity log + git history | Four-section now-state snapshot of *what the role can do*: 13 native chat tools, MCP servers (placeholder until issue #25 lands), live verbs, and operator-opened reference data. Each capability carries 30-day usage and last-invoked, joined from the same activity feed `/activity` reads. |
 | Health | memory + escalations + logs + git history | Read-only aggregations over the same sources: weekly memory writes, escalation file/resolve/decline buckets, median time-to-triage, 30-day tool-call distribution, role-author commit count + revert ratio. No charts — small monospace tables and `▁▃▅▇` block-glyph sparklines. |
 
 The dashboard handles missing files gracefully — section-by-section error handling, one failed loader doesn't blank the page.
@@ -157,6 +158,17 @@ The page is single-pane and proposal-review-shaped (not picker-shaped). The oper
 The flow bypasses the chat tools' autonomy gate by design: the operator is the actor, the model is just a drafting assistant. Apply commits the whole set as ONE operator-attributed commit with the trailer `Co-Authored-By: Praxis Role <role@praxis.local>`, so `git log --grep='Co-Authored-By: Praxis Role'` recovers every co-authored edit. Drop / Re-draft / Edit inline / Discard are all in-page operations; nothing is persisted server-side until **Apply all** lands.
 
 The applied escalation isn't auto-resolved — the operator can comment on it (or close it) from `/triage` separately. The audit trail is the commit + the escalation; we don't need a second state mutation.
+
+## Capabilities
+
+`/capabilities` answers a question the other read-only routes don't: **what *can* the role do, and how often is each capability used?** The screen is a now-state snapshot that joins four scattered sources into one view, each row carrying 30-day usage and a last-invoked stamp:
+
+- **Chat tools** — the 13 native tools the chat surface exposes (memory writes, escalations, proposed verbs, output writes, verb invocation, decision logging, lib surgery). Usage is counted from the activity log: most tools auto-instrument as `tool_call`, while `log_decision` / `run_verb` / `complete_verb` emit their own action verbs. The lib-surgery tools (`append_entry`, `enrich_entry`, `adjust_param`) report `implicit-full` because their effective autonomy is per-file — read the per-file modes in the Reference data section.
+- **MCP servers** — placeholder until issue #25 lands MCP infrastructure. The section's data shape is wired so the follow-up issue can populate it without restructuring the loader.
+- **Verbs** — live verbs from `verbs/<slug>.md` joined to `verb_started` / `verb_completed` activity entries. Each row carries the 30-day invocation count, a compact outcome distribution badge (`Ns Np Nf Ns` for success/partial/failed/skipped), and the last-invoked age.
+- **Reference data** — `lib/*` files excluding the constitutional set (`customers.yaml`, `compliance.yaml`, `autonomy.yaml`, `tools.yaml`). Each row shows the autonomy mode declared in `lib/autonomy.yaml` (or `unopened` when the file isn't declared), a per-mode hint (`max N pending` for append-only, `editable fields per entry` for inline-enrichment, `params: <key> [min..max step N]` for bounded), and the most recent role-author git commit touching the file.
+
+A tool / verb with zero 30-day activity renders `never invoked (30d)` in italics rather than `0 calls` — the leverage-point reading is "is this still pulling its weight?", and a zero is the cue to either remove the capability or notice the role isn't reaching for it.
 
 ## Output
 

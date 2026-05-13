@@ -3,7 +3,7 @@
  * prop drives the active-tab underline; `escalationOpenCount` (when > 0)
  * surfaces the red badge next to the escalations tab; `triageCount`
  * (when > 0) does the same for the triage tab. */
-export type RouteName = 'home' | 'chat' | 'escalations' | 'triage' | 'notebook' | 'activity' | 'output' | 'role' | 'health';
+export type RouteName = 'home' | 'chat' | 'escalations' | 'triage' | 'notebook' | 'activity' | 'output' | 'role' | 'capabilities' | 'health';
 
 interface Props {
   current: RouteName;
@@ -24,6 +24,7 @@ const tabs: Array<{ key: RouteName; href: string; label: string }> = [
   { key: 'output', href: '/output', label: 'output' },
   { key: 'activity', href: '/activity', label: 'activity' },
   { key: 'role', href: '/role', label: 'role' },
+  { key: 'capabilities', href: '/capabilities', label: 'capabilities' },
   { key: 'health', href: '/health', label: 'health' },
 ];
 ---
