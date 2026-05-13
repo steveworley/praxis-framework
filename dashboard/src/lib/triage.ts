@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 import { commitChange, type CommitResult } from './audit.ts';
+import { localDateString, localIsoString } from './chat/time-helpers.ts';
 import { extractTitle, parseFrontmatter } from './frontmatter.ts';
 
 /**
@@ -229,30 +230,6 @@ const VERB_FIELD_ORDER = [
   'status',
   'decline_reason',
 ];
-
-// ---- Date helpers ------------------------------------------------------
-
-function localDateString(d: Date): string {
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-function localIsoString(d: Date): string {
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mi = String(d.getMinutes()).padStart(2, '0');
-  const ss = String(d.getSeconds()).padStart(2, '0');
-  const offsetMinutes = -d.getTimezoneOffset();
-  const sign = offsetMinutes >= 0 ? '+' : '-';
-  const absOffset = Math.abs(offsetMinutes);
-  const offHh = String(Math.floor(absOffset / 60)).padStart(2, '0');
-  const offMm = String(absOffset % 60).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}T${hh}:${mi}:${ss}${sign}${offHh}:${offMm}`;
-}
 
 // ---- Escalations: read --------------------------------------------------
 

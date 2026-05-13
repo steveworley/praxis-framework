@@ -481,3 +481,181 @@ describe('audit-log commits on tool calls', () => {
     expect(body).toContain('Confidence: high');
   });
 });
+
+describe('auto-emit activity for tool calls', () => {
+  /**
+   * The dispatcher (`executeTool`) appends an `action: 'tool_call'` JSONL
+   * line to `logs/<today>.jsonl` for every successful non-`log_decision`
+   * tool. These tests sample the behaviour across a memory write, an
+   * escalation create, and a verb propose — the dispatcher's emit step is
+   * shape-uniform so exhaustive coverage of all 11 executors isn't needed.
+   */
+  async function initRepoWithBaseline(): Promise<void> {
+    const git = simpleGit(tempDir);
+    await git.init();
+    await git.addConfig('user.name', 'Operator', false, 'local');
+    await git.addConfig('user.email', 'op@example.test', false, 'local');
+    await git.addConfig('commit.gpgsign', 'false', false, 'local');
+    await git.add('persona.md');
+    await git.raw([
+      '-c',
+      'user.name=Operator',
+      '-c',
+      'user.email=op@example.test',
+      'commit',
+      '--author=Operator <op@example.test>',
+      '--no-gpg-sign',
+      '-m',
+      'init',
+    ]);
+  }
+
+  async function readTodayActivityLines(): Promise<Record<string, unknown>[]> {
+    const today = todayLocalDate();
+    const file = path.join(tempDir, 'logs', `${today}.jsonl`);
+    let text: string;
+    try {
+      text = await fs.readFile(file, 'utf-8');
+    } catch {
+      return [];
+    }
+    return text
+      .trim()
+      .split('\n')
+      .filter((line) => line.length > 0)
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+  }
+
+  function todayLocalDate(): string {
+    const d = new Date();
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  it('write_memory through dispatcher emits a tool_call activity entry', async () => {
+    await initRepoWithBaseline();
+    const r = await executeTool(
+      'write_memory',
+      { category: 'people', title: 'Mary Chen', body: 'prefers async' },
+      tempDir,
+    );
+    expect(r.ok).toBe(true);
+    const lines = await readTodayActivityLines();
+    const last = lines[lines.length - 1];
+    expect(last).toBeDefined();
+    expect(last!['action']).toBe('tool_call');
+    expect(last!['tool']).toBe('write_memory');
+    expect(last!['agent']).toBe('chat');
+    expect(last!['path']).toBe('memory/people/mary-chen.md');
+  });
+
+  it('create_escalation through dispatcher emits a tool_call activity entry', async () => {
+    await initRepoWithBaseline();
+    const r = await executeTool(
+      'create_escalation',
+      { kind: 'help', summary: 'stuck on pricing', body: 'help me' },
+      tempDir,
+    );
+    expect(r.ok).toBe(true);
+    const lines = await readTodayActivityLines();
+    const last = lines[lines.length - 1];
+    expect(last).toBeDefined();
+    expect(last!['action']).toBe('tool_call');
+    expect(last!['tool']).toBe('create_escalation');
+    expect(typeof last!['path']).toBe('string');
+    expect((last!['path'] as string).startsWith('escalations/')).toBe(true);
+  });
+
+  it('propose_verb through dispatcher emits a tool_call activity entry', async () => {
+    await initRepoWithBaseline();
+    const r = await executeTool(
+      'propose_verb',
+      {
+        slug: 'follow-up-cadence',
+        description: 'Track follow-up cadence',
+        body: '# Follow-up cadence\n\nSteps...',
+      },
+      tempDir,
+    );
+    expect(r.ok).toBe(true);
+    const lines = await readTodayActivityLines();
+    const last = lines[lines.length - 1];
+    expect(last).toBeDefined();
+    expect(last!['action']).toBe('tool_call');
+    expect(last!['tool']).toBe('propose_verb');
+    expect(last!['slug']).toBe('follow-up-cadence');
+  });
+
+  it('includes artifact_commit (short sha) when the tool produced a commit', async () => {
+    await initRepoWithBaseline();
+    const r = await executeTool(
+      'write_memory',
+      { category: 'notes', title: 'a note', body: 'body' },
+      tempDir,
+    );
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const artifactShort = r.data['commit_short_sha'];
+    expect(typeof artifactShort).toBe('string');
+    const lines = await readTodayActivityLines();
+    const last = lines[lines.length - 1];
+    expect(last!['artifact_commit']).toBe(artifactShort);
+    expect(typeof last!['artifact_commit']).toBe('string');
+    expect((last!['artifact_commit'] as string)).toMatch(/^[0-9a-f]{7}$/);
+  });
+
+  it('log_decision does NOT double-log (only its own decision entry)', async () => {
+    await initRepoWithBaseline();
+    const r = await executeTool(
+      'log_decision',
+      {
+        decision_type: 'qualification_verdict',
+        chosen: 'qualified',
+        rationale: 'budget signal in transcript',
+      },
+      tempDir,
+    );
+    expect(r.ok).toBe(true);
+    const lines = await readTodayActivityLines();
+    // Exactly one entry, and it's the `decision` (not a `tool_call`).
+    expect(lines).toHaveLength(1);
+    expect(lines[0]!['action']).toBe('decision');
+    // None of the entries should be a tool_call wrapper for log_decision.
+    expect(lines.some((l) => l['action'] === 'tool_call')).toBe(false);
+  });
+
+  it('a failed tool does NOT emit activity', async () => {
+    await initRepoWithBaseline();
+    // Invalid category (must be lowercase) — dispatcher routes, executor
+    // refuses on shape mismatch.
+    const r = await executeTool(
+      'write_memory',
+      { category: 'People', title: 'x', body: 'y' },
+      tempDir,
+    );
+    expect(r.ok).toBe(false);
+    const lines = await readTodayActivityLines();
+    expect(lines).toHaveLength(0);
+  });
+
+  it('commits the activity entry as a separate role(activity) commit', async () => {
+    await initRepoWithBaseline();
+    await executeTool(
+      'write_memory',
+      { category: 'people', title: 'Mary Chen', body: 'prefers async' },
+      tempDir,
+    );
+    const git = simpleGit(tempDir);
+    const subjects = (
+      await git.raw(['log', '-n', '3', '--pretty=format:%s'])
+    )
+      .trim()
+      .split('\n');
+    // HEAD is the activity commit; previous is the memory artifact commit;
+    // previous-previous is the baseline.
+    expect(subjects[0]).toBe('role(activity): log tool_call write_memory');
+    expect(subjects[1]).toBe('role(memory): note mary-chen');
+  });
+});

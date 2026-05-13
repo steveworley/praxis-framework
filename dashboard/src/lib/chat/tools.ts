@@ -6,6 +6,7 @@ import { z } from 'zod';
 
 import { commitChange, type CommitResult } from '../audit.js';
 import { executeAdjustParam } from './adjust-param.js';
+import { emitToolActivity } from './activity-emitter.js';
 import { executeAppendEntry } from './append-entry.js';
 import { executeArchiveMemory } from './archive-memory.js';
 import { isWriteAllowed } from './autonomy-gate.js';
@@ -15,6 +16,7 @@ import {
   executeUpdateOutputStatus,
   executeWriteOutput,
 } from './output-tools.js';
+import { localDateString, localIsoString } from './time-helpers.js';
 
 /**
  * Tool executors for the chat surface. Each executor:
@@ -381,6 +383,13 @@ const KNOWN_TOOLS: ReadonlySet<string> = new Set([
  * Dispatch a tool call. Always returns a ToolResult — never throws. The
  * caller (the tool-use loop) translates ok/fail into the Anthropic
  * tool_result block shape.
+ *
+ * After a successful tool call (except `log_decision`, which self-logs), the
+ * dispatcher auto-emits an activity-log entry via `emitToolActivity` so the
+ * `/activity` page and `/health` panel see the full tool surface. An emit
+ * failure is downgraded to a `data.activity_warning` on the existing success
+ * envelope — the underlying artifact already landed, so we never demote a
+ * successful tool call to a failure on audit-log trouble.
  */
 export async function executeTool(
   name: string,
@@ -390,33 +399,61 @@ export async function executeTool(
   if (!KNOWN_TOOLS.has(name)) {
     return fail(`Unknown tool: ${name}`);
   }
+  let result: ToolResult;
   try {
-    switch (name as ToolName) {
-      case 'write_memory':
-        return await executeWriteMemory(roleHome, input);
-      case 'archive_memory':
-        return await executeArchiveMemory(roleHome, input);
-      case 'consolidate_memory':
-        return await executeConsolidateMemory(roleHome, input);
-      case 'create_escalation':
-        return await executeCreateEscalation(roleHome, input);
-      case 'propose_verb':
-        return await executeProposeVerb(roleHome, input);
-      case 'append_entry':
-        return await executeAppendEntry(roleHome, input);
-      case 'enrich_entry':
-        return await executeEnrichEntry(roleHome, input);
-      case 'adjust_param':
-        return await executeAdjustParam(roleHome, input);
-      case 'log_decision':
-        return await executeLogDecision(roleHome, input);
-      case 'write_output':
-        return await executeWriteOutput(roleHome, input);
-      case 'update_output_status':
-        return await executeUpdateOutputStatus(roleHome, input);
-    }
+    result = await dispatchTool(name as ToolName, input, roleHome);
   } catch (e: unknown) {
     return fail(`Tool ${name} threw: ${errorMessage(e)}`);
+  }
+
+  // Auto-emit activity for every successful non-log_decision tool. We exempt
+  // `log_decision` because it already writes its own `action: 'decision'`
+  // entry to the same JSONL file — auto-emitting would double-log.
+  if (result.ok && name !== 'log_decision') {
+    const payload: Record<string, unknown> = { ...result.data };
+    const shortSha = result.data['commit_short_sha'];
+    if (typeof shortSha === 'string') {
+      payload['artifact_commit'] = shortSha;
+    }
+    try {
+      await emitToolActivity(roleHome, name, payload);
+    } catch (e: unknown) {
+      const mutable = result.data as Record<string, unknown>;
+      mutable['activity_warning'] =
+        `activity log emit failed: ${errorMessage(e)}`;
+    }
+  }
+  return result;
+}
+
+async function dispatchTool(
+  name: ToolName,
+  input: unknown,
+  roleHome: string,
+): Promise<ToolResult> {
+  switch (name) {
+    case 'write_memory':
+      return executeWriteMemory(roleHome, input);
+    case 'archive_memory':
+      return executeArchiveMemory(roleHome, input);
+    case 'consolidate_memory':
+      return executeConsolidateMemory(roleHome, input);
+    case 'create_escalation':
+      return executeCreateEscalation(roleHome, input);
+    case 'propose_verb':
+      return executeProposeVerb(roleHome, input);
+    case 'append_entry':
+      return executeAppendEntry(roleHome, input);
+    case 'enrich_entry':
+      return executeEnrichEntry(roleHome, input);
+    case 'adjust_param':
+      return executeAdjustParam(roleHome, input);
+    case 'log_decision':
+      return executeLogDecision(roleHome, input);
+    case 'write_output':
+      return executeWriteOutput(roleHome, input);
+    case 'update_output_status':
+      return executeUpdateOutputStatus(roleHome, input);
   }
 }
 
@@ -519,31 +556,6 @@ async function ensureDirAndWrite(absPath: string, content: string): Promise<void
   await fs.writeFile(absPath, content, 'utf-8');
 }
 
-function localDateString(d: Date): string {
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-}
-
 function todayLocalDate(): string {
   return localDateString(new Date());
-}
-
-/**
- * Local ISO 8601 with timezone offset (matches `praxis log` JSONL shape).
- */
-function localIsoString(d: Date): string {
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mi = String(d.getMinutes()).padStart(2, '0');
-  const ss = String(d.getSeconds()).padStart(2, '0');
-  const offsetMinutes = -d.getTimezoneOffset();
-  const sign = offsetMinutes >= 0 ? '+' : '-';
-  const absOffset = Math.abs(offsetMinutes);
-  const offHh = String(Math.floor(absOffset / 60)).padStart(2, '0');
-  const offMm = String(absOffset % 60).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}T${hh}:${mi}:${ss}${sign}${offHh}:${offMm}`;
 }

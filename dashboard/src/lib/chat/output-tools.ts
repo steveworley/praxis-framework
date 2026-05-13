@@ -18,6 +18,7 @@ import {
   type OutputType,
 } from '../output/types.js';
 import { isWriteAllowed } from './autonomy-gate.js';
+import { localIsoString } from './time-helpers.js';
 
 /**
  * Chat tools for the output taxonomy. Two of them, mirroring write_memory's
@@ -363,26 +364,6 @@ async function atomicWrite(abs: string, content: string): Promise<void> {
     await fs.rm(tmp, { force: true }).catch(() => {});
     throw error;
   }
-}
-
-/**
- * Local ISO 8601 with timezone offset — matches the format used in
- * `praxis log` JSONL and the chat/tools.ts decision logger so timestamps
- * read consistently across surfaces.
- */
-function localIsoString(d: Date): string {
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mi = String(d.getMinutes()).padStart(2, '0');
-  const ss = String(d.getSeconds()).padStart(2, '0');
-  const offsetMinutes = -d.getTimezoneOffset();
-  const sign = offsetMinutes >= 0 ? '+' : '-';
-  const absOffset = Math.abs(offsetMinutes);
-  const offHh = String(Math.floor(absOffset / 60)).padStart(2, '0');
-  const offMm = String(absOffset % 60).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}T${hh}:${mi}:${ss}${sign}${offHh}:${offMm}`;
 }
 
 // Re-export schemas for tests / callers that want their own gate.
