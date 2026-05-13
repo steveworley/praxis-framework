@@ -6,7 +6,15 @@ import { renderMarkdown } from '@/lib/markdown.js';
 
 const CONVERSATIONS_REL = path.posix.join('memory', 'conversations');
 
-export type TurnRole = 'user' | 'assistant';
+/**
+ * Turn roles on disk:
+ *   - `user` / `assistant`: the two real speakers in the transcript
+ *   - `summary`: a synthetic compressed-history block written by the
+ *     operator-driven `summariseThread()` flow. Persists as
+ *     `## Summary · turns N-M · <iso>` and is treated as a user-role message
+ *     when feeding history back to Anthropic.
+ */
+export type TurnRole = 'user' | 'assistant' | 'summary';
 
 /**
  * A tool call the model made during the assistant turn, persisted alongside
@@ -33,6 +41,8 @@ export interface Turn {
   content: string;
   /** Tool calls made during this turn (assistant turns only). */
   toolCalls?: PersistedToolCall[];
+  /** Set on summary turns: the inclusive 1-based range of original turns folded in. */
+  summaryRange?: { from: number; to: number };
 }
 
 export interface ThreadMeta {
@@ -256,6 +266,8 @@ function truncatePreview(text: string, max = 140): string {
 // ---- file format ---------------------------------------------------------
 
 const TURN_HEADING_RE = /^##\s+(User|Assistant)\s+·\s+(\S+)\s*$/;
+const SUMMARY_HEADING_RE = /^##\s+Summary\s+·\s+turns\s+(\d+)-(\d+)\s+·\s+(\S+)\s*$/;
+const ANY_TURN_HEADING_RE = /^##\s+(User|Assistant|Summary)\b/;
 
 interface ParsedThread {
   thread: ThreadMeta;
@@ -306,18 +318,35 @@ function parseTurns(body: string): Turn[] {
   let i = 0;
   while (i < lines.length) {
     const line = lines[i] ?? '';
-    const match = TURN_HEADING_RE.exec(line);
-    if (!match) {
+    const turnMatch = TURN_HEADING_RE.exec(line);
+    const summaryMatch = SUMMARY_HEADING_RE.exec(line);
+    if (!turnMatch && !summaryMatch) {
       i += 1;
       continue;
     }
-    const role: TurnRole = (match[1] ?? '').toLowerCase() === 'user' ? 'user' : 'assistant';
-    const timestamp = (match[2] ?? '').trim();
 
-    // Consume content until the next turn heading or EOF.
+    let role: TurnRole;
+    let timestamp: string;
+    let summaryRange: { from: number; to: number } | null = null;
+    if (summaryMatch) {
+      role = 'summary';
+      timestamp = (summaryMatch[3] ?? '').trim();
+      summaryRange = {
+        from: Number.parseInt(summaryMatch[1] ?? '0', 10),
+        to: Number.parseInt(summaryMatch[2] ?? '0', 10),
+      };
+    } else {
+      // turnMatch is guaranteed non-null by the early-continue above.
+      role = (turnMatch![1] ?? '').toLowerCase() === 'user' ? 'user' : 'assistant';
+      timestamp = (turnMatch![2] ?? '').trim();
+    }
+
+    // Consume content until the next turn heading or EOF. "Turn heading"
+    // here includes the synthetic `## Summary` block so two summary blocks
+    // (re-summarise path) parse as two separate turns rather than merging.
     i += 1;
     const contentLines: string[] = [];
-    while (i < lines.length && !TURN_HEADING_RE.test(lines[i] ?? '')) {
+    while (i < lines.length && !ANY_TURN_HEADING_RE.test(lines[i] ?? '')) {
       contentLines.push(lines[i] ?? '');
       i += 1;
     }
@@ -332,6 +361,7 @@ function parseTurns(body: string): Turn[] {
     const { toolCalls, remaining } = extractToolCallFence(contentLines);
     const turn: Turn = { role, timestamp, content: remaining.join('\n') };
     if (toolCalls && toolCalls.length > 0) turn.toolCalls = toolCalls;
+    if (summaryRange) turn.summaryRange = summaryRange;
     turns.push(turn);
   }
 
@@ -423,8 +453,15 @@ function escapeFrontmatterValue(value: string): string {
 }
 
 function renderTurn(turn: Turn): string {
-  const heading = turn.role === 'user' ? 'User' : 'Assistant';
-  const parts = [`## ${heading} · ${turn.timestamp}`, ''];
+  let heading: string;
+  if (turn.role === 'summary') {
+    const range = turn.summaryRange ?? { from: 0, to: 0 };
+    heading = `## Summary · turns ${range.from}-${range.to} · ${turn.timestamp}`;
+  } else {
+    const label = turn.role === 'user' ? 'User' : 'Assistant';
+    heading = `## ${label} · ${turn.timestamp}`;
+  }
+  const parts = [heading, ''];
   if (turn.toolCalls && turn.toolCalls.length > 0) {
     parts.push(
       '<!-- praxis:tool_calls',

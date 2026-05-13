@@ -80,6 +80,25 @@ describe('buildMessages', () => {
       { role: 'assistant', content: 'hi' },
     ]);
   });
+
+  it('translates summary turns into user-role messages with a clear preface', async () => {
+    const { buildMessages } = await import('./anthropic.ts');
+    const turns: Turn[] = [
+      {
+        role: 'summary',
+        timestamp: '2026-05-13T11:00:00Z',
+        content: '- The operator and the role discussed Q1.',
+        summaryRange: { from: 1, to: 4 },
+      },
+      { role: 'user', timestamp: 't2', content: 'newest' },
+    ];
+    const messages = buildMessages(turns);
+    expect(messages).toHaveLength(2);
+    expect(messages[0]!.role).toBe('user');
+    expect(messages[0]!.content).toContain('Summary of turns 1-4');
+    expect(messages[0]!.content).toContain('discussed Q1');
+    expect(messages[1]!).toEqual({ role: 'user', content: 'newest' });
+  });
 });
 
 describe('sendMessage', () => {
