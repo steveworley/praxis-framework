@@ -35,13 +35,13 @@ From the framework/role repo root. Mounts the repo as `/role` inside the contain
 | Env var | Default | Purpose |
 |---|---|---|
 | `PRAXIS_ROLE_HOME` | parent of `dashboard/` | Path to the role's directory. Override only for unusual setups. |
-| `PRAXIS_LOG_GLOB` | `*/logs/*.jsonl` | Glob for the activity feed (rooted at `PRAXIS_ROLE_HOME`) |
+| `PRAXIS_LOG_GLOB` | `**/logs/*.jsonl` | Glob for the activity feed (rooted at `PRAXIS_ROLE_HOME`). Globstar matches root `logs/`, single-segment `<wp>/logs/`, and Sam-style nested `<wp>/<id>/logs/`. |
 | `ANTHROPIC_API_KEY` | _(unset)_ | Required to enable `/chat`. When unset, the chat page renders a disabled-state empty pane. |
 | `PRAXIS_CHAT_MODEL` | `claude-sonnet-4-6` | Model the chat surface routes requests to. |
 
 ### Activity glob nesting
 
-The default `*/logs/*.jsonl` matches a two-segment work-product structure: `{work-product}/logs/{date}.jsonl`. If your role uses a deeper nesting — for example `campaigns/{id}/logs/{date}.jsonl` (three segments, used by the Sam reference role) — set `PRAXIS_LOG_GLOB="*/*/logs/*.jsonl"` instead. The default suits the simplest possible work-product layout; adjust per role.
+The default `**/logs/*.jsonl` uses globstar to match any depth — root-level `logs/{date}.jsonl` (the chat surface's default destination for `log_decision`), `{work-product}/logs/{date}.jsonl`, and Sam-style `campaigns/{id}/logs/{date}.jsonl` all light up without per-role tuning. Override only when you want to narrow it (e.g. `PRAXIS_LOG_GLOB="campaigns/*/logs/*.jsonl"` to filter out everything but campaign activity).
 
 ## API surface
 

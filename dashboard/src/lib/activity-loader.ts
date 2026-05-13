@@ -74,6 +74,20 @@ async function expandGlob(root: string, pattern: string): Promise<string[]> {
   for (let i = 0; i < segments.length; i++) {
     const segment = segments[i] ?? '';
     const isLast = i === segments.length - 1;
+
+    // `**` (globstar): matches zero or more directory segments. Expand the
+    // current layer to include every descendant directory (and the layer
+    // itself, to match the zero-segment case), then continue with the next
+    // pattern segment from each.
+    if (segment === '**') {
+      const expanded: string[] = [];
+      for (const dir of layers) {
+        await collectDescendantDirs(dir, expanded);
+      }
+      layers = expanded;
+      continue;
+    }
+
     const next: string[] = [];
     for (const dir of layers) {
       let entries;
@@ -95,6 +109,21 @@ async function expandGlob(root: string, pattern: string): Promise<string[]> {
     layers = next;
   }
   return layers;
+}
+
+async function collectDescendantDirs(start: string, out: string[]): Promise<void> {
+  out.push(start);
+  let entries;
+  try {
+    entries = await fs.readdir(start, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    if (entry.name.startsWith('.')) continue;
+    await collectDescendantDirs(path.join(start, entry.name), out);
+  }
 }
 
 function segmentMatches(name: string, pattern: string): boolean {

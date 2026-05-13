@@ -4,7 +4,11 @@ import { fileURLToPath } from 'node:url';
 
 const ROLE_HOME_ENV = 'PRAXIS_ROLE_HOME';
 const LOG_GLOB_ENV = 'PRAXIS_LOG_GLOB';
-const DEFAULT_LOG_GLOB = '*/logs/*.jsonl';
+// `**` (globstar) matches zero or more directory segments. Picks up:
+//   - logs/<date>.jsonl                       (root-level — chat default)
+//   - <work-product>/logs/<date>.jsonl        (one-segment nested)
+//   - campaigns/<id>/logs/<date>.jsonl        (Sam-style two-segment nested)
+const DEFAULT_LOG_GLOB = '**/logs/*.jsonl';
 
 /**
  * Resolves the role home directory. By convention this is the parent of the

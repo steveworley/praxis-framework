@@ -28,7 +28,7 @@ PRAXIS_ROLE_HOME=/path/to/some-role npm run dev
 | Env var | Default | Purpose |
 |---|---|---|
 | `PRAXIS_ROLE_HOME` | parent of this directory | Path to the role's directory |
-| `PRAXIS_LOG_GLOB` | `*/logs/*.jsonl` | Glob for the activity feed (rooted at the role home) |
+| `PRAXIS_LOG_GLOB` | `**/logs/*.jsonl` | Glob for the activity feed (rooted at the role home). Globstar matches root `logs/`, single-segment `<wp>/logs/`, and Sam-style nested `<wp>/<id>/logs/`. |
 | `ANTHROPIC_API_KEY` | _(unset)_ | Required to enable the `/chat` surface. Without it, `/chat` renders a disabled-state empty pane. |
 | `PRAXIS_CHAT_MODEL` | `claude-sonnet-4-6` | Overrides the model the chat surface sends requests to. |
 
