@@ -5,6 +5,7 @@ import { z } from 'zod';
 
 import { commitChange } from '../audit.js';
 import { isWriteAllowed } from './autonomy-gate.js';
+import { localDateString } from './time-helpers.js';
 import { slugify } from './tools.js';
 
 /**
@@ -381,11 +382,4 @@ function formatZodError(error: z.ZodError): string {
   return error.issues
     .map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`)
     .join('; ');
-}
-
-function localDateString(d: Date): string {
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
 }

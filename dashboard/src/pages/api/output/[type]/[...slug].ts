@@ -6,6 +6,7 @@ import type { APIRoute } from 'astro';
 import { z } from 'zod';
 
 import { commitChange } from '@/lib/audit';
+import { localIsoString } from '@/lib/chat/time-helpers';
 import { parseFrontmatter } from '@/lib/frontmatter';
 import { renderMarkdown } from '@/lib/markdown';
 import {
@@ -172,21 +173,6 @@ async function atomicWrite(abs: string, content: string): Promise<void> {
     await fs.rm(tmp, { force: true }).catch(() => {});
     throw e;
   }
-}
-
-function localIsoString(d: Date): string {
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mi = String(d.getMinutes()).padStart(2, '0');
-  const ss = String(d.getSeconds()).padStart(2, '0');
-  const offsetMinutes = -d.getTimezoneOffset();
-  const sign = offsetMinutes >= 0 ? '+' : '-';
-  const absOffset = Math.abs(offsetMinutes);
-  const offHh = String(Math.floor(absOffset / 60)).padStart(2, '0');
-  const offMm = String(absOffset % 60).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}T${hh}:${mi}:${ss}${sign}${offHh}:${offMm}`;
 }
 
 function isOutputType(v: string): v is OutputType {
