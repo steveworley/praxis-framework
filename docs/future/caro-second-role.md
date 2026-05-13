@@ -69,7 +69,7 @@ Voice: experienced, patient, attuned to long-running dynamics. Operational
 
 Caro is the *actor* on top of that data layer. Curator writes the JSON; Caro reads it, contextualises it, and acts. Two complementary roles.
 
-For an MVP Caro could skip Curator and read raw signals directly (customers.yaml + manual-leads prospects + Slack signal). Adds to her load, but means we don't have to build two new roles to test the framework.
+To start, Caro could skip Curator and read raw signals directly (customers.yaml + manual-leads prospects + Slack signal). Adds to her load, but means we don't have to build two new roles to test the framework.
 
 ## What the research piece gains
 

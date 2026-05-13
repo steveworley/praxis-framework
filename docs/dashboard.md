@@ -231,7 +231,7 @@ Both commits are visible in `git log` and can be reverted independently. The wiz
 - **Phase 0** (shipped): read-only role-watcher, hosted via Astro on the host
 - **Phase 1** (shipped — Dockerfile + compose): dockerized; framework repo mounted as a volume
 - **Phase 3** (shipped — the wizard): role-planning UX in `/setup`; converts the framework into a populated role
-- **Phase 2 (chat MVP)** (shipped): `/chat` ships the non-technical operator's conversational runtime; persona-as-system-prompt; persisted conversations under `memory/conversations/`; tool-use loop wired end-to-end with the typed toolset gated by `lib/autonomy.yaml` and `CONSTITUTIONAL_PATHS`.
+- **Phase 2 (chat)** (shipped): `/chat` ships the non-technical operator's conversational runtime; persona-as-system-prompt; persisted conversations under `memory/conversations/`; tool-use loop wired end-to-end with the typed toolset gated by `lib/autonomy.yaml` and `CONSTITUTIONAL_PATHS`.
 - **Phase 4** (planned): verb-tag taxonomy from verb frontmatter, verbs grouped by tag in the dashboard
 
 ## What it isn't
