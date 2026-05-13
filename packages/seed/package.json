@@ -1,7 +1,7 @@
 {
-  "name": "@praxis/seed",
-  "version": "0.0.1",
-  "private": true,
+  "name": "@praxis-framework/seed",
+  "version": "0.1.0",
+  "private": false,
   "type": "module",
   "description": "Shared role-seeding logic — writes a populated praxis role from a template into a target directory",
   "main": "./dist/index.js",
@@ -14,12 +14,31 @@
   },
   "files": [
     "dist",
+    "template",
     "README.md"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/steveworley/praxis-framework.git",
+    "directory": "packages/seed"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/steveworley/praxis-framework#readme",
+  "bugs": {
+    "url": "https://github.com/steveworley/praxis-framework/issues"
+  },
+  "author": "Steve Worley",
+  "keywords": [
+    "praxis",
+    "agent",
+    "role",
+    "scaffold"
+  ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node ./scripts/copy-template.mjs",
     "test": "vitest run",
-    "check": "tsc --noEmit"
+    "check": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "zod": "^3.23.8"

@@ -1,20 +1,44 @@
 {
-  "name": "@praxis/cli",
-  "version": "0.0.1",
-  "private": true,
+  "name": "@praxis-framework/cli",
+  "version": "0.1.0",
+  "private": false,
   "type": "module",
   "description": "praxis CLI — set up and manage praxis-framework roles",
   "bin": {
     "praxis": "./dist/index.js"
   },
+  "files": [
+    "dist",
+    "examples",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/steveworley/praxis-framework.git",
+    "directory": "cli"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/steveworley/praxis-framework#readme",
+  "bugs": {
+    "url": "https://github.com/steveworley/praxis-framework/issues"
+  },
+  "author": "Steve Worley",
+  "keywords": [
+    "praxis",
+    "agent",
+    "cli",
+    "scaffold",
+    "role"
+  ],
   "scripts": {
     "dev": "tsx src/index.tsx",
     "build": "tsc",
     "test": "vitest run",
-    "check": "tsc --noEmit"
+    "check": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@praxis/seed": "*",
+    "@praxis-framework/seed": "^0.1.0",
     "commander": "^12.0.0",
     "ink": "^5.0.0",
     "react": "^18.3.0",

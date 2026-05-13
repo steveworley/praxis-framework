@@ -23,7 +23,7 @@ import { Wrote } from './flows/wrote.js';
 import { adaptFormToSeedInput } from './lib/seed-adapter.js';
 import { Header } from './ui/header.js';
 import type { Catalog } from './lib/catalog.js';
-import type { SeedInput } from '@praxis/seed';
+import type { SeedInput } from '@praxis-framework/seed';
 import { warn } from './ui/theme.js';
 
 interface Props {

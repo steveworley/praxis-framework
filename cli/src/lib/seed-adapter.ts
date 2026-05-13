@@ -1,4 +1,4 @@
-import { SeedInputSchema, type SeedInput } from '@praxis/seed';
+import { SeedInputSchema, type SeedInput } from '@praxis-framework/seed';
 
 import type { Form } from '../state/form.js';
 

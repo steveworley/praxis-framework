@@ -8,7 +8,7 @@ import {
   SeedError as PackageSeedError,
   SeedInputSchema,
   seedRole as packageSeedRole,
-} from '@praxis/seed';
+} from '@praxis-framework/seed';
 import { simpleGit, type StatusResult } from 'simple-git';
 import { z } from 'zod';
 
@@ -17,7 +17,7 @@ import { detectMode } from './role-home.ts';
 /**
  * Re-exported schemas so the dashboard's existing call sites (the wizard
  * API route and the research route) keep their current import paths. The
- * shapes are now owned by `@praxis/seed`; this file only adds dashboard-
+ * shapes are now owned by `@praxis-framework/seed`; this file only adds dashboard-
  * specific behaviour (the two-commit dance and the framework-repo tidy).
  */
 export const SeedVerbSchema = PackageSeedVerbSchema;
@@ -62,7 +62,7 @@ interface SeedEnv {
  *   2. chore: tidy framework-only files post-seed
  *
  * Refuses if the role is already populated or the working tree is dirty.
- * The actual file writing is delegated to `@praxis/seed`; the dashboard
+ * The actual file writing is delegated to `@praxis-framework/seed`; the dashboard
  * keeps the git/repo concerns here because they're specific to seeding
  * the framework checkout itself, not seeding into an arbitrary directory.
  */
@@ -92,7 +92,7 @@ export async function seedRole(req: SeedRequest, env: SeedEnv): Promise<SeedResu
   }
 
   // ---- Commit 1: seed --------------------------------------------------
-  // Delegate the file IO to @praxis/seed. Pass overwrite: true because the
+  // Delegate the file IO to @praxis-framework/seed. Pass overwrite: true because the
   // framework checkout has the template/ dir at the role root and the
   // existing .gitignore is already there — this is the original behaviour
   // (the dashboard always wrote without a conflict check) and the `tidy`

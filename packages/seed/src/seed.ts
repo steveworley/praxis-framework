@@ -158,7 +158,7 @@ export async function seedRole(
 
   // Template files.
   for (const pair of TEMPLATE_FILES) {
-    const src = path.join(templateRoot, pair.source);
+    const src = await resolveTemplateFile(templateRoot, pair.source);
     let body: string;
     try {
       body = await fs.readFile(src, 'utf-8');
@@ -499,4 +499,26 @@ async function pathExists(p: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * Resolve a template file path inside `templateRoot`, falling back to an
+ * underscored alias for entries whose dotted form npm strips at pack time.
+ * Today only `.gitignore` needs this — npm always excludes top-level and
+ * nested `.gitignore` files from the published tarball, so the seed's build
+ * script renames `.gitignore` → `_gitignore` in the published copy. In the
+ * dev monorepo the dotted file exists alongside the original template and
+ * wins the lookup; in published mode only the underscored form ships.
+ */
+async function resolveTemplateFile(templateRoot: string, source: string): Promise<string> {
+  const direct = path.join(templateRoot, source);
+  if (await pathExists(direct)) return direct;
+
+  const base = path.basename(source);
+  if (base.startsWith('.')) {
+    const alias = path.join(path.dirname(source), `_${base.slice(1)}`);
+    const aliasPath = path.join(templateRoot, alias);
+    if (await pathExists(aliasPath)) return aliasPath;
+  }
+  return direct;
 }

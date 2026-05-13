@@ -15,7 +15,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.95.2",
     "@astrojs/node": "^9.0.0",
-    "@praxis/seed": "*",
+    "@praxis-framework/seed": "*",
     "astro": "^5.0.0",
     "diff": "^8.0.4",
     "markdown-it": "^14.1.1",

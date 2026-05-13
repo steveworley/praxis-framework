@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+
+import { resolveTemplatePath } from '@praxis-framework/seed';
 import { z } from 'zod';
 
 /**
@@ -45,19 +46,23 @@ export interface Catalog {
 }
 
 /**
- * Resolve `<framework-root>/template/lib/tools.yaml` from this module's
- * location. Walks up three levels (`lib/` → `src/` → `cli/` → root) and
- * works the same in dev (`cli/src/lib/`) and built (`cli/dist/lib/`) — both
- * are three levels deep.
+ * Resolve `<template-root>/lib/tools.yaml` by delegating to the seed package's
+ * template resolver. The seed package owns template-path resolution: it
+ * checks `<package-root>/template/` first (the published-mode layout, where
+ * the template ships inside the seed tarball), then walks up looking for a
+ * sibling `template/` directory (the dev-monorepo layout). Using its
+ * resolver here keeps both packages in lockstep on where the template lives.
  */
-const moduleDir = path.dirname(fileURLToPath(import.meta.url));
-const CATALOG_PATH = path.resolve(moduleDir, '..', '..', '..', 'template', 'lib', 'tools.yaml');
+function catalogPath(): string {
+  return path.join(resolveTemplatePath(), 'lib', 'tools.yaml');
+}
 
 /**
  * Load the framework catalog from `template/lib/tools.yaml`. Throws if the
  * file is missing or unparseable — the CLI cannot function without it.
  */
 export async function loadCatalog(): Promise<Catalog> {
+  const CATALOG_PATH = catalogPath();
   let text: string;
   try {
     text = await fs.readFile(CATALOG_PATH, 'utf-8');

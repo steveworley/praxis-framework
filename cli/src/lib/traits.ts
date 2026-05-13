@@ -1,5 +1,5 @@
 /**
- * Re-export the canonical trait library from `@praxis/seed`. Both the CLI's
+ * Re-export the canonical trait library from `@praxis-framework/seed`. Both the CLI's
  * voice flow (multi-select cloud) and the seeder (persona rendering) need
  * the same authored list, and the seed package owns the source of truth so
  * no copy can drift.
@@ -10,5 +10,5 @@
  * stays in place and the CLI's import path doesn't change.
  */
 
-export { TRAIT_LIBRARY, findTrait } from '@praxis/seed';
-export type { TraitEntry } from '@praxis/seed';
+export { TRAIT_LIBRARY, findTrait } from '@praxis-framework/seed';
+export type { TraitEntry } from '@praxis-framework/seed';

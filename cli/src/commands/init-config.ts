@@ -7,7 +7,7 @@ import {
   seedRole,
   type SeedInput,
   type SeedResult,
-} from '@praxis/seed';
+} from '@praxis-framework/seed';
 import { z } from 'zod';
 
 /**

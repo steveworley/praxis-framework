@@ -4,7 +4,7 @@
  * operator) with a one-line description used as the default rendering when
  * the operator hasn't supplied any qualifiers.
  *
- * This list lives in `@praxis/seed` because two callers need it:
+ * This list lives in `@praxis-framework/seed` because two callers need it:
  *   - the CLI's voice flow shows it to the operator as a multi-select cloud,
  *   - the seeder injects descriptions into `persona.md` when a trait
  *     has no qualifiers attached.
