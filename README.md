@@ -1,5 +1,14 @@
 # Praxis
 
+```
+ █▀█ █▀█ ▄▀█ ▀▄▀ █ █▀▀
+ █▀▀ █▀▄ █▀█ █ █ █ ▄▄█
+```
+
+_role-based agents that fit your business_
+
+---
+
 A framework for **role-based agents that grow into a defined role** — not self-improving agents that drift on their own. You author the role; the agent grows within its bounds, surfaces what it learns, and asks for help when it can't decide.
 
 Built around `persona.md` at the role root (the role's identity) plus four directory conventions:
