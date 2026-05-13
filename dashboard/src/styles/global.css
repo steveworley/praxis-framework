@@ -951,6 +951,16 @@ button {
   border-radius: 3px;
   font-size: 12.5px;
   align-items: baseline;
+  /* Anchor variant for live verbs — neutralise the default link colour /
+     underline so the row reads the same as the proposed (div) variant. */
+  color: var(--ink);
+  text-decoration: none;
+  transition: background-color 80ms ease, border-color 80ms ease;
+}
+a.verb-row:hover {
+  background: var(--surface-mute);
+  border-color: var(--rule-strong);
+  text-decoration: none;
 }
 .verb-row.proposed {
   background: #f3eef9;

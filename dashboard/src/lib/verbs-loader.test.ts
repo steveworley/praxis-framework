@@ -4,7 +4,7 @@ import path from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { classifyVerb, countLiveVerbs, listLibFiles, loadVerbs } from './verbs-loader.ts';
+import { classifyVerb, countLiveVerbs, listLibFiles, loadVerb, loadVerbs } from './verbs-loader.ts';
 
 let tempDir: string;
 
@@ -76,6 +76,124 @@ describe('countLiveVerbs', () => {
     await fs.writeFile(path.join(tempDir, 'verbs', 'a.md'), '', 'utf-8');
     await fs.writeFile(path.join(tempDir, 'verbs', 'b.md'), '', 'utf-8');
     expect(await countLiveVerbs(tempDir)).toBe(2);
+  });
+});
+
+describe('loadVerb', () => {
+  it('parses frontmatter and body for a verb with all fields set', async () => {
+    await fs.writeFile(
+      path.join(tempDir, 'verbs', 'escalate.md'),
+      [
+        '---',
+        'verb: reflect',
+        'when_to_run: end of every run',
+        'inputs: [memory/notes, lib/team.yaml]',
+        'outputs: [escalations/]',
+        "description: 'Raise a structured ask'",
+        'proposed_by: sam',
+        'created: 2026-04-01',
+        'accepted_at: 2026-04-02',
+        'status: accepted',
+        '---',
+        '',
+        '# Escalate Verb',
+        '',
+        'Body text here.',
+      ].join('\n'),
+      'utf-8',
+    );
+    const detail = await loadVerb(tempDir, 'escalate');
+    expect(detail).not.toBeNull();
+    expect(detail?.slug).toBe('escalate');
+    expect(detail?.file).toBe(path.join('verbs', 'escalate.md'));
+    expect(detail?.tag).toBe('reflect');
+    expect(detail?.frontmatter.verb).toBe('reflect');
+    expect(detail?.frontmatter.when_to_run).toBe('end of every run');
+    expect(detail?.frontmatter.inputs).toEqual(['memory/notes', 'lib/team.yaml']);
+    expect(detail?.frontmatter.outputs).toEqual(['escalations/']);
+    expect(detail?.frontmatter.description).toBe('Raise a structured ask');
+    expect(detail?.frontmatter.status).toBe('accepted');
+    expect(detail?.body).toContain('# Escalate Verb');
+    expect(detail?.body).not.toContain('---');
+  });
+
+  it('returns null for a non-existent slug', async () => {
+    const detail = await loadVerb(tempDir, 'does-not-exist');
+    expect(detail).toBeNull();
+  });
+
+  it('refuses path-traversal slugs', async () => {
+    await expect(loadVerb(tempDir, '../etc/passwd')).rejects.toThrow(/Invalid verb slug/);
+    await expect(loadVerb(tempDir, 'BadSlug')).rejects.toThrow(/Invalid verb slug/);
+    await expect(loadVerb(tempDir, 'has_underscore')).rejects.toThrow(/Invalid verb slug/);
+    await expect(loadVerb(tempDir, '')).rejects.toThrow(/Invalid verb slug/);
+  });
+
+  it('handles `<unset>` placeholders without coercion', async () => {
+    await fs.writeFile(
+      path.join(tempDir, 'verbs', 'fresh.md'),
+      [
+        '---',
+        'verb: <unset>',
+        'when_to_run: <unset>',
+        'inputs: []',
+        'outputs: []',
+        '---',
+        '',
+        '# Fresh Verb',
+        '',
+        'Just authored.',
+      ].join('\n'),
+      'utf-8',
+    );
+    const detail = await loadVerb(tempDir, 'fresh');
+    expect(detail).not.toBeNull();
+    expect(detail?.frontmatter.verb).toBe('<unset>');
+    expect(detail?.frontmatter.when_to_run).toBe('<unset>');
+    expect(detail?.frontmatter.inputs).toEqual([]);
+    expect(detail?.frontmatter.outputs).toEqual([]);
+    expect(detail?.frontmatter.description).toBeUndefined();
+  });
+
+  it('treats missing `inputs` and empty `inputs: []` the same shape', async () => {
+    await fs.writeFile(
+      path.join(tempDir, 'verbs', 'missing.md'),
+      ['---', 'verb: act', '---', '', '# Missing inputs', ''].join('\n'),
+      'utf-8',
+    );
+    await fs.writeFile(
+      path.join(tempDir, 'verbs', 'empty.md'),
+      ['---', 'verb: act', 'inputs: []', '---', '', '# Empty inputs', ''].join('\n'),
+      'utf-8',
+    );
+    const missing = await loadVerb(tempDir, 'missing');
+    const empty = await loadVerb(tempDir, 'empty');
+    // Missing → undefined; empty → []. The detail page treats both as "nothing
+    // to show" (length === 0 OR undefined), so they render identically.
+    expect(missing?.frontmatter.inputs).toBeUndefined();
+    expect(empty?.frontmatter.inputs).toEqual([]);
+  });
+
+  it('parses YAML block-list inputs', async () => {
+    await fs.writeFile(
+      path.join(tempDir, 'verbs', 'block.md'),
+      [
+        '---',
+        'verb: research',
+        'inputs:',
+        '  - lib/customers.yaml',
+        '  - memory/notes/',
+        'outputs:',
+        '  - output/document/',
+        '---',
+        '',
+        '# Block-list verb',
+      ].join('\n'),
+      'utf-8',
+    );
+    const detail = await loadVerb(tempDir, 'block');
+    expect(detail?.frontmatter.inputs).toEqual(['lib/customers.yaml', 'memory/notes/']);
+    expect(detail?.frontmatter.outputs).toEqual(['output/document/']);
   });
 });
 
