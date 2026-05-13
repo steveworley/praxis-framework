@@ -45,6 +45,7 @@ const bucket = ageBucket(days);
     {ageLabel && <><br /><span class="age">{ageLabel}</span></>}
     {entry.created && <><br />written {entry.created}</>}
     {showUpdated && <><br />updated {entry.updated}</>}
+    <br /><code class="slug">{entry.slug}</code>
   </div>
   <div>
     <h4>{entry.title}</h4>
