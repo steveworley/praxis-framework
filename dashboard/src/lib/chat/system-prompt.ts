@@ -91,6 +91,8 @@ export async function buildSystemPrompt(roleHome: string): Promise<string> {
     '- `update_output_status` — advance an existing output\'s lifecycle (e.g. draft → sent)',
     '- `log_decision` — log a non-trivial decision to your audit trail',
     '',
+    'Every tool call you make is automatically recorded in `logs/<date>.jsonl` as an `action: \'tool_call\'` entry — your operator already sees what tools ran when via `/activity`. Reach for `log_decision` only when you want to record an *editorial* decision (the rationale behind a choice the model is making), not as a redundant wrapper around tool invocations.',
+    '',
     'Use them sparingly and only when the observation, ask, or output is genuinely worth capturing. Default to writing for memory (your operator prunes); be selective for the other tools. If a tool refuses (gated surface, duplicate slug, malformed input, max_pending reached, file already exists), the refusal message tells you why — adjust and try again, or surface the friction to your operator in your reply. For `append_entry`, a max_pending refusal is your signal to file an `improvement` escalation asking for compaction. For `enrich_entry`, "no entry with that id" means inline-enrichment can\'t create entries — file a `proposed_skill` escalation if the entry needs to exist. For `adjust_param`, a "key not in bounds" or out-of-range refusal means the operator hasn\'t opened that parameter (or set it tighter than you\'re asking) — escalate if the operational ceiling is too low.',
   );
 
