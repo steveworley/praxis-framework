@@ -344,6 +344,29 @@ describe('executeTool dispatch', () => {
     const r = await executeTool('archive_memory', { slug: 'archivable' }, tempDir);
     expect(r.ok).toBe(true);
   });
+
+  it('routes consolidate_memory through the dispatcher', async () => {
+    await executeWriteMemory(tempDir, {
+      category: 'notes',
+      title: 'first observation',
+      body: 'body',
+    });
+    await executeWriteMemory(tempDir, {
+      category: 'notes',
+      title: 'second observation',
+      body: 'body',
+    });
+    const r = await executeTool(
+      'consolidate_memory',
+      {
+        source_slugs: ['first-observation', 'second-observation'],
+        new_title: 'merged observation',
+        new_body: 'merged body',
+      },
+      tempDir,
+    );
+    expect(r.ok).toBe(true);
+  });
 });
 
 describe('audit-log commits on tool calls', () => {
