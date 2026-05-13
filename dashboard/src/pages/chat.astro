@@ -5,6 +5,8 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
 import { hasApiKey } from '@/lib/chat/anthropic.js';
 import { listThreads, type ThreadSummary } from '@/lib/chat/conversation.js';
 import { personaNameFrom } from '@/lib/chat/persona-name.js';
+import { buildSystemPrompt } from '@/lib/chat/system-prompt.js';
+import { estimateTokens } from '@/lib/chat/tokens.js';
 import { assembleEscalations } from '@/lib/escalations-loader.js';
 import { parsePersona } from '@/lib/persona-parser.js';
 import { detectMode, getRoleHome, nowIso } from '@/lib/role-home.js';
@@ -17,16 +19,24 @@ if (mode === 'seed') {
   return Astro.redirect('/setup');
 }
 
-const [personaRes, threadsRes, escalationsRes] = await Promise.allSettled([
+const [personaRes, threadsRes, escalationsRes, systemPromptRes] = await Promise.allSettled([
   parsePersona(roleHome),
   listThreads(roleHome),
   assembleEscalations(roleHome),
+  buildSystemPrompt(roleHome),
 ]);
 
 const persona = personaRes.status === 'fulfilled' ? personaRes.value : null;
 const threads: ThreadSummary[] = threadsRes.status === 'fulfilled' ? threadsRes.value : [];
 const openCount =
   escalationsRes.status === 'fulfilled' ? escalationsRes.value.countsByStatus.open : 0;
+
+// Per-thread token budget. We measure the system prompt once server-side and
+// ship the estimate down to the Alpine island; the client adds each turn's
+// content length / 4 to get the live `tokens.total` displayed in the header.
+const systemPromptText =
+  systemPromptRes.status === 'fulfilled' ? systemPromptRes.value : '';
+const systemPromptTokens = estimateTokens(systemPromptText);
 
 const personaName = personaNameFrom(persona);
 const initialThreadId =
@@ -39,6 +49,12 @@ const bootstrap = {
   initialThreadId,
   apiKeyConfigured,
   personaName,
+  systemPromptTokens,
+  // Context window cap for the budget surface. Sonnet 4.6 ships with a 200K
+  // window; this is the "of 200K" denominator. Threshold for the banner is
+  // 50K (configurable here so it tracks the doc'd number from issue #16).
+  contextWindowTokens: 200_000,
+  banner50kThreshold: 50_000,
 };
 ---
 
@@ -106,11 +122,17 @@ const bootstrap = {
             <div class="chat-pane-head">
               <div class="chat-pane-title" x-text="activeThreadId ? (activeTitle || 'New conversation') : 'New conversation'"></div>
               <div class="chat-pane-meta">
+                <span
+                  class="chat-budget"
+                  x-show="activeThreadId"
+                  :title="`System prompt ~${formatTokens(systemPromptTokens)} + history ~${formatTokens(tokenBudget.history)} tokens`"
+                  x-text="`~${formatTokens(tokenBudget.total)} of ${formatTokens(contextWindowTokens)}`"
+                ></span>
                 <span x-text="activeThreadId && activeUpdated ? `updated ${relativeTime(activeUpdated)}` : ''"></span>
                 <button
                   type="button"
                   class="reflect-btn"
-                  :disabled="!activeThreadId || sending || reflecting || turns.length === 0"
+                  :disabled="!activeThreadId || sending || reflecting || summarising || turns.length === 0"
                   @click="reflect()"
                   :title="`Ask ${personaShort} to reflect on this conversation`"
                 >
@@ -121,6 +143,23 @@ const bootstrap = {
             </div>
 
             <div class="chat-error" x-show="error" x-text="error"></div>
+
+            <div
+              class="chat-budget-banner"
+              x-show="activeThreadId && !budgetBannerDismissed && tokenBudget.total > banner50kThreshold && turns.length >= 4 && !summarising"
+              x-cloak
+            >
+              <span class="chat-budget-banner-text">
+                This thread is getting long (~<span x-text="formatTokens(tokenBudget.total)"></span> tokens). Want to fold older turns into a summary?
+              </span>
+              <span class="chat-budget-banner-actions">
+                <button type="button" class="link-btn" @click="summarise()">Summarise older turns →</button>
+                <button type="button" class="link-btn link-btn-quiet" @click="budgetBannerDismissed = true">dismiss</button>
+              </span>
+            </div>
+            <div class="chat-summarising" x-show="summarising" x-cloak>
+              Summarising older turns…
+            </div>
 
             <div class="chat-transcript" x-ref="transcript">
               <template x-if="!activeThreadId">
@@ -140,7 +179,10 @@ const bootstrap = {
               <template x-for="(turn, idx) in turns" :key="`${activeThreadId}-${idx}`">
                 <article class="chat-turn" :class="`role-${turn.role}`">
                   <header class="chat-turn-head">
-                    <span class="chat-turn-role" x-text="turn.role === 'user' ? 'You' : personaShort"></span>
+                    <span
+                      class="chat-turn-role"
+                      x-text="turn.role === 'summary' ? summaryHeading(turn) : (turn.role === 'user' ? 'You' : personaShort)"
+                    ></span>
                     <span class="chat-turn-time" x-text="formatTimestamp(turn.timestamp)"></span>
                   </header>
                   <template x-if="Array.isArray(turn.toolCalls) && turn.toolCalls.length > 0">
@@ -508,6 +550,77 @@ const bootstrap = {
       padding: 0.6rem 0;
     }
 
+    /* ---- budget surface + soft banner --------------------------------- */
+    .chat-budget {
+      font-family: ui-monospace, monospace;
+      font-size: 11px;
+      color: var(--ink-muted);
+      cursor: help;
+      letter-spacing: 0.02em;
+    }
+    .chat-budget-banner {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.8rem;
+      padding: 0.55rem 1rem;
+      margin: 0.5rem 0 0;
+      font-size: 12.5px;
+      color: var(--ink-soft);
+      background: var(--surface-mute);
+      border-left: 2px solid var(--info);
+      border-radius: 0 3px 3px 0;
+    }
+    .chat-budget-banner-text {
+      line-height: 1.5;
+    }
+    .chat-budget-banner-actions {
+      display: inline-flex;
+      gap: 0.7rem;
+      flex-shrink: 0;
+    }
+    .link-btn {
+      background: none;
+      border: none;
+      padding: 0;
+      color: var(--link);
+      cursor: pointer;
+      font-size: 12.5px;
+      font-family: inherit;
+    }
+    .link-btn:hover {
+      text-decoration: underline;
+    }
+    .link-btn-quiet {
+      color: var(--ink-faint);
+    }
+    .chat-summarising {
+      padding: 0.55rem 1rem;
+      margin: 0.5rem 0 0;
+      font-size: 12.5px;
+      color: var(--ink-muted);
+      background: var(--surface-mute);
+      border-left: 2px solid var(--rule-strong);
+      border-radius: 0 3px 3px 0;
+    }
+
+    /* Summary turns sit in the transcript with the same shape as a normal
+       turn, but in muted ink and with a distinct border colour so the
+       operator can see at a glance that this region is compressed history,
+       not a live exchange. */
+    .chat-turn.role-summary {
+      border-left-color: var(--ink-faint);
+    }
+    .role-summary .chat-turn-role {
+      color: var(--ink-faint);
+      font-style: italic;
+      text-transform: none;
+      letter-spacing: 0;
+    }
+    .role-summary .prose {
+      color: var(--ink-muted);
+    }
+
     /* ---- reflect button + tool calls ----------------------------------- */
     .chat-pane-meta {
       display: flex;
@@ -638,6 +751,14 @@ const bootstrap = {
         reflecting: false,
         loadingTurns: false,
         error: '',
+        // Token budget surface (issue #16): we mirror the server-side
+        // `estimateTokens` helper (ceil(len/4)) so the header number lines
+        // up with what the next turn will actually send to Anthropic.
+        systemPromptTokens: boot.systemPromptTokens || 0,
+        contextWindowTokens: boot.contextWindowTokens || 200000,
+        banner50kThreshold: boot.banner50kThreshold || 50000,
+        budgetBannerDismissed: false,
+        summarising: false,
 
         init() {
           const initialThread = this.threads.find((t) => t.thread_id === this.activeThreadId);
@@ -649,7 +770,24 @@ const bootstrap = {
         },
 
         get canSend() {
-          return !this.sending && this.composer.trim().length > 0;
+          return !this.sending && !this.summarising && this.composer.trim().length > 0;
+        },
+
+        // Live token estimate for the active thread. Mirrors the server-side
+        // `estimateTokens` (ceil(content.length / 4)) so the header number
+        // is consistent with the threshold the server-side summariser
+        // refuses below.
+        get tokenBudget() {
+          let history = 0;
+          for (const turn of this.turns) {
+            const content = typeof turn.content === 'string' ? turn.content : '';
+            history += content.length === 0 ? 0 : Math.ceil(content.length / 4);
+          }
+          return {
+            systemPrompt: this.systemPromptTokens,
+            history,
+            total: this.systemPromptTokens + history,
+          };
         },
 
         async loadActiveThread() {
@@ -817,6 +955,43 @@ const bootstrap = {
           }
         },
 
+        async summarise() {
+          if (!this.activeThreadId || this.summarising || this.sending || this.reflecting) return;
+          if (this.turns.length < 4) {
+            this.error = 'Thread needs at least 4 turns before summarisation.';
+            return;
+          }
+          this.summarising = true;
+          this.error = '';
+          try {
+            const res = await fetch(
+              `/api/chat/threads/${encodeURIComponent(this.activeThreadId)}/summarise`,
+              { method: 'POST' },
+            );
+            if (!res.ok) {
+              const errBody = await res.json().catch(() => ({}));
+              throw new Error(errBody.error || `Summarise failed (${res.status})`);
+            }
+            const body = await res.json();
+            if (body.thread) {
+              this.activeTitle = body.thread.title;
+              this.activeUpdated = body.thread.updated;
+            }
+            if (Array.isArray(body.turns)) {
+              this.turns = body.turns;
+            }
+            // Reset the dismiss flag so the banner can come back later if
+            // the thread crosses the threshold again.
+            this.budgetBannerDismissed = false;
+            await this.refreshThreadList();
+            this.$nextTick(() => this.scrollTranscriptToBottom());
+          } catch (e) {
+            this.error = e instanceof Error ? e.message : String(e);
+          } finally {
+            this.summarising = false;
+          }
+        },
+
         async reflect() {
           if (!this.activeThreadId || this.reflecting || this.sending) return;
           if (this.turns.length === 0) return;
@@ -964,6 +1139,26 @@ const bootstrap = {
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;');
           return `<p>${escaped.replace(/\n/g, '<br>')}</p>`;
+        },
+
+        formatTokens(n) {
+          if (!Number.isFinite(n) || n <= 0) return '0';
+          if (n < 1000) return String(n);
+          if (n < 1_000_000) {
+            // 12_345 → "12.3K"; 200_000 → "200K"
+            const k = n / 1000;
+            return k >= 100 ? `${Math.round(k)}K` : `${k.toFixed(1).replace(/\.0$/, '')}K`;
+          }
+          return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
+        },
+
+        summaryHeading(turn) {
+          if (!turn || typeof turn !== 'object') return 'Summary';
+          const range = turn.summaryRange;
+          if (range && range.from && range.to) {
+            return `Summary · turns ${range.from}–${range.to}`;
+          }
+          return 'Summary';
         },
 
         relativeTime(iso) {

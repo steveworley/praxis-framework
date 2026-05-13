@@ -250,6 +250,43 @@ describe('tool calls round-trip', () => {
   });
 });
 
+describe('summary turn round-trip', () => {
+  it('parses a `## Summary · turns N-M · <iso>` block as a synthetic summary turn', async () => {
+    const { thread_id } = await createThread(tempDir, 'x');
+    // Hand-craft a thread file containing a Summary block + a verbatim newer
+    // turn, matching the on-disk shape `summariseThread` produces.
+    const filePath = path.join(tempDir, 'memory', 'conversations', `${thread_id}.md`);
+    const body = [
+      '---',
+      `thread_id: ${thread_id}`,
+      'title: x',
+      'created: 2026-05-12T10:00:00Z',
+      'updated: 2026-05-13T11:00:00Z',
+      '---',
+      '',
+      '## Summary · turns 1-4 · 2026-05-13T11:00:00Z',
+      '',
+      '- The operator asked about Q1 numbers.',
+      '- The role committed to a follow-up.',
+      '',
+      '## User · 2026-05-13T12:00:00Z',
+      '',
+      'newest message',
+      '',
+    ].join('\n');
+    await fs.writeFile(filePath, body, 'utf-8');
+
+    const loaded = await loadThread(tempDir, thread_id);
+    expect(loaded.turns).toHaveLength(2);
+    expect(loaded.turns[0]!.role).toBe('summary');
+    expect(loaded.turns[0]!.timestamp).toBe('2026-05-13T11:00:00Z');
+    expect(loaded.turns[0]!.summaryRange).toEqual({ from: 1, to: 4 });
+    expect(loaded.turns[0]!.content).toContain('operator asked about Q1');
+    expect(loaded.turns[1]!.role).toBe('user');
+    expect(loaded.turns[1]!.content).toBe('newest message');
+  });
+});
+
 describe('thread_id safety', () => {
   it('rejects path traversal in loadThread', async () => {
     await expect(loadThread(tempDir, '../etc/passwd')).rejects.toThrow(/Invalid thread_id/);

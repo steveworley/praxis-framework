@@ -59,9 +59,23 @@ export function hasApiKey(): boolean {
  * The model has the reply in its conversational context; replaying tool_use
  * + tool_result blocks would require keeping the original tool_use ids in
  * sync across loads, which adds complexity without a clear benefit.
+ *
+ * Summary turns are translated to a user-role message with a "Summary of
+ * earlier turns" preface so the model treats them as established context.
  */
 export function buildMessages(history: Turn[]): Anthropic.MessageParam[] {
-  return history.map((turn) => ({ role: turn.role, content: turn.content }));
+  return history.map((turn) => {
+    if (turn.role === 'summary') {
+      const range = turn.summaryRange
+        ? `turns ${turn.summaryRange.from}-${turn.summaryRange.to}`
+        : 'earlier turns';
+      return {
+        role: 'user',
+        content: `Summary of ${range} of this conversation:\n\n${turn.content}`,
+      };
+    }
+    return { role: turn.role, content: turn.content };
+  });
 }
 
 /**
