@@ -31,15 +31,43 @@ const openCount =
 const fullName = persona?.identity['full_name'] ?? persona?.identity['name'] ?? '';
 const updatedAt = nowIso();
 
+// Counts are taken across *live* entries only — archived entries are hidden
+// by default, so surfacing their counts on the category chips would mislead.
+const liveEntries = memoryEntries.filter((e) => !e.archived);
+const archivedEntries = memoryEntries.filter((e) => e.archived);
+
 const categoryCounts: Record<string, number> = {};
-for (const e of memoryEntries) {
+for (const e of liveEntries) {
   categoryCounts[e.category] = (categoryCounts[e.category] ?? 0) + 1;
 }
 const categoryKeys = Object.keys(categoryCounts).sort();
-const filters: Array<{ key: string; label: string; count: number }> = [
-  { key: 'all', label: 'all', count: memoryEntries.length },
+const categoryFilters: Array<{ key: string; label: string; count: number }> = [
+  { key: 'all', label: 'all', count: liveEntries.length },
   ...categoryKeys.map((k) => ({ key: k, label: k, count: categoryCounts[k] ?? 0 })),
 ];
+
+const ageCounts = { week: 0, month: 0, stale: 0 };
+for (const e of liveEntries) {
+  const touchedAt = e.updated ?? e.created;
+  const days = touchedAt ? Math.floor((Date.now() - Date.parse(touchedAt)) / 86_400_000) : null;
+  if (days === null || Number.isNaN(days)) continue;
+  if (days <= 7) ageCounts.week += 1;
+  if (days <= 30) ageCounts.month += 1;
+  if (days >= 60) ageCounts.stale += 1;
+}
+const ageFilters: Array<{ key: string; label: string; count: number | null }> = [
+  { key: 'any', label: 'any age', count: null },
+  { key: 'week', label: '≤7d', count: ageCounts.week },
+  { key: 'month', label: '≤30d', count: ageCounts.month },
+  { key: 'stale', label: '60d+ stale', count: ageCounts.stale },
+];
+
+const visibilityFilters: Array<{ key: string; label: string; count: number | null }> = [
+  { key: 'live', label: 'live', count: liveEntries.length },
+  { key: 'archived', label: 'archived', count: archivedEntries.length },
+  { key: 'both', label: 'both', count: memoryEntries.length },
+];
+
 const lastUpdate = memoryEntries[0]?.updated ?? memoryEntries[0]?.created ?? 'never';
 ---
 
@@ -68,12 +96,32 @@ const lastUpdate = memoryEntries[0]?.updated ?? memoryEntries[0]?.created ?? 'ne
       ) : (
         <>
           <div class="filter-row spaced" data-filter-group="category">
-            {filters.map((f) => (
+            {categoryFilters.map((f) => (
               <span
                 class:list={['filter', f.key === 'all' && 'active']}
                 data-filter={f.key}
               >
                 {f.label}<span class="ct">{f.count}</span>
+              </span>
+            ))}
+          </div>
+          <div class="filter-row" data-filter-group="age">
+            {ageFilters.map((f) => (
+              <span
+                class:list={['filter', f.key === 'any' && 'active']}
+                data-filter={f.key}
+              >
+                {f.label}{f.count !== null && <span class="ct">{f.count}</span>}
+              </span>
+            ))}
+          </div>
+          <div class="filter-row" data-filter-group="visibility">
+            {visibilityFilters.map((f) => (
+              <span
+                class:list={['filter', f.key === 'live' && 'active']}
+                data-filter={f.key}
+              >
+                {f.label}{f.count !== null && <span class="ct">{f.count}</span>}
               </span>
             ))}
           </div>
@@ -89,24 +137,63 @@ const lastUpdate = memoryEntries[0]?.updated ?? memoryEntries[0]?.created ?? 'ne
   <script is:inline>
     (function () {
       const feed = document.querySelector('[data-filter-feed]');
-      const group = document.querySelector('[data-filter-group="category"]');
-      if (!(feed instanceof HTMLElement) || !(group instanceof HTMLElement)) return;
-      let active = 'all';
-      group.addEventListener('click', (event) => {
-        const target = event.target;
-        if (!(target instanceof HTMLElement)) return;
-        const filter = target.closest('[data-filter]');
-        if (!(filter instanceof HTMLElement)) return;
-        const value = filter.dataset.filter;
-        if (!value) return;
-        group.querySelectorAll('[data-filter]').forEach((b) => b.classList.remove('active'));
-        filter.classList.add('active');
-        active = value;
+      if (!(feed instanceof HTMLElement)) return;
+      const groups = document.querySelectorAll('[data-filter-group]');
+      // Default chip state mirrors the `.active` markers in the SSR output:
+      // all categories, any age, live-only visibility.
+      const active = { category: 'all', age: 'any', visibility: 'live' };
+
+      function ageBucketMatches(card) {
+        if (active.age === 'any') return true;
+        const bucket = card.dataset.ageBucket ?? '';
+        if (active.age === 'week') return bucket === 'week';
+        if (active.age === 'month') return bucket === 'week' || bucket === 'month';
+        if (active.age === 'stale') return bucket === 'stale';
+        return true;
+      }
+
+      function visibilityMatches(card) {
+        const archived = card.dataset.archived === 'true';
+        if (active.visibility === 'both') return true;
+        if (active.visibility === 'archived') return archived;
+        return !archived; // live
+      }
+
+      function apply() {
         for (const card of feed.children) {
           if (!(card instanceof HTMLElement)) continue;
-          card.style.display = active === 'all' || card.dataset.category === active ? '' : 'none';
+          const category = card.dataset.category ?? '';
+          const matchCategory = active.category === 'all' || category === active.category;
+          const matchAge = ageBucketMatches(card);
+          const matchVisibility = visibilityMatches(card);
+          card.style.display = matchCategory && matchAge && matchVisibility ? '' : 'none';
         }
+      }
+
+      groups.forEach((group) => {
+        if (!(group instanceof HTMLElement)) return;
+        const groupName = group.dataset.filterGroup;
+        if (!groupName) return;
+        group.addEventListener('click', (event) => {
+          const target = event.target;
+          if (!(target instanceof HTMLElement)) return;
+          const filter = target.closest('[data-filter]');
+          if (!(filter instanceof HTMLElement)) return;
+          const value = filter.dataset.filter;
+          if (!value) return;
+          group.querySelectorAll('[data-filter]').forEach((b) => b.classList.remove('active'));
+          filter.classList.add('active');
+          if (groupName === 'category' || groupName === 'age' || groupName === 'visibility') {
+            active[groupName] = value;
+            apply();
+          }
+        });
       });
+
+      // Apply the SSR defaults once on mount so archived entries (which the
+      // server renders into the feed) are hidden until the operator toggles
+      // visibility.
+      apply();
     })();
   </script>
 </BaseLayout>

@@ -1,10 +1,12 @@
 ---
 import type { MemoryEntry } from '@/lib/memory-loader';
 import { renderMarkdown } from '@/lib/markdown';
+import { daysSince, formatAgeLabel } from '@/lib/ui/time';
 
-/** Single notebook entry — left rail with category pill + dates, right column
- * with title + rendered markdown body. The data-category attribute drives
- * /notebook's category filter. */
+/** Single notebook entry — left rail with category pill + dates + age, right
+ * column with title + rendered markdown body. The `data-category`,
+ * `data-age-bucket`, and `data-archived` attributes drive /notebook's filters
+ * (category × age × archived-visibility, ANDed together). */
 interface Props {
   entry: MemoryEntry;
 }
@@ -12,11 +14,35 @@ interface Props {
 const { entry } = Astro.props;
 const bodyHtml = renderMarkdown(entry.body);
 const showUpdated = entry.updated && entry.updated !== entry.created;
+
+// Age is computed from the most recent touch: `updated` falls back to
+// `created`, which falls back to file mtime (already resolved in the loader).
+const touchedAt = entry.updated ?? entry.created;
+const days = daysSince(touchedAt);
+const ageLabel = formatAgeLabel(days);
+
+// Bucket the age into the same chip values /notebook's filter row uses. We
+// emit one bucket per entry so the filter script can match by string compare.
+function ageBucket(d: number | null): string {
+  if (d === null) return 'unknown';
+  if (d <= 7) return 'week';
+  if (d <= 30) return 'month';
+  if (d < 60) return 'recent';
+  return 'stale';
+}
+const bucket = ageBucket(days);
 ---
 
-<article class="memo" data-category={entry.category}>
+<article
+  class="memo"
+  data-category={entry.category}
+  data-age-bucket={bucket}
+  data-archived={entry.archived ? 'true' : 'false'}
+>
   <div class="meta">
     <span class="cat">{entry.category}</span>
+    {entry.archived && <><br /><span class="archived-tag">archived</span></>}
+    {ageLabel && <><br /><span class="age">{ageLabel}</span></>}
     {entry.created && <><br />written {entry.created}</>}
     {showUpdated && <><br />updated {entry.updated}</>}
   </div>

@@ -12,6 +12,13 @@ export interface MemoryEntry {
   updated: string | null;
   body: string;
   frontmatter: Record<string, string>;
+  /**
+   * True when the entry lives under `memory/archived/`. The archive workflow
+   * (the chat `archive_memory` tool) moves files there and appends an
+   * `## Archived` block to the body. Notebook UI uses this to hide entries by
+   * default and visually dim them when shown.
+   */
+  archived: boolean;
 }
 
 /**
@@ -66,7 +73,17 @@ async function parseMemoryFile(filePath: string, memoryRoot: string): Promise<Me
 
   const rel = path.relative(memoryRoot, filePath);
   const parts = rel.split(path.sep);
-  const category = parts.length > 1 ? (parts[0] ?? 'notes') : 'notes';
+  // Files under `memory/archived/...` are surfaced as their *original*
+  // category (the next path segment after `archived/`) so the filter chips
+  // don't grow an "archived" pseudo-category. The `archived` flag drives the
+  // hide / dim behaviour instead.
+  const archived = parts[0] === 'archived';
+  let category: string;
+  if (archived) {
+    category = parts.length > 2 ? (parts[1] ?? 'notes') : 'notes';
+  } else {
+    category = parts.length > 1 ? (parts[0] ?? 'notes') : 'notes';
+  }
 
   const created = frontmatter['created'] ?? null;
   const fmUpdated = frontmatter['updated'] ?? null;
@@ -81,6 +98,7 @@ async function parseMemoryFile(filePath: string, memoryRoot: string): Promise<Me
     updated,
     body: body.trim(),
     frontmatter,
+    archived,
   };
 }
 

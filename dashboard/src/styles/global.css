@@ -532,6 +532,24 @@ button {
   font-weight: 600;
   margin-bottom: 0.4rem;
 }
+.memo .age {
+  color: var(--ink-soft);
+}
+.memo .archived-tag {
+  display: inline-block;
+  padding: 0 4px;
+  background: var(--surface-mute);
+  border-radius: 2px;
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+/* Archived entries — dimmed when the operator chooses to reveal them via
+   /notebook's visibility filter. Matches the `.full-esc.dim` pattern. */
+.memo[data-archived='true'] {
+  opacity: 0.6;
+}
 
 /* ---- Canonical markdown-prose surface --------------------------------
  *

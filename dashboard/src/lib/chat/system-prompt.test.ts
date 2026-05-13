@@ -223,7 +223,13 @@ describe('buildSystemPrompt', () => {
     await seedPersona();
     const prompt = await buildSystemPrompt(tempDir);
     expect(prompt).toContain('`enrich_entry`');
-    expect(prompt).toContain('nine tools available');
+    expect(prompt).toContain('ten tools available');
+  });
+
+  it('lists archive_memory in the operator-greeting tool block', async () => {
+    await seedPersona();
+    const prompt = await buildSystemPrompt(tempDir);
+    expect(prompt).toContain('`archive_memory`');
   });
 
   it('lists adjust_param in the operator-greeting tool block', async () => {

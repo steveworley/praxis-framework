@@ -39,5 +39,29 @@ describe('assembleMemory', () => {
     const entries = await assembleMemory(tempDir);
     expect(entries.map((e) => e.title)).toEqual(['Thoughts', 'Alice']);
     expect(entries.map((e) => e.category)).toEqual(['notes', 'people']);
+    expect(entries.every((e) => e.archived === false)).toBe(true);
+  });
+
+  it('walks memory/archived/ and tags entries with archived: true', async () => {
+    await fs.mkdir(path.join(tempDir, 'memory', 'archived', 'people'), { recursive: true });
+    await fs.writeFile(
+      path.join(tempDir, 'memory', 'people', 'bob.md'),
+      `---\ncreated: 2026-05-01\nupdated: 2026-05-10\n---\n\n# Bob\n\nactive`,
+      'utf-8',
+    );
+    await fs.writeFile(
+      path.join(tempDir, 'memory', 'archived', 'people', 'carol.md'),
+      `---\ncreated: 2025-01-01\nupdated: 2025-01-02\n---\n\n# Carol\n\nstale`,
+      'utf-8',
+    );
+    const entries = await assembleMemory(tempDir);
+    const carol = entries.find((e) => e.slug === 'carol');
+    expect(carol).toBeDefined();
+    expect(carol?.archived).toBe(true);
+    // archived/ should not surface as a category — the entry keeps its
+    // original `people` category instead.
+    expect(carol?.category).toBe('people');
+    const categories = new Set(entries.map((e) => e.category));
+    expect(categories.has('archived')).toBe(false);
   });
 });
