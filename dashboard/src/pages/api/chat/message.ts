@@ -18,7 +18,7 @@ import {
   type PersistedToolCall,
 } from '@/lib/chat/conversation.js';
 import { buildSystemPrompt } from '@/lib/chat/system-prompt.js';
-import { CHAT_TOOLS } from '@/lib/chat/tool-schemas.js';
+import { getChatTools } from '@/lib/chat/tool-schemas.js';
 import { executeTool } from '@/lib/chat/tools.js';
 import { getRoleHome } from '@/lib/role-home.js';
 
@@ -101,6 +101,11 @@ export const POST: APIRoute = async ({ request }) => {
     return { ok: false, contentText: result.error };
   };
 
+  // Build the tool list per request so MCP catalog freshness doesn't require
+  // a dashboard restart; the catalog itself is module-cached and only re-hits
+  // unreachable servers past the per-server debounce window.
+  const chatTools = await getChatTools(roleHome);
+
   let assistantText: string;
   let toolCalls: PersistedToolCall[];
   let truncated = false;
@@ -109,7 +114,7 @@ export const POST: APIRoute = async ({ request }) => {
       systemPrompt,
       thread.turns,
       userContent,
-      CHAT_TOOLS,
+      chatTools,
       toolExecutor,
     );
     assistantText = result.text;

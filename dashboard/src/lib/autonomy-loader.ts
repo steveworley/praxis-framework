@@ -63,6 +63,13 @@ export interface AutonomySurface {
 
 export interface AutonomyConfig {
   surfaces: AutonomySurface[];
+  /**
+   * Per-server MCP allow/deny map. Keys are MCP server names as they appear in
+   * `PRAXIS_MCPS` (the prefix in tool names like `slack__post_message`). A
+   * server not listed here is **denied by default** — operators must opt in
+   * explicitly per server. See `isMcpAllowed` in `chat/autonomy-gate.ts`.
+   */
+  mcps?: Record<string, 'allow' | 'deny'>;
 }
 
 export interface AutonomousEdit {
@@ -107,7 +114,65 @@ export async function loadAutonomy(roleHome: string): Promise<AutonomyConfig | n
   } catch {
     return null;
   }
-  return { surfaces: parseAutonomyYaml(text) };
+  const config: AutonomyConfig = { surfaces: parseAutonomyYaml(text) };
+  const mcps = parseMcpsBlock(text);
+  if (mcps) config.mcps = mcps;
+  return config;
+}
+
+/**
+ * Pull the top-level `mcps:` block out of `autonomy.yaml`. Shape:
+ *
+ *   mcps:
+ *     slack: allow
+ *     gmail: allow
+ *     playwright: deny
+ *
+ * Returns `null` when the section is absent or empty. Values that aren't
+ * `allow` or `deny` are dropped (default-deny applies at the call site).
+ */
+export function parseMcpsBlock(text: string): Record<string, 'allow' | 'deny'> | null {
+  const lines = text.split('\n');
+  let i = 0;
+  let inBlock = false;
+  let blockIndent = -1;
+  const out: Record<string, 'allow' | 'deny'> = {};
+
+  while (i < lines.length) {
+    const raw = lines[i] ?? '';
+    const trimmed = raw.trim();
+
+    if (!inBlock) {
+      if (/^mcps\s*:\s*$/.test(trimmed) && raw.length - raw.trimStart().length === 0) {
+        inBlock = true;
+        blockIndent = 0;
+      }
+      i += 1;
+      continue;
+    }
+
+    if (trimmed.length === 0 || trimmed.startsWith('#')) {
+      i += 1;
+      continue;
+    }
+    const leading = raw.length - raw.trimStart().length;
+    if (leading <= blockIndent) {
+      // Next top-level key — block ends.
+      break;
+    }
+    const match = /^([A-Za-z_][\w:.-]*)\s*:\s*(.+?)\s*$/.exec(trimmed);
+    if (match) {
+      const key = (match[1] ?? '').trim();
+      const value = stripQuotes((match[2] ?? '').trim());
+      if (value === 'allow' || value === 'deny') {
+        out[key] = value;
+      }
+    }
+    i += 1;
+  }
+
+  if (Object.keys(out).length === 0) return null;
+  return out;
 }
 
 /**

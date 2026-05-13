@@ -15,6 +15,22 @@
 #
 # Open http://localhost:4321/ — / redirects to /setup if the role isn't
 # seeded yet, /interior once it is.
+#
+# === MCP servers ===
+#
+# The dashboard discovers MCP servers via the `PRAXIS_MCPS` env var. Format:
+#
+#   PRAXIS_MCPS=name1=http://host1:port,name2=http://host2:port
+#
+# Each declared server contributes one tool per method it exposes — the chat
+# surface registers them as `<name>__<method>` (e.g. `slack__post_message`).
+#
+# Per-server allow/deny lives in your role's `lib/autonomy.yaml` under an
+# `mcps:` block. Default for unlisted servers is `deny`.
+#
+# Sample MCP services are commented out below. Replace the placeholder image
+# names with images from the MCP ecosystem you trust; the dashboard talks to
+# whatever speaks the MCP HTTP transport on the `praxis` network.
 
 services:
   dashboard:
@@ -35,7 +51,42 @@ services:
     environment:
       PRAXIS_ROLE_HOME: /role
       PRAXIS_LOG_GLOB: "${PRAXIS_LOG_GLOB:-*/logs/*.jsonl}"
+      # Uncomment + extend after adding MCP services below. Each entry is
+      # `name=http://service-name:port` where `service-name` matches the
+      # compose service key. The `name` becomes the tool-name prefix.
+      # PRAXIS_MCPS: "slack=http://mcp-slack:8080,gmail=http://mcp-gmail:8080"
+    networks:
+      - praxis
     restart: unless-stopped
+
+  # === Sample MCP services ===
+  #
+  # Each MCP server runs as a sibling container on the `praxis` network. The
+  # dashboard hits `<url>/tools/list` at first use and `<url>/tools/call` per
+  # invocation. Use whatever images you trust from the MCP ecosystem.
+  #
+  # mcp-slack:
+  #   image: your-slack-mcp:latest
+  #   container_name: praxis-mcp-slack
+  #   environment:
+  #     SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN}
+  #     SLACK_APP_TOKEN: ${SLACK_APP_TOKEN}
+  #   networks:
+  #     - praxis
+  #   restart: unless-stopped
+  #
+  # mcp-gmail:
+  #   image: your-gmail-mcp:latest
+  #   container_name: praxis-mcp-gmail
+  #   environment:
+  #     GMAIL_OAUTH_TOKEN: ${GMAIL_OAUTH_TOKEN}
+  #   networks:
+  #     - praxis
+  #   restart: unless-stopped
+
+networks:
+  praxis:
+    driver: bridge
 
 volumes:
   praxis-node-modules:

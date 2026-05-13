@@ -134,6 +134,18 @@ export function headlineFor(
   toolName: string,
   payload: Record<string, unknown>,
 ): string {
+  // MCP tools are named `<server>__<method>`. The static-tool switch below
+  // would fall through to the default branch and surface the raw underscored
+  // shape; the operator-facing `/activity` view reads more naturally with a
+  // `mcp:` prefix and a `.` separator.
+  if (toolName.includes('__')) {
+    const separator = toolName.indexOf('__');
+    const server = toolName.slice(0, separator);
+    const method = toolName.slice(separator + 2);
+    if (server.length > 0 && method.length > 0) {
+      return `mcp: ${server}.${method}`;
+    }
+  }
   switch (toolName) {
     case 'write_memory': {
       const p = stringField(payload, 'path');

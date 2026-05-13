@@ -322,6 +322,17 @@ describe('headlineFor', () => {
     expect(headlineFor('mystery_tool', { path: 'x' })).toBe('mystery_tool');
   });
 
+  it('formats MCP tool names as `mcp: <server>.<method>`', () => {
+    expect(headlineFor('slack__post_message', {})).toBe('mcp: slack.post_message');
+    expect(headlineFor('gmail__send', { recipient: 'x' })).toBe('mcp: gmail.send');
+  });
+
+  it('handles MCP method names containing additional underscores', () => {
+    expect(headlineFor('playwright__browser_click', {})).toBe(
+      'mcp: playwright.browser_click',
+    );
+  });
+
   it('narrows defensively against non-string payload fields', () => {
     // Payload values arrive as `unknown` — non-string `path` must not slip
     // through to path manipulation and surface a "[object Object]" headline.

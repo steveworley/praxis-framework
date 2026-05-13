@@ -189,6 +189,52 @@ function surfaceMatches(surfacePath: string, target: string): boolean {
   return target === surfacePath;
 }
 
+export interface McpAllowed {
+  allowed: true;
+}
+
+export interface McpRefused {
+  allowed: false;
+  reason: string;
+}
+
+export type McpDecision = McpAllowed | McpRefused;
+
+/**
+ * Decide whether the role may call an MCP server. Per-server granularity only
+ * for MVP — per-method / per-recipient scoping (e.g. which Slack channels,
+ * which email addresses) is intentionally out of scope.
+ *
+ * Default deny: a server NOT listed under `mcps:` in `lib/autonomy.yaml` is
+ * refused. The refusal message names the server and points the operator at
+ * autonomy.yaml so it's actionable rather than mysterious.
+ */
+export async function isMcpAllowed(
+  roleHome: string,
+  serverName: string,
+): Promise<McpDecision> {
+  if (typeof serverName !== 'string' || serverName.length === 0) {
+    return { allowed: false, reason: 'MCP server name missing.' };
+  }
+  const autonomy = await loadAutonomy(roleHome);
+  const verdict = autonomy?.mcps?.[serverName];
+  if (verdict === 'allow') return { allowed: true };
+  if (verdict === 'deny') {
+    return {
+      allowed: false,
+      reason:
+        `MCP server '${serverName}' is denied in lib/autonomy.yaml. ` +
+        `Flip the entry under \`mcps:\` to \`allow\` to enable it.`,
+    };
+  }
+  return {
+    allowed: false,
+    reason:
+      `MCP server '${serverName}' is not declared in lib/autonomy.yaml. ` +
+      `Add \`mcps:\n  ${serverName}: allow\` to enable it. Default is deny.`,
+  };
+}
+
 /** Test seam: hand-pick the constitutional list to assert against. */
 export const _internals = {
   CONSTITUTIONAL_PATHS,
