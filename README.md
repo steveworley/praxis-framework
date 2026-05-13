@@ -52,7 +52,7 @@ Mounts the role's repo into the container and runs the dashboard at `http://loca
 
 ## Architecture
 
-See [`docs/architecture.md`](docs/architecture.md) for the directory shape, [`docs/creating-a-role.md`](docs/creating-a-role.md) for the bootstrap walkthrough, and [`docs/philosophy.md`](docs/philosophy.md) for why the conventions are shaped this way.
+See [`docs/architecture.md`](docs/architecture.md) for the directory shape, [`docs/creating-a-role.md`](docs/creating-a-role.md) for the bootstrap walkthrough, [`docs/philosophy.md`](docs/philosophy.md) for why the conventions are shaped this way, and [`docs/comparison.md`](docs/comparison.md) for how praxis compares to self-improving agent frameworks.
 
 ## Roadmap
 
