@@ -10,12 +10,14 @@ import { emitToolActivity } from './activity-emitter.js';
 import { executeAppendEntry } from './append-entry.js';
 import { executeArchiveMemory } from './archive-memory.js';
 import { isWriteAllowed } from './autonomy-gate.js';
+import { executeCompleteVerb } from './complete-verb.js';
 import { executeConsolidateMemory } from './consolidate-memory.js';
 import { executeEnrichEntry } from './enrich-entry.js';
 import {
   executeUpdateOutputStatus,
   executeWriteOutput,
 } from './output-tools.js';
+import { executeRunVerb } from './run-verb.js';
 import { localDateString, localIsoString } from './time-helpers.js';
 
 /**
@@ -358,6 +360,8 @@ export type ToolName =
   | 'consolidate_memory'
   | 'create_escalation'
   | 'propose_verb'
+  | 'run_verb'
+  | 'complete_verb'
   | 'append_entry'
   | 'enrich_entry'
   | 'adjust_param'
@@ -371,6 +375,8 @@ const KNOWN_TOOLS: ReadonlySet<string> = new Set([
   'consolidate_memory',
   'create_escalation',
   'propose_verb',
+  'run_verb',
+  'complete_verb',
   'append_entry',
   'enrich_entry',
   'adjust_param',
@@ -380,16 +386,33 @@ const KNOWN_TOOLS: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * Tools that write their own action-typed activity entry (not the generic
+ * `tool_call`) and therefore must be skipped by the auto-instrumentation
+ * post-emit step. Keeping the exemption list as a set — rather than
+ * chained `&&` conditions — makes adding the next self-logging tool a
+ * single-line edit.
+ */
+const SELF_LOGGING_TOOLS: ReadonlySet<string> = new Set([
+  'log_decision',
+  'run_verb',
+  'complete_verb',
+]);
+
+/**
  * Dispatch a tool call. Always returns a ToolResult — never throws. The
  * caller (the tool-use loop) translates ok/fail into the Anthropic
  * tool_result block shape.
  *
- * After a successful tool call (except `log_decision`, which self-logs), the
- * dispatcher auto-emits an activity-log entry via `emitToolActivity` so the
- * `/activity` page and `/health` panel see the full tool surface. An emit
- * failure is downgraded to a `data.activity_warning` on the existing success
- * envelope — the underlying artifact already landed, so we never demote a
- * successful tool call to a failure on audit-log trouble.
+ * After a successful tool call (except the self-logging tools — see
+ * {@link SELF_LOGGING_TOOLS}), the dispatcher auto-emits an activity-log
+ * entry via `emitToolActivity` so the `/activity` page and `/health` panel
+ * see the full tool surface. Self-logging tools (`log_decision`,
+ * `run_verb`, `complete_verb`) write their own action-typed entry and are
+ * exempt to avoid double-logging.
+ *
+ * An emit failure is downgraded to a `data.activity_warning` on the
+ * existing success envelope — the underlying artifact already landed, so
+ * we never demote a successful tool call to a failure on audit-log trouble.
  */
 export async function executeTool(
   name: string,
@@ -406,10 +429,11 @@ export async function executeTool(
     return fail(`Tool ${name} threw: ${errorMessage(e)}`);
   }
 
-  // Auto-emit activity for every successful non-log_decision tool. We exempt
-  // `log_decision` because it already writes its own `action: 'decision'`
-  // entry to the same JSONL file — auto-emitting would double-log.
-  if (result.ok && name !== 'log_decision') {
+  // Auto-emit activity for every successful tool — except those that
+  // self-log (see `SELF_LOGGING_TOOLS`). Self-logging tools write their own
+  // action-typed entry to the same JSONL file; auto-emitting would
+  // double-log and pollute the activity feed.
+  if (result.ok && !SELF_LOGGING_TOOLS.has(name)) {
     const payload: Record<string, unknown> = { ...result.data };
     const shortSha = result.data['commit_short_sha'];
     if (typeof shortSha === 'string') {
@@ -442,6 +466,10 @@ async function dispatchTool(
       return executeCreateEscalation(roleHome, input);
     case 'propose_verb':
       return executeProposeVerb(roleHome, input);
+    case 'run_verb':
+      return executeRunVerb(roleHome, input);
+    case 'complete_verb':
+      return executeCompleteVerb(roleHome, input);
     case 'append_entry':
       return executeAppendEntry(roleHome, input);
     case 'enrich_entry':

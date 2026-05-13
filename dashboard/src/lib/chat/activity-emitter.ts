@@ -37,18 +37,15 @@ export async function emitToolActivity(
   payload: Record<string, unknown>,
   now: Date = new Date(),
 ): Promise<CommitResult> {
-  const rel = `logs/${localDateString(now)}.jsonl`;
-  const abs = path.join(roleHome, rel);
-
   // Build the JSONL record. Field order matches `praxis log` JSONL —
   // timestamp → agent → action → tool → headline → payload extras — so the
   // activity loader and the operator's `tail -f` both see consistent shape.
+  const headline = headlineFor(toolName, payload);
   const record: Record<string, unknown> = {
-    timestamp: localIsoString(now),
     agent: 'chat',
     action: 'tool_call',
     tool: toolName,
-    headline: headlineFor(toolName, payload),
+    headline,
   };
   for (const [key, value] of Object.entries(payload)) {
     // Refuse to shadow the conventional fields — preserves the contract that
@@ -59,7 +56,56 @@ export async function emitToolActivity(
     record[key] = value;
   }
 
-  const line = JSON.stringify(record);
+  return emitActivity(roleHome, record, {
+    scope: 'activity',
+    subject: `log tool_call ${toolName}`,
+    now,
+  });
+}
+
+/**
+ * Lower-level activity emitter used by self-logging tools whose `action`
+ * value is *not* `tool_call` (today: `verb_started`, `verb_completed` — and
+ * any future tool that wants its own action-type alongside the generic
+ * `tool_call` stream).
+ *
+ * The emitter:
+ *   1. Prepends a `timestamp` (local-ISO, matching `praxis log` shape) to the
+ *      record so callers don't have to remember to.
+ *   2. Appends a single JSONL line to `logs/<date>.jsonl`.
+ *   3. Commits the new line as a `role(<scope>): <subject>` commit.
+ *
+ * Caller responsibilities:
+ *   - Provide `agent` (typically `'chat'`), `action`, and a `headline`
+ *     suitable for the activity feed.
+ *   - Provide any other action-specific fields (the `verb` slug, the
+ *     `outcome`, etc.) on the record. Conventional fields aren't shadowed —
+ *     the caller's `agent`/`action`/`headline` win, but `timestamp` is always
+ *     emitter-stamped to keep the daily log ordered.
+ *
+ * Soft failure: same contract as {@link emitToolActivity}. `commitChange`
+ * never throws; the JSONL append might. The dispatcher wraps emit in
+ * `try/catch` and attaches a warning to the tool result rather than demoting
+ * the call to a failure.
+ */
+export async function emitActivity(
+  roleHome: string,
+  record: Record<string, unknown>,
+  opts: { scope: string; subject: string; body?: string; now?: Date },
+): Promise<CommitResult> {
+  const now = opts.now ?? new Date();
+  const rel = `logs/${localDateString(now)}.jsonl`;
+  const abs = path.join(roleHome, rel);
+
+  // Always lead with `timestamp` regardless of what the caller passed —
+  // canonical position keeps the JSONL stream parseable by line.
+  const stamped: Record<string, unknown> = { timestamp: localIsoString(now) };
+  for (const [key, value] of Object.entries(record)) {
+    if (key === 'timestamp') continue;
+    stamped[key] = value;
+  }
+
+  const line = JSON.stringify(stamped);
   await fs.mkdir(path.dirname(abs), { recursive: true });
   await fs.appendFile(abs, `${line}\n`, 'utf-8');
 
@@ -67,8 +113,9 @@ export async function emitToolActivity(
     roleHome,
     actor: 'role',
     filePaths: [rel],
-    scope: 'activity',
-    subject: `log tool_call ${toolName}`,
+    scope: opts.scope,
+    subject: opts.subject,
+    ...(opts.body ? { body: opts.body } : {}),
   });
 }
 
