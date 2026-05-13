@@ -40,6 +40,8 @@ console.log(result.filesWritten);
 
 `SeedInput` is validated with Zod; invalid input throws `SeedError` with `code: 'INVALID_INPUT'`. Refer to the source in [`src/types.ts`](./src/types.ts) for the full schema.
 
+If the target directory isn't already a git repository, `seedRole()` runs `git init --initial-branch=main` before writing any files. Existing repos are left untouched — the seed never re-inits or renames the operator's chosen default branch. Commits are the caller's responsibility.
+
 ## License
 
 MIT — see [LICENSE](https://github.com/steveworley/praxis-framework/blob/main/LICENSE).

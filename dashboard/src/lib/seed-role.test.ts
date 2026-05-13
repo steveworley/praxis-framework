@@ -150,4 +150,55 @@ describe('seedRole (dashboard wizard)', () => {
 
     await expect(fs.access(path.join(tmp, 'template'))).rejects.toThrow();
   });
+
+  it('seeds successfully into a non-git directory, auto-initialising the repo', async () => {
+    // No initFrameworkCheckout — the dir is empty and non-git, mirroring the
+    // docker-run-against-mkdir flow. The seed package owns the `git init`;
+    // the dashboard's wizard just runs against the resulting repo. We do
+    // need a git identity to be available for the wizard's two commits,
+    // which the seed doesn't (and shouldn't) configure — so we set it on
+    // the freshly-initialised repo between the seed call and the commits.
+    // The simplest way to do that here is to pre-set environment-level
+    // identity via `git -c` is not feasible (the dashboard runs bare
+    // commits) — so configure local identity right after the seed inits.
+    // To exercise the full wizard path without forking the production flow,
+    // we point GIT_CONFIG_GLOBAL at a tiny config file with identity in it.
+    const globalConfig = path.join(tmp, '.gitconfig.test');
+    await fs.writeFile(
+      globalConfig,
+      '[user]\n\tname = Wizard Test\n\temail = wizard@example.test\n[commit]\n\tgpgsign = false\n',
+      'utf-8',
+    );
+    const prevGlobal = process.env['GIT_CONFIG_GLOBAL'];
+    const prevNoSystem = process.env['GIT_CONFIG_NOSYSTEM'];
+    process.env['GIT_CONFIG_GLOBAL'] = globalConfig;
+    process.env['GIT_CONFIG_NOSYSTEM'] = '1';
+    try {
+      const before = simpleGit(tmp);
+      expect(await before.checkIsRepo()).toBe(false);
+
+      const result = await seedRole(sampleRequest(), {
+        roleHome: tmp,
+        templateRoot: TEMPLATE_ROOT,
+      });
+
+      expect(result.ok).toBe(true);
+      expect(result.commits).toEqual([
+        'feat: seed role from praxis-framework template',
+        'chore: tidy framework-only files post-seed',
+      ]);
+
+      const after = simpleGit(tmp);
+      expect(await after.checkIsRepo()).toBe(true);
+      const log = await after.log();
+      expect(log.all.length).toBe(2);
+      expect(log.all[0]?.message).toContain('chore: tidy framework-only files post-seed');
+      expect(log.all[1]?.message).toContain('feat: seed role from praxis-framework template');
+    } finally {
+      if (prevGlobal === undefined) delete process.env['GIT_CONFIG_GLOBAL'];
+      else process.env['GIT_CONFIG_GLOBAL'] = prevGlobal;
+      if (prevNoSystem === undefined) delete process.env['GIT_CONFIG_NOSYSTEM'];
+      else process.env['GIT_CONFIG_NOSYSTEM'] = prevNoSystem;
+    }
+  });
 });

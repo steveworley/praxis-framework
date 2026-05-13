@@ -62,9 +62,10 @@ interface SeedEnv {
  *   2. chore: tidy framework-only files post-seed
  *
  * Refuses if the role is already populated or the working tree is dirty.
- * The actual file writing is delegated to `@praxis-framework/seed`; the dashboard
- * keeps the git/repo concerns here because they're specific to seeding
- * the framework checkout itself, not seeding into an arbitrary directory.
+ * The actual file writing — and the `git init` for a fresh role home — is
+ * delegated to `@praxis-framework/seed`. The dashboard layer only owns the
+ * two-commit dance and the framework-checkout tidy step that strips
+ * `template/`, `examples/`, and friends post-seed.
  */
 export async function seedRole(req: SeedRequest, env: SeedEnv): Promise<SeedResult> {
   const { roleHome, templateRoot } = env;
@@ -76,19 +77,19 @@ export async function seedRole(req: SeedRequest, env: SeedEnv): Promise<SeedResu
     throw new SeedError(`Template directory missing: ${templateRoot}`, 500);
   }
 
+  // The seed package auto-initialises `roleHome` as a git repo on first run,
+  // so we don't pre-check `checkIsRepo()` here. We only inspect status when
+  // the dir is already a repo — for a fresh non-git dir there's nothing to
+  // be dirty about. This keeps the docker-run-against-empty-dir flow clean.
   const git = simpleGit(roleHome);
-  if (!(await git.checkIsRepo())) {
-    throw new SeedError(
-      'Role home is not a git repository. Initialise one (git init) before running the wizard.',
-      400,
-    );
-  }
-  const status = await git.status();
-  if (!isCleanIgnoringPraxis(status)) {
-    throw new SeedError(
-      'Working tree has uncommitted changes. Commit or stash them before running the wizard.',
-      409,
-    );
+  if (await git.checkIsRepo()) {
+    const status = await git.status();
+    if (!isCleanIgnoringPraxis(status)) {
+      throw new SeedError(
+        'Working tree has uncommitted changes. Commit or stash them before running the wizard.',
+        409,
+      );
+    }
   }
 
   // ---- Commit 1: seed --------------------------------------------------

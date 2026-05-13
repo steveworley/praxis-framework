@@ -1,6 +1,6 @@
 # @praxis-framework/cli
 
-Operator CLI for the [praxis-framework](https://github.com/steveworley/praxis-framework). Scaffolds a populated agent role from interactive prompts (or a JSON config), ready to drop into a compose stack.
+Operator CLI for the [praxis-framework](https://github.com/steveworley/praxis-framework). Use this for **scripted / CI setup** or for running `praxis log` from inside verbs. For first-time exploration of the framework, the [`docker run` flow](https://github.com/steveworley/praxis-framework#quickstart) is lower friction — no install, the dashboard wizard writes the same files into the mounted directory.
 
 ## Install
 
@@ -17,10 +17,10 @@ mkdir my-role && cd my-role
 
 # Interactive wizard — walks organisation context, role definition,
 # voice traits, capabilities, inhibitions, and verbs.
-npx @praxis-framework/cli init
+praxis init
 
 # Or hand it a config file (useful for CI / reproducible setups).
-npx @praxis-framework/cli init --config role.json --path .
+praxis init --config role.json --path .
 
 # Set your API key and bring the dashboard up.
 cp .env.example .env && vim .env   # set ANTHROPIC_API_KEY
@@ -29,7 +29,7 @@ docker compose up                   # pulls ghcr.io/steveworley/praxis-framework
 
 Open `http://localhost:4321/`.
 
-The wizard emits a populated role directory with `persona.md`, `CLAUDE.md`, `verbs/`, `lib/`, `memory/`, `escalations/`, `output/`, plus `docker-compose.yml` + `.env.example` so the role is runnable with one `docker compose up` — no framework clone required. See `examples/sample-role.json` for the config schema.
+The CLI emits a populated role directory with `persona.md`, `CLAUDE.md`, `verbs/`, `lib/`, `memory/`, `escalations/`, `output/`, plus `docker-compose.yml` + `.env.example` so the role is runnable with one `docker compose up` — no framework clone required. The seed auto-initialises the target as a git repo on `main`, so you can run `praxis init` against a freshly-`mkdir`'d empty dir without pre-running `git init`. Commits are left for you to make when you're ready. See `examples/sample-role.json` for the config schema.
 
 ## Commands
 

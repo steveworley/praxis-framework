@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
+import { simpleGit } from 'simple-git';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { InitConfigError, runInitConfig } from './init-config.js';
@@ -124,6 +125,25 @@ describe('runInitConfig', () => {
     expect((err as InitConfigError).code).toBe('CONFIG_INVALID_SCHEMA');
     // Sanity-check the message mentions at least one missing path.
     expect((err as InitConfigError).message).toContain('organisation');
+  });
+
+  it('initialises the target as a git repo when it is not one already', async () => {
+    const configPath = path.join(tmp, 'role.json');
+    const targetPath = path.join(tmp, 'out');
+    await fs.mkdir(targetPath, { recursive: true });
+    await fs.writeFile(configPath, JSON.stringify(sampleConfig), 'utf-8');
+
+    const before = simpleGit(targetPath);
+    expect(await before.checkIsRepo()).toBe(false);
+
+    const result = await runInitConfig({ configPath, targetPath });
+    expect(result.filesWritten.length).toBeGreaterThan(0);
+
+    const after = simpleGit(targetPath);
+    expect(await after.checkIsRepo()).toBe(true);
+    // Default branch should be `main` when the seed initialises a fresh repo.
+    const head = await after.raw(['symbolic-ref', 'HEAD']);
+    expect(head.trim()).toBe('refs/heads/main');
   });
 
   it('passes --overwrite through to seedRole', async () => {

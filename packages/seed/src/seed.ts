@@ -1,6 +1,8 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
+import { simpleGit } from 'simple-git';
+
 import { buildSeededCatalog, renderToolsYaml } from './catalog.js';
 import { resolveTemplatePath } from './template.js';
 import { findTrait } from './traits.js';
@@ -96,9 +98,13 @@ const GITKEEP_LEAVES: string[] = [
 /**
  * Seed a praxis role from the framework template into `targetPath`.
  *
- * Pure file IO — no git, no commits, no environment side-effects beyond
- * writing into the target. Callers (dashboard, CLI) layer their own
- * commit / approval / cleanup behaviour around the result.
+ * The seed owns one repo concern: if `targetPath` isn't already a git
+ * repository, it runs `git init --initial-branch=main` before writing
+ * any files. Existing repos are left alone (no branch rename, no
+ * re-init). Beyond that, the seed performs only file IO — no commits,
+ * no environment side-effects beyond writing into the target. Callers
+ * (dashboard, CLI) layer their own commit / approval / cleanup behaviour
+ * around the result.
  */
 export async function seedRole(
   rawInput: SeedInput,
@@ -156,6 +162,15 @@ export async function seedRole(
 
   const filesWritten: string[] = [];
   const filesSkipped: string[] = [];
+
+  // Auto-initialise the target as a git repo if it isn't one already. The
+  // seed's contract is "take a dir (empty or otherwise), produce a populated,
+  // version-controlled role" — callers don't need to pre-run `git init`. If
+  // the operator already ran it (perhaps with their own branch preferences),
+  // we no-op and preserve their setup. The target dir must exist; we don't
+  // mkdir it (that's the caller's job — auto-creating a parent of the wrong
+  // path would be worse than failing here).
+  await ensureGitRepo(absTarget);
 
   // Materialise directories first.
   for (const dir of SEED_DIRS) {
@@ -496,6 +511,37 @@ function prettify(slug: string): string {
     .split('-')
     .map((p) => (p.length > 0 ? (p[0]?.toUpperCase() ?? '') + p.slice(1) : p))
     .join(' ');
+}
+
+/**
+ * Ensure `absTarget` is a git repository. If `checkIsRepo()` reports false
+ * (no `.git` discovered), run `git init --initial-branch=main`. If the dir
+ * is already a repo, do nothing — we preserve the operator's choice of
+ * default branch and any other prior config.
+ *
+ * Failures here are rare (missing git binary, disk permissions) and surface
+ * as `SeedError` with `WRITE_FAILED` so the caller's existing error handling
+ * keeps working. The dir must exist before this runs — if it doesn't,
+ * `simple-git`'s base-dir check throws an unambiguous error we re-raise.
+ */
+async function ensureGitRepo(absTarget: string): Promise<void> {
+  if (!(await pathExists(absTarget))) {
+    throw new SeedError(
+      `Target directory does not exist: ${absTarget}. Create it before seeding.`,
+      'WRITE_FAILED',
+    );
+  }
+  const git = simpleGit(absTarget);
+  try {
+    if (await git.checkIsRepo()) return;
+    await git.init({ '--initial-branch': 'main' });
+  } catch (e: unknown) {
+    const cause = e instanceof Error ? e.message : String(e);
+    throw new SeedError(
+      `Failed to initialise git repository at ${absTarget}: ${cause}`,
+      'WRITE_FAILED',
+    );
+  }
 }
 
 async function pathExists(p: string): Promise<boolean> {
