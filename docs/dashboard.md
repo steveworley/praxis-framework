@@ -97,7 +97,7 @@ What the chat reads when assembling the system prompt:
 | `persona.md` | Full body (sans H1) — voice, identity, capabilities, hard inhibitions |
 | `verbs/*.md` | Slug + one-liner per live verb (from frontmatter `summary:` / `description:` / `purpose:`, or the first non-heading line) |
 | `CLAUDE.md` § Hard rules | The hard-rules block (matched on `## Hard rules` heading, sliced to the next section) |
-| `lib/autonomy.yaml` | Open surfaces (`mode != gated`) become the allow list; `persona.md`, `verbs/*.md`, `CLAUDE.md`, and `lib/*` stay on the deny list regardless |
+| `lib/autonomy.yaml` | Open surfaces (`mode != gated`) become the allow list; the hard-coded `CONSTITUTIONAL_PATHS` (`persona.md`, `CLAUDE.md`, `lib/customers.yaml`, `lib/compliance.yaml`, `lib/autonomy.yaml`, `lib/tools.yaml`) plus direct `.md` children of `verbs/` stay on the deny list regardless. Other `lib/*` files follow whatever `lib/autonomy.yaml` declares for them. |
 | `lib/tools.yaml` | Capability name + description per entry |
 
 Conversations land at `<role-home>/memory/conversations/<thread_id>.md` in the same markdown shape as every other entry in the persona's notebook. Operators can grep, diff, or hand-edit them.
@@ -106,16 +106,21 @@ Attachments uploaded from the composer land at `<role-home>/lib/uploads/<thread_
 
 ### The learning loop
 
-The chat surface is where the non-technical operator's role *grows*. Every chat turn runs an Anthropic tool-use loop with four growth tools exposed to the model:
+The chat surface is where the non-technical operator's role *grows*. Every chat turn runs an Anthropic tool-use loop with a typed toolset exposed to the model, sorted into three groups by intent:
 
-| Tool | Writes to |
-|---|---|
-| `write_memory` | `memory/<category>/<slug>.md` |
-| `create_escalation` | `escalations/<date>-<random>-<slug>.md` |
-| `propose_verb` | `verbs/proposed/<slug>.md` |
-| `log_decision` | `logs/<date>.jsonl` or `campaigns/<id>/logs/...` |
+| Group | Tool | Writes to |
+|---|---|---|
+| Growth | `write_memory` | `memory/<category>/<slug>.md` |
+| Growth | `create_escalation` | `escalations/<date>-<random>-<slug>.md` |
+| Growth | `propose_verb` | `verbs/proposed/<slug>.md` |
+| Growth | `log_decision` | `logs/<date>.jsonl` or `campaigns/<id>/logs/...` |
+| Lib surgery | `append_entry` | operator-opened `append-only` YAML surface (e.g. `lib/research-strategies.yaml`) |
+| Lib surgery | `enrich_entry` | operator-opened `inline-enrichment` YAML surface (e.g. `lib/team.yaml`) |
+| Lib surgery | `adjust_param` | operator-opened `bounded` YAML surface (e.g. `lib/warmup.yaml`) |
+| Work product | `write_output` | `output/<type>/<slug>.md` (records nest under `<entity_type>/<entity_id>/`) |
+| Work product | `update_output_status` | status frontmatter on an existing `output/<type>/<slug>.md` |
 
-Every tool call is gated by `lib/autonomy.yaml` *and* a hard-coded constitutional list. Constitutional surfaces (`persona.md`, `verbs/*.md` outside `verbs/proposed/`, `lib/customers.yaml`, `lib/compliance.yaml`, `lib/team.yaml`, `lib/autonomy.yaml`, `CLAUDE.md`) are refused regardless of yaml — the chat surface is never the place to mutate the role's constitution.
+Every tool call is gated by `lib/autonomy.yaml` *and* a hard-coded constitutional list. Constitutional surfaces — `persona.md`, `CLAUDE.md`, `lib/customers.yaml`, `lib/compliance.yaml`, `lib/autonomy.yaml`, `lib/tools.yaml`, plus direct `.md` children of `verbs/` (live playbooks, not `verbs/proposed/`) — are refused regardless of yaml. Other `lib/*` files are operator-opened: the role can write to them in whichever mode `lib/autonomy.yaml` declares.
 
 Tool calls persist on the assistant turn as an HTML-comment-fenced JSON block inside the thread markdown file; the dashboard renders them inline below the turn label. Refusals (gated surface, duplicate slug, malformed input) render in the warning colour and tell the model why — the model can adjust and try again.
 
@@ -179,6 +184,9 @@ Every dashboard-mediated mutation — chat-side tool calls and operator-side tri
 | `create_escalation` (chat) | `Praxis Role <role@praxis.local>` | `role(escalation): file <kind> — <slug>` |
 | `propose_verb` (chat) | `Praxis Role <role@praxis.local>` | `role(verb): propose <slug>` |
 | `log_decision` (chat) | `Praxis Role <role@praxis.local>` | `role(decision): log <decision_type>` |
+| `append_entry` (chat) | `Praxis Role <role@praxis.local>` | `role(lib): append <surface>` |
+| `enrich_entry` (chat) | `Praxis Role <role@praxis.local>` | `role(lib): enrich <surface>` |
+| `adjust_param` (chat) | `Praxis Role <role@praxis.local>` | `role(lib): adjust <surface>:<key>` |
 | `write_output` (chat) | `Praxis Role <role@praxis.local>` | `role(output): write <type> <slug>` |
 | `update_output_status` (chat) | `Praxis Role <role@praxis.local>` | `role(output): status <slug>: <prev> → <next>` |
 | `POST /api/output/.../{slug}` (dashboard) | operator (from `git config`) | `operator(output): status <slug>: <prev> → <next>` |
@@ -223,7 +231,7 @@ Both commits are visible in `git log` and can be reverted independently. The wiz
 - **Phase 0** (shipped): read-only role-watcher, hosted via Astro on the host
 - **Phase 1** (shipped — Dockerfile + compose): dockerized; framework repo mounted as a volume
 - **Phase 3** (shipped — the wizard): role-planning UX in `/setup`; converts the framework into a populated role
-- **Phase 2 (chat MVP)** (shipped): `/chat` ships the non-technical operator's conversational runtime; persona-as-system-prompt; persisted conversations under `memory/conversations/`. Tool use deferred to a follow-up.
+- **Phase 2 (chat MVP)** (shipped): `/chat` ships the non-technical operator's conversational runtime; persona-as-system-prompt; persisted conversations under `memory/conversations/`; tool-use loop wired end-to-end with the typed toolset gated by `lib/autonomy.yaml` and `CONSTITUTIONAL_PATHS`.
 - **Phase 4** (planned): verb-tag taxonomy from verb frontmatter, verbs grouped by tag in the dashboard
 
 ## What it isn't

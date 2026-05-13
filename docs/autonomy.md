@@ -148,7 +148,7 @@ Whatever surfaces are open, three things hold:
 
 1. **Visibility** — every autonomous edit is a git commit signed by the role (`--author="{role full name} <{role email}>"`). The dashboard's `/role` page surfaces "Recent edits by {role}" with a diff preview. Operators read it like a manager reviewing a direct report's working files.
 
-   Actor convention: dashboard-mediated commits use two synthetic identities so `git log --author=` filtering stays clean — `Praxis Role <role@praxis.local>` for autonomous chat-side writes (`write_memory`, `create_escalation`, `propose_verb`, `log_decision`), and the operator's configured `user.name`/`user.email` (falling back to `Operator <operator@praxis.local>` when no git identity is set) for triage-side actions (accept/decline/comment escalations, accept/decline/edit proposed verbs). Commit subjects follow conventional-commit shape: `role(<scope>): <subject>` and `operator(triage): <subject>` respectively. Operators who drive the role via Claude Code commit under their own git identity as usual — the synthetic actors only apply to dashboard-mediated mutations.
+   Actor convention: dashboard-mediated commits use two synthetic identities so `git log --author=` filtering stays clean — `Praxis Role <role@praxis.local>` for autonomous chat-side writes (`write_memory`, `create_escalation`, `propose_verb`, `log_decision`, `append_entry`, `enrich_entry`, `adjust_param`, `write_output`, `update_output_status`), and the operator's configured `user.name`/`user.email` (falling back to `Operator <operator@praxis.local>` when no git identity is set) for triage-side actions (accept/decline/comment escalations, accept/decline/edit proposed verbs). Commit subjects follow conventional-commit shape: `role(<scope>): <subject>` and `operator(triage): <subject>` respectively. Operators who drive the role via Claude Code commit under their own git identity as usual — the synthetic actors only apply to dashboard-mediated mutations.
 
 2. **Reversibility** — `git revert <sha>` is the rollback. Every autonomous edit is one commit, attributed to the role, on a known set of paths. No autonomous edit is irreversible.
 
@@ -156,7 +156,7 @@ Whatever surfaces are open, three things hold:
 
 ## Co-authoring constitutional changes
 
-`gated` doesn't mean "edit by hand in your IDE." The constitutional surfaces (`persona.md`, live `verbs/*.md`, `CLAUDE.md`, `lib/*`) stay off-limits to the role's autonomous tool calls, but the dashboard ships an *operator-driven* path for applying changes that the role asked for via an `improvement` escalation. The flow is:
+`gated` doesn't mean "edit by hand in your IDE." The constitutional surfaces (`persona.md`, live `verbs/*.md`, `CLAUDE.md`, `lib/customers.yaml`, `lib/compliance.yaml`, `lib/autonomy.yaml`, `lib/tools.yaml`) stay off-limits to the role's autonomous tool calls, but the dashboard ships an *operator-driven* path for applying changes that the role asked for via an `improvement` escalation. The flow is:
 
 1. The role files an `improvement` escalation (e.g. *"my voice is too formal for engineering contacts; can we add a more concise mode?"*).
 2. The operator accepts the escalation on `/triage`.

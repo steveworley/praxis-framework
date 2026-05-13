@@ -92,9 +92,13 @@ Every dashboard-mediated mutation lands as a git commit on the role's repo so op
 | Chat-side `append_entry` | `Praxis Role <role@praxis.local>` | `role(lib): append <surface-name>` |
 | Chat-side `enrich_entry` | `Praxis Role <role@praxis.local>` | `role(lib): enrich <surface-name>` |
 | Chat-side `adjust_param` | `Praxis Role <role@praxis.local>` | `role(lib): adjust <surface-name>:<key>` |
+| Chat-side `write_output` | `Praxis Role <role@praxis.local>` | `role(output): write <type> <slug>` |
+| Chat-side `update_output_status` | `Praxis Role <role@praxis.local>` | `role(output): status <slug>: <prev> → <next>` |
 | Chat-side `log_decision` | `Praxis Role <role@praxis.local>` | `role(decision): log <decision_type>` |
 | Triage accept/decline/comment escalation | operator (from `git config`) | `operator(triage): <accept\|decline\|comment> escalation <id>` |
 | Triage accept/decline/edit proposed verb | operator (from `git config`) | `operator(triage): <accept\|decline\|edit> proposed verb <slug>` |
+| Output status update (dashboard POST) | operator (from `git config`) | `operator(output): status <slug>: <prev> → <next>` |
+| Co-author apply (triage/draft) | operator (from `git config`) | `operator(<persona\|claude-md\|verb\|lib>): co-author <summary> (#<escalation_id>)` with `Co-Authored-By: Praxis Role` trailer |
 
 `git log --author=Praxis\ Role` shows everything the role wrote autonomously through chat. `git log --author=<your-email>` shows the operator-side review actions. If the role home isn't yet a git repo when a mutation lands, the audit module auto-initialises one and plants a `chore: praxis init audit baseline` commit attributed to the operator before the mutation's own commit. If the operator's git identity isn't configured, operator-side commits fall back to `Operator <operator@praxis.local>` and the dashboard surfaces a soft warning inviting the operator to set `user.name`/`user.email`.
 

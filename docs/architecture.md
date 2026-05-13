@@ -167,7 +167,7 @@ See [`creating-a-role.md`](creating-a-role.md) for a walkthrough.
 Praxis hosts two runtimes for two operator profiles:
 
 - **Claude Code on the host** is the technical operator's runtime. The operator opens a Claude Code session in the role's directory; CLAUDE.md loads; the agent works against the conventions with full file/shell access.
-- **The dashboard's `/chat` surface** is the non-technical operator's runtime. The model is fed the role's interior as a system prompt (persona, verbs, hard rules, autonomy, tools) so it embodies the role in conversation. Tool use is intentionally not enabled in the MVP — the model replies in text only.
+- **The dashboard's `/chat` surface** is the non-technical operator's runtime. The model is fed the role's interior as a system prompt (persona, verbs, hard rules, autonomy, tools) so it embodies the role in conversation. Tool use is enabled end-to-end and gated by `lib/autonomy.yaml` plus the hard-coded `CONSTITUTIONAL_PATHS` list in `dashboard/src/lib/chat/autonomy-gate.ts`. Every tool call is operator-visible inline below the turn label with a clickable commit SHA; the Reflect button drives the same loop.
 
 Both runtimes consume the same role files and write to the same conventions. They are different lenses on the same role.
 
