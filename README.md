@@ -1,9 +1,8 @@
 # Praxis
 
-```
- █▀█ █▀█ ▄▀█ ▀▄▀ █ █▀▀
- █▀▀ █▀▄ █▀█ █ █ █ ▄▄█
-```
+<p>
+  <img src="docs/assets/praxis-logo.png" alt="Praxis" width="360" />
+</p>
 
 _role-based agents that fit your business_
 
