@@ -381,6 +381,43 @@ export const WRITE_OUTPUT_TOOL: Anthropic.Tool = {
   },
 };
 
+export const ARCHIVE_MEMORY_TOOL: Anthropic.Tool = {
+  name: 'archive_memory',
+  description:
+    'Retire an existing memory entry by moving it under `memory/archived/`. ' +
+    'Use this for entries that are no longer load-bearing — a person who has ' +
+    "left, an account read that's been superseded, a one-off observation that " +
+    'no longer informs current work. The original path structure is ' +
+    'preserved beneath `archived/` (e.g. `memory/people/alice.md` → ' +
+    '`memory/archived/people/alice.md`) and an `## Archived` block is ' +
+    'appended to the entry body with timestamp and optional reason. The ' +
+    "operator can `git mv` the file back out if archival was premature. " +
+    'Refuses if the slug does not resolve to an existing entry, or if a file ' +
+    'with the same archived path already exists.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      slug: {
+        type: 'string',
+        description:
+          'Slug of the existing memory entry (filename stem, e.g. ' +
+          '`mary-chen-at-acme`). The tool searches `memory/**/*.md` for a ' +
+          'single match — if the same slug exists in multiple categories, ' +
+          'the call is rejected and you should disambiguate by filing an ' +
+          'escalation. Already-archived entries are not eligible.',
+      },
+      reason: {
+        type: 'string',
+        description:
+          "Optional one-line rationale for archival (e.g. 'left the account', " +
+          "'superseded by mary-chen-march-update'). Written into the appended " +
+          '`## Archived` block and into the commit body.',
+      },
+    },
+    required: ['slug'],
+  },
+};
+
 export const UPDATE_OUTPUT_STATUS_TOOL: Anthropic.Tool = {
   name: 'update_output_status',
   description:
@@ -434,6 +471,7 @@ export const UPDATE_OUTPUT_STATUS_TOOL: Anthropic.Tool = {
  */
 export const CHAT_TOOLS: readonly Anthropic.Tool[] = [
   WRITE_MEMORY_TOOL,
+  ARCHIVE_MEMORY_TOOL,
   CREATE_ESCALATION_TOOL,
   PROPOSE_VERB_TOOL,
   APPEND_ENTRY_TOOL,

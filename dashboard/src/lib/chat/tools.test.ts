@@ -334,6 +334,16 @@ describe('executeTool dispatch', () => {
     );
     expect(r.ok).toBe(true);
   });
+
+  it('routes archive_memory through the dispatcher', async () => {
+    await executeWriteMemory(tempDir, {
+      category: 'notes',
+      title: 'archivable',
+      body: 'body',
+    });
+    const r = await executeTool('archive_memory', { slug: 'archivable' }, tempDir);
+    expect(r.ok).toBe(true);
+  });
 });
 
 describe('audit-log commits on tool calls', () => {
