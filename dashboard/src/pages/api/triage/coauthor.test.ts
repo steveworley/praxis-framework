@@ -5,10 +5,10 @@ import path from 'node:path';
 import { simpleGit } from 'simple-git';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { POST as draftPost } from './draft.ts';
+import { POST as proposePost } from './propose.ts';
 import { POST as applyPost } from './apply.ts';
 
-// Mock the Anthropic SDK so the draft route can return deterministic content
+// Mock the Anthropic SDK so the propose route can return deterministic content
 // without hitting the network.
 const createSpy = vi.fn();
 vi.mock('@anthropic-ai/sdk', () => {
@@ -85,14 +85,14 @@ afterEach(async () => {
   await fs.rm(tempDir, { recursive: true, force: true });
 });
 
-function callDraft(body: unknown): Promise<Response> {
-  const request = new Request('http://localhost/api/triage/draft', {
+function callPropose(body: unknown): Promise<Response> {
+  const request = new Request('http://localhost/api/triage/propose', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: typeof body === 'string' ? body : JSON.stringify(body),
   });
   return Promise.resolve(
-    draftPost({ request } as unknown as Parameters<typeof draftPost>[0]) as
+    proposePost({ request } as unknown as Parameters<typeof proposePost>[0]) as
       | Response
       | Promise<Response>,
   );
@@ -111,55 +111,75 @@ function callApply(body: unknown): Promise<Response> {
   );
 }
 
-describe('POST /api/triage/draft', () => {
-  it('drafts a persona change and returns the diff', async () => {
-    createSpy.mockResolvedValueOnce({
-      content: [{ type: 'text', text: '# Persona — Sam\n\nRefreshed voice.\n' }],
-      stop_reason: 'end_turn',
-    });
-    const res = await callDraft({
-      escalation_id: '2026-05-08-tone',
-      target: { kind: 'persona' },
-      directive: 'Refresh the voice.',
-    });
+function toolUseResponse(
+  calls: Array<{ path: string; new_content: string; rationale: string }>,
+): unknown {
+  return {
+    stop_reason: 'tool_use',
+    content: calls.map((c, i) => ({
+      type: 'tool_use',
+      id: `call_${i}`,
+      name: 'propose_file_change',
+      input: { path: c.path, new_content: c.new_content, rationale: c.rationale },
+    })),
+  };
+}
+
+function endTurnResponse(summary: string): unknown {
+  return {
+    stop_reason: 'end_turn',
+    content: [{ type: 'text', text: summary }],
+  };
+}
+
+describe('POST /api/triage/propose', () => {
+  it('returns 1-N proposals with diffs', async () => {
+    createSpy
+      .mockResolvedValueOnce(
+        toolUseResponse([
+          {
+            path: 'persona.md',
+            new_content: '# Persona — Sam\n\nRefreshed voice.\n',
+            rationale: 'Refresh voice section.',
+          },
+        ]),
+      )
+      .mockResolvedValueOnce(endTurnResponse('Refreshed the persona voice.'));
+
+    const res = await callPropose({ escalation_id: '2026-05-08-tone' });
     expect(res.status).toBe(200);
-    const payload = (await res.json()) as { target_path: string; diff_unified: string };
-    expect(payload.target_path).toBe('persona.md');
-    expect(payload.diff_unified).toContain('Refreshed voice');
+    const payload = (await res.json()) as {
+      escalation_id: string;
+      proposals: Array<{ path: string; diff_unified: string; kind: string; rationale: string }>;
+      summary: string;
+    };
+    expect(payload.escalation_id).toBe('2026-05-08-tone');
+    expect(payload.proposals).toHaveLength(1);
+    expect(payload.proposals[0]!.path).toBe('persona.md');
+    expect(payload.proposals[0]!.kind).toBe('persona');
+    expect(payload.proposals[0]!.diff_unified).toContain('Refreshed voice');
+    expect(payload.summary).toContain('Refreshed');
   });
 
   it('rejects an unknown escalation with 404', async () => {
-    const res = await callDraft({
-      escalation_id: 'missing',
-      target: { kind: 'persona' },
-      directive: 'noop',
-    });
+    const res = await callPropose({ escalation_id: 'missing' });
     expect(res.status).toBe(404);
   });
 
-  it('rejects path-traversy lib filename with 422 (validation)', async () => {
-    const res = await callDraft({
-      escalation_id: '2026-05-08-tone',
-      target: { kind: 'lib', filename: '../etc/passwd' },
-      directive: 'pwn',
-    });
-    // The Zod schema accepts the string (it just enforces length), but the
-    // path resolver refuses; we should get 400 from the typed error path.
+  it('returns 400 when the model never accepts a proposal', async () => {
+    createSpy.mockResolvedValueOnce(endTurnResponse('I am stuck.'));
+    const res = await callPropose({ escalation_id: '2026-05-08-tone' });
     expect(res.status).toBe(400);
-  });
-
-  it('rejects an empty directive with 422', async () => {
-    const res = await callDraft({
-      escalation_id: '2026-05-08-tone',
-      target: { kind: 'persona' },
-      directive: '   ',
-    });
-    expect(res.status).toBe(422);
   });
 
   it('rejects non-JSON body with 400', async () => {
-    const res = await callDraft('not json');
+    const res = await callPropose('not json');
     expect(res.status).toBe(400);
+  });
+
+  it('rejects an empty body with 422', async () => {
+    const res = await callPropose({});
+    expect(res.status).toBe(422);
   });
 });
 
@@ -168,18 +188,19 @@ describe('POST /api/triage/apply', () => {
     const proposed = '# Persona — Sam\n\nRefreshed voice. Concise for engineers.\n';
     const res = await callApply({
       escalation_id: '2026-05-08-tone',
-      target_path: 'persona.md',
-      proposed_content: proposed,
+      proposals: [{ path: 'persona.md', proposed_content: proposed }],
     });
     expect(res.status).toBe(200);
     const payload = (await res.json()) as {
       ok: boolean;
       commit_sha: string;
       commit_short_sha: string;
+      files_changed: string[];
     };
     expect(payload.ok).toBe(true);
     expect(payload.commit_sha).toMatch(/^[0-9a-f]{40}$/);
     expect(payload.commit_short_sha).toMatch(/^[0-9a-f]{7}$/);
+    expect(payload.files_changed).toEqual(['persona.md']);
     const onDisk = await fs.readFile(path.join(tempDir, 'persona.md'), 'utf-8');
     expect(onDisk).toBe(proposed);
   });
@@ -187,8 +208,7 @@ describe('POST /api/triage/apply', () => {
   it('refuses a target_path off the allowlist with 400', async () => {
     const res = await callApply({
       escalation_id: '2026-05-08-tone',
-      target_path: 'memory/notes/foo.md',
-      proposed_content: 'whatever',
+      proposals: [{ path: 'memory/notes/foo.md', proposed_content: 'whatever' }],
     });
     expect(res.status).toBe(400);
   });
@@ -196,8 +216,7 @@ describe('POST /api/triage/apply', () => {
   it('refuses path traversal with 400', async () => {
     const res = await callApply({
       escalation_id: '2026-05-08-tone',
-      target_path: '../etc/passwd',
-      proposed_content: 'pwn',
+      proposals: [{ path: '../etc/passwd', proposed_content: 'pwn' }],
     });
     expect(res.status).toBe(400);
   });
@@ -205,9 +224,15 @@ describe('POST /api/triage/apply', () => {
   it('returns 404 when the escalation does not exist', async () => {
     const res = await callApply({
       escalation_id: 'missing',
-      target_path: 'persona.md',
-      proposed_content: '# Persona — Sam\n\nnew\n',
+      proposals: [
+        { path: 'persona.md', proposed_content: '# Persona — Sam\n\nnew\n' },
+      ],
     });
     expect(res.status).toBe(404);
+  });
+
+  it('rejects a missing proposals array with 422', async () => {
+    const res = await callApply({ escalation_id: '2026-05-08-tone' });
+    expect(res.status).toBe(422);
   });
 });
