@@ -76,9 +76,9 @@ export type WriteDecision = WriteAllowed | WriteRefused;
  *      needed (memory/, escalations/, verbs/proposed/, logs/, and
  *      per-campaign logs).
  *   4. autonomy.yaml lookup — match by prefix or exact path. Modes `full`,
- *      `append-only`, and `inline-enrichment` are allowed (the surface is
- *      returned so the caller can enforce per-mode rules). `gated` is
- *      refused outright; `bounded` is refused (no per-mode enforcement yet).
+ *      `append-only`, `inline-enrichment`, and `bounded` are allowed (the
+ *      surface is returned so the caller can enforce per-mode rules).
+ *      `gated` is refused outright.
  *   5. Default deny — anything not explicitly opened is gated.
  */
 export async function isWriteAllowed(
@@ -129,18 +129,17 @@ export async function isWriteAllowed(
     // here's its config".
     return { allowed: true, mode: 'inline-enrichment', surface };
   }
-  if (surface.mode === 'gated') {
-    return {
-      allowed: false,
-      reason: `Refusing to write ${normalized}: surface is gated. File an escalation instead.`,
-    };
+  if (surface.mode === 'bounded') {
+    // The caller (the `adjust_param` tool) enforces the per-mode rules —
+    // declared bounds, min/max range check, optional step alignment. The
+    // gate just says "this surface is open for bounded parameter tweaks;
+    // here's the bounds config".
+    return { allowed: true, mode: 'bounded', surface };
   }
-  // bounded — declared in the autonomy model but not yet wired through the
-  // chat tool surface. Refuse with a clear message until it earns dedicated
-  // enforcement.
+  // surface.mode === 'gated' (TS narrowing): refused outright.
   return {
     allowed: false,
-    reason: `Refusing to write ${normalized}: surface is in mode '${surface.mode}', which is not yet supported via the chat tool surface. File an escalation instead.`,
+    reason: `Refusing to write ${normalized}: surface is gated. File an escalation instead.`,
   };
 }
 

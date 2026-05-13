@@ -41,7 +41,7 @@ PRAXIS_ROLE_HOME=/path/to/some-role npm run dev
 
 ### Learning loop
 
-The model has eight growth tools available during every chat turn. They write into the role's growth surfaces (the same surfaces a technical operator would write to from Claude Code):
+The model has nine growth tools available during every chat turn. They write into the role's growth surfaces (the same surfaces a technical operator would write to from Claude Code):
 
 | Tool | Writes to | Refuses on |
 |---|---|---|
@@ -50,6 +50,7 @@ The model has eight growth tools available during every chat turn. They write in
 | `propose_verb` | `verbs/proposed/<slug>.md` | Slug already exists in `verbs/` or `verbs/proposed/` |
 | `append_entry` | An operator-opened append-only YAML surface (e.g. `lib/research-strategies.yaml`) | Surface not in `autonomy.yaml`, wrong mode, missing `root_key`, duplicate `unique_by`, or `max_pending` reached |
 | `enrich_entry` | Declared soft fields on an existing entry in an operator-opened inline-enrichment YAML surface (e.g. `lib/team.yaml`) | Surface not in `autonomy.yaml`, wrong mode, missing `root_key` / `unique_by` / `soft_fields` declaration, no entry with the given id, or a supplied field is outside the whitelist |
+| `adjust_param` | A numeric parameter on an operator-opened bounded YAML surface (e.g. `lib/warmup.yaml`) | Surface not in `autonomy.yaml`, wrong mode, missing `bounds` declaration, key not in declared bounds, value below `min` / above `max` / not step-aligned |
 | `write_output` | `output/<type>/<slug>.md` (or `output/record/<entity_type>/<entity_id>/<slug>.md`) | File exists, malformed slug, missing required fields per type, channel enum violation for drafts |
 | `update_output_status` | An existing file under `output/` | File doesn't exist, status not in the closed enum |
 | `log_decision` | `logs/<date>.jsonl` (or `campaigns/<id>/logs/...`) | Unknown campaign id |
@@ -59,6 +60,8 @@ Every tool call is gated by `lib/autonomy.yaml` plus a hard-coded constitutional
 `append_entry` is the operator-opt-in surface for `mode: append-only` entries in `lib/autonomy.yaml`. Each opened surface declares a `root_key` (the YAML list it appends to), an optional `unique_by` (duplicate-detection field, typically `id`), and an optional `max_pending` (unreviewed-entry ceiling). New entries get `reviewed: false` injected automatically; the operator flips it to `true` after reviewing. When the ceiling is reached, the next append refuses and the model is expected to file an `improvement` escalation asking for compaction. See `docs/autonomy.md` for the full shape.
 
 `enrich_entry` is the operator-opt-in surface for `mode: inline-enrichment` entries. Each opened surface declares `root_key`, `unique_by`, and a `soft_fields` whitelist; the role may update those fields within existing entries but never touch structured fields and never create entries. Hard-field updates and new entries route through escalations.
+
+`adjust_param` is the operator-opt-in surface for `mode: bounded` entries. Each opened surface declares `bounds` — a per-parameter `{min, max, step?}` map naming exactly the keys the role may tune. The surface file is a flat top-level `key: value` YAML map; the role can adjust values within their declared range (and step-aligned when `step` is set). Keys absent from `bounds` are operator-only — `adjust_param` refuses and the model is expected to escalate if the operational ceiling is too tight.
 
 Tool calls persist on the assistant turn via an HTML-comment-fenced JSON block inside the thread markdown file, so the thread stays human-readable while the dashboard can replay calls when the conversation reloads.
 
@@ -88,6 +91,7 @@ Every dashboard-mediated mutation lands as a git commit on the role's repo so op
 | Chat-side `propose_verb` | `Praxis Role <role@praxis.local>` | `role(verb): propose <slug>` |
 | Chat-side `append_entry` | `Praxis Role <role@praxis.local>` | `role(lib): append <surface-name>` |
 | Chat-side `enrich_entry` | `Praxis Role <role@praxis.local>` | `role(lib): enrich <surface-name>` |
+| Chat-side `adjust_param` | `Praxis Role <role@praxis.local>` | `role(lib): adjust <surface-name>:<key>` |
 | Chat-side `log_decision` | `Praxis Role <role@praxis.local>` | `role(decision): log <decision_type>` |
 | Triage accept/decline/comment escalation | operator (from `git config`) | `operator(triage): <accept\|decline\|comment> escalation <id>` |
 | Triage accept/decline/edit proposed verb | operator (from `git config`) | `operator(triage): <accept\|decline\|edit> proposed verb <slug>` |

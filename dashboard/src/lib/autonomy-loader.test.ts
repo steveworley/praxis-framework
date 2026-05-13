@@ -144,6 +144,105 @@ describe('parseAutonomyYaml', () => {
     expect(surfaces[0]?.why).toBe('line one\nline two\nline three');
   });
 
+  it('parses bounds as inline-flow per parameter', () => {
+    const text = [
+      'surfaces:',
+      '  - path: lib/warmup.yaml',
+      '    mode: bounded',
+      '    bounds:',
+      '      sends_per_day: { min: 10, max: 100, step: 5 }',
+      '      weeks_to_full_send_rate: { min: 4, max: 12 }',
+    ].join('\n');
+    const surfaces = parseAutonomyYaml(text);
+    expect(surfaces[0]).toEqual({
+      path: 'lib/warmup.yaml',
+      mode: 'bounded',
+      bounds: {
+        sends_per_day: { min: 10, max: 100, step: 5 },
+        weeks_to_full_send_rate: { min: 4, max: 12 },
+      },
+    });
+  });
+
+  it('parses bounds as block-mapping per parameter', () => {
+    const text = [
+      'surfaces:',
+      '  - path: lib/warmup.yaml',
+      '    mode: bounded',
+      '    bounds:',
+      '      sends_per_day:',
+      '        min: 10',
+      '        max: 100',
+      '        step: 5',
+      '      new_thread_ratio:',
+      '        min: 0.1',
+      '        max: 0.9',
+    ].join('\n');
+    const surfaces = parseAutonomyYaml(text);
+    expect(surfaces[0]?.bounds).toEqual({
+      sends_per_day: { min: 10, max: 100, step: 5 },
+      new_thread_ratio: { min: 0.1, max: 0.9 },
+    });
+  });
+
+  it('parses bounds with decimal min/max/step values', () => {
+    const text = [
+      'surfaces:',
+      '  - path: lib/warmup.yaml',
+      '    mode: bounded',
+      '    bounds:',
+      '      confidence_threshold: { min: 0.05, max: 0.95, step: 0.05 }',
+    ].join('\n');
+    const surfaces = parseAutonomyYaml(text);
+    expect(surfaces[0]?.bounds?.['confidence_threshold']).toEqual({
+      min: 0.05,
+      max: 0.95,
+      step: 0.05,
+    });
+  });
+
+  it('drops bound entries missing min or max', () => {
+    const text = [
+      'surfaces:',
+      '  - path: lib/warmup.yaml',
+      '    mode: bounded',
+      '    bounds:',
+      '      no_min: { max: 100 }',
+      '      no_max: { min: 0 }',
+      '      good: { min: 0, max: 10 }',
+    ].join('\n');
+    const surfaces = parseAutonomyYaml(text);
+    expect(surfaces[0]?.bounds).toEqual({
+      good: { min: 0, max: 10 },
+    });
+  });
+
+  it('ignores extra keys inside a bound', () => {
+    const text = [
+      'surfaces:',
+      '  - path: lib/warmup.yaml',
+      '    mode: bounded',
+      '    bounds:',
+      '      sends_per_day: { min: 10, max: 100, step: 5, surprise: yes }',
+    ].join('\n');
+    const surfaces = parseAutonomyYaml(text);
+    expect(surfaces[0]?.bounds).toEqual({
+      sends_per_day: { min: 10, max: 100, step: 5 },
+    });
+  });
+
+  it('omits bounds when the map is empty', () => {
+    const text = [
+      'surfaces:',
+      '  - path: lib/warmup.yaml',
+      '    mode: bounded',
+      '    bounds:',
+      // Nothing indented under bounds.
+    ].join('\n');
+    const surfaces = parseAutonomyYaml(text);
+    expect(surfaces[0]?.bounds).toBeUndefined();
+  });
+
   it('falls back to gated when mode is unknown', () => {
     const text = ['surfaces:', '  - path: lib/foo.yaml', '    mode: nuclear'].join('\n');
     const surfaces = parseAutonomyYaml(text);

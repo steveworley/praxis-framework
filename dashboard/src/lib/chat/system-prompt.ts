@@ -78,17 +78,18 @@ export async function buildSystemPrompt(roleHome: string): Promise<string> {
     '- Upload documents for context',
     '- Refine your role over time',
     '',
-    'Respond in your voice. You have eight tools available to you in this conversation:',
+    'Respond in your voice. You have nine tools available to you in this conversation:',
     '- `write_memory` — capture an observation worth remembering into your notebook',
     '- `create_escalation` — file a help / improvement / proposed_skill ask for your operator',
     '- `propose_verb` — draft a new playbook into verbs/proposed/ for operator review',
     '- `append_entry` — append an entry to an operator-opened append-only YAML surface (see above)',
     '- `enrich_entry` — update declared soft fields within an existing entry on an operator-opened inline-enrichment YAML surface (see above)',
+    '- `adjust_param` — tune a numeric parameter within operator-declared bounds on a bounded YAML surface (see above)',
     '- `write_output` — create a new work-product file in `output/` (document / draft / record / plan / reference)',
     '- `update_output_status` — advance an existing output\'s lifecycle (e.g. draft → sent)',
     '- `log_decision` — log a non-trivial decision to your audit trail',
     '',
-    'Use them sparingly and only when the observation, ask, or output is genuinely worth capturing. Default to writing for memory (your operator prunes); be selective for the other tools. If a tool refuses (gated surface, duplicate slug, malformed input, max_pending reached, file already exists), the refusal message tells you why — adjust and try again, or surface the friction to your operator in your reply. For `append_entry`, a max_pending refusal is your signal to file an `improvement` escalation asking for compaction. For `enrich_entry`, "no entry with that id" means inline-enrichment can\'t create entries — file a `proposed_skill` escalation if the entry needs to exist.',
+    'Use them sparingly and only when the observation, ask, or output is genuinely worth capturing. Default to writing for memory (your operator prunes); be selective for the other tools. If a tool refuses (gated surface, duplicate slug, malformed input, max_pending reached, file already exists), the refusal message tells you why — adjust and try again, or surface the friction to your operator in your reply. For `append_entry`, a max_pending refusal is your signal to file an `improvement` escalation asking for compaction. For `enrich_entry`, "no entry with that id" means inline-enrichment can\'t create entries — file a `proposed_skill` escalation if the entry needs to exist. For `adjust_param`, a "key not in bounds" or out-of-range refusal means the operator hasn\'t opened that parameter (or set it tighter than you\'re asking) — escalate if the operational ceiling is too low.',
   );
 
   return sections.join('\n');
@@ -295,7 +296,43 @@ async function renderAutonomySection(roleHome: string): Promise<string | null> {
       }
     }
   }
+
+  const bounded = openSurfaces.filter((s) => s.mode === 'bounded');
+  if (bounded.length > 0) {
+    lines.push('', '### Operator-opened bounded parameters');
+    lines.push(
+      '',
+      'You may adjust these numeric parameters within declared ranges — never outside, and never keys not listed. Use `adjust_param`:',
+    );
+    for (const s of bounded) {
+      const summary = renderBoundsSummary(s);
+      const metaPart = summary.length > 0 ? ` (bounded keys: ${summary})` : '';
+      lines.push(`- \`${s.path}\`${metaPart}`);
+      if (s.why) {
+        for (const whyLine of s.why.split('\n')) {
+          if (whyLine.trim().length === 0) continue;
+          lines.push(`  ${whyLine.trim()}`);
+        }
+      }
+    }
+  }
   return lines.join('\n');
+}
+
+/**
+ * Render a one-line summary of a bounded surface's declared parameters in
+ * the shape `key [min–max step S]`, comma-separated. Used in the system
+ * prompt so the model can see ranges at a glance without re-reading the
+ * autonomy.yaml file.
+ */
+function renderBoundsSummary(s: AutonomySurface): string {
+  if (!s.bounds || Object.keys(s.bounds).length === 0) return '';
+  const parts: string[] = [];
+  for (const [key, bound] of Object.entries(s.bounds)) {
+    const stepPart = bound.step !== undefined ? ` step ${bound.step}` : '';
+    parts.push(`${key} [${bound.min}–${bound.max}${stepPart}]`);
+  }
+  return parts.join(', ');
 }
 
 async function renderToolsSection(roleHome: string): Promise<string | null> {

@@ -161,17 +161,26 @@ describe('isWriteAllowed — autonomy.yaml lookup', () => {
     }
   });
 
-  it('refuses surfaces in mode: bounded (not yet wired)', async () => {
+  it('allows surfaces in mode: bounded and returns the surface config', async () => {
     await writeAutonomy(
       [
         'surfaces:',
-        '  - path: lib/operational-params.yaml',
+        '  - path: lib/warmup.yaml',
         '    mode: bounded',
+        '    bounds:',
+        '      sends_per_day: { min: 10, max: 100, step: 5 }',
+        '      new_thread_ratio: { min: 0.1, max: 0.9 }',
       ].join('\n'),
     );
-    const d = await isWriteAllowed(tempDir, 'lib/operational-params.yaml');
-    expect(d.allowed).toBe(false);
-    if (!d.allowed) expect(d.reason).toMatch(/bounded/);
+    const d = await isWriteAllowed(tempDir, 'lib/warmup.yaml');
+    expect(d.allowed).toBe(true);
+    if (d.allowed) {
+      expect(d.mode).toBe('bounded');
+      expect(d.surface?.bounds).toEqual({
+        sends_per_day: { min: 10, max: 100, step: 5 },
+        new_thread_ratio: { min: 0.1, max: 0.9 },
+      });
+    }
   });
 
   it('refuses surfaces not listed in autonomy.yaml', async () => {

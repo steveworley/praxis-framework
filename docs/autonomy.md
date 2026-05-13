@@ -110,6 +110,35 @@ The role can adjust parameters within ranges the operator has set. The bounds li
 
 Use for: operational parameters where there's a clear safe range (e.g. retry counts, wave thresholds, daily limits). The operator sets the band; the role adapts within it.
 
+**The chat tool**: from `/chat`, the model uses `adjust_param({path, key, value})`. The framework reads the surface's autonomy.yaml entry to find the per-parameter `bounds` block. Each parameter declares `min` and `max` (required) and optionally `step` (when set, the value must be a multiple of `step` starting from `min`). The full shape:
+
+```yaml
+# lib/autonomy.yaml
+surfaces:
+  - path: lib/warmup.yaml
+    mode: bounded
+    bounds:
+      sends_per_day: { min: 10, max: 100, step: 5 }
+      weeks_to_full_send_rate: { min: 4, max: 12 }
+      new_thread_ratio: { min: 0.1, max: 0.9 }
+    why: |
+      Warmup throttle parameters. The role can adjust based on observed
+      deliverability; operator-set ceilings cap risk.
+```
+
+And a matching file the role tunes:
+
+```yaml
+# lib/warmup.yaml — operator-authored ceilings, role tunes within
+sends_per_day: 25
+weeks_to_full_send_rate: 6
+new_thread_ratio: 0.3
+```
+
+The file is a flat top-level `key: value` map. The role can only adjust keys declared in `bounds` — keys absent from the bounds map are operator-only. The block-mapping form `sends_per_day:\n  min: 10\n  max: 100\n  step: 5` is also accepted in autonomy.yaml for operators who prefer that style.
+
+**Refusals the role sees**: missing `bounds` declaration in autonomy.yaml; surface in a different mode; key not in `bounds` (the refusal lists the declared bounded keys); value below `min`, above `max`, or not a multiple of `step` starting from `min`. Floating-point comparison uses a small tolerance (`1e-9`) so step-aligned decimals (`0.1 + 4*0.05 = 0.3`) pass cleanly.
+
 ### `gated` (default)
 The role never edits autonomously. Everything is gated unless explicitly opened in `lib/autonomy.yaml`.
 

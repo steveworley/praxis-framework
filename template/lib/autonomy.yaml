@@ -104,6 +104,31 @@ surfaces:
   #     by `git revert`); the soft_fields whitelist means I can never
   #     touch the structured org-chart fields.
 
+  # === Bounded — numeric parameters within operator-set ranges ===
+
+  # Example (uncomment + adapt). Required field on a bounded surface:
+  #
+  #   bounds — per-parameter map of {min, max, step?} describing the
+  #            ranges I may tune within. Parameters NOT in `bounds` are
+  #            operator-only; I refuse to touch them.
+  #
+  # The file at `path:` is a flat YAML map of `key: value` pairs (operator
+  # usually seeds it with defaults). I adjust values using `adjust_param`;
+  # the framework refuses values outside the declared range, off-step (when
+  # `step` is set), or keyed by a name outside the bounds map.
+  #
+  # - path: lib/warmup.yaml
+  #   mode: bounded
+  #   bounds:
+  #     sends_per_day: { min: 10, max: 100, step: 5 }
+  #     weeks_to_full_send_rate: { min: 4, max: 12 }
+  #     new_thread_ratio: { min: 0.1, max: 0.9 }
+  #   why: |
+  #     Warmup throttle parameters. I tune within ranges based on observed
+  #     deliverability; operator-set ceilings cap the blast radius. Cost of
+  #     wrong: overcautious throttle (recoverable; affects send rate, not
+  #     correctness).
+
 # === Implicitly gated (do NOT list here unless opening up) ===
 #
 # These remain operator-only. Listed for documentation:

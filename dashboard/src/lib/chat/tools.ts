@@ -5,6 +5,7 @@ import path from 'node:path';
 import { z } from 'zod';
 
 import { commitChange, type CommitResult } from '../audit.js';
+import { executeAdjustParam } from './adjust-param.js';
 import { executeAppendEntry } from './append-entry.js';
 import { isWriteAllowed } from './autonomy-gate.js';
 import { executeEnrichEntry } from './enrich-entry.js';
@@ -353,6 +354,7 @@ export type ToolName =
   | 'propose_verb'
   | 'append_entry'
   | 'enrich_entry'
+  | 'adjust_param'
   | 'log_decision'
   | 'write_output'
   | 'update_output_status';
@@ -363,6 +365,7 @@ const KNOWN_TOOLS: ReadonlySet<string> = new Set([
   'propose_verb',
   'append_entry',
   'enrich_entry',
+  'adjust_param',
   'log_decision',
   'write_output',
   'update_output_status',
@@ -393,6 +396,8 @@ export async function executeTool(
         return await executeAppendEntry(roleHome, input);
       case 'enrich_entry':
         return await executeEnrichEntry(roleHome, input);
+      case 'adjust_param':
+        return await executeAdjustParam(roleHome, input);
       case 'log_decision':
         return await executeLogDecision(roleHome, input);
       case 'write_output':
