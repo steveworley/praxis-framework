@@ -1,0 +1,406 @@
+---
+import EmptyState from '@/components/EmptyState.astro';
+import RouteHeader from '@/components/RouteHeader.astro';
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import { assembleEscalations } from '@/lib/escalations-loader';
+import { type HealthReport, loadHealth } from '@/lib/health-loader';
+import { parsePersona, type Persona } from '@/lib/persona-parser';
+import { detectMode, getRoleHome, nowIso } from '@/lib/role-home';
+
+export const prerender = false;
+
+const roleHome = getRoleHome();
+const mode = detectMode(roleHome);
+if (mode === 'seed') {
+  return Astro.redirect('/setup');
+}
+
+const [personaRes, healthRes, escalationsRes] = await Promise.allSettled([
+  parsePersona(roleHome),
+  loadHealth(roleHome),
+  assembleEscalations(roleHome),
+]);
+
+const persona: Persona | null = personaRes.status === 'fulfilled' ? personaRes.value : null;
+const health: HealthReport | null = healthRes.status === 'fulfilled' ? healthRes.value : null;
+const healthError = healthRes.status === 'rejected' ? String(healthRes.reason) : null;
+const openCount =
+  escalationsRes.status === 'fulfilled' ? escalationsRes.value.countsByStatus.open : 0;
+
+const fullName = persona?.identity['full_name'] ?? persona?.identity['name'] ?? '';
+const updatedAt = nowIso();
+
+/**
+ * Bar-glyph renderer for a weekly histogram. Picks a single Unicode
+ * block-glyph per bucket based on its count relative to the row max, so
+ * the visual stays textual + monospace-friendly. Used inline next to each
+ * bucket's numeric count.
+ */
+const GLYPHS = ['·', '▁', '▃', '▅', '▇'];
+function sparkline(counts: number[]): string {
+  const max = counts.reduce((m, n) => (n > m ? n : m), 0);
+  if (max === 0) return GLYPHS[0]!.repeat(counts.length);
+  return counts
+    .map((n) => {
+      if (n === 0) return GLYPHS[0]!;
+      const ratio = n / max;
+      // Map [0..1] onto indices [1..4] of GLYPHS — 1 is the thinnest non-zero
+      // bar, 4 the fullest.
+      const idx = Math.min(GLYPHS.length - 1, Math.max(1, Math.ceil(ratio * (GLYPHS.length - 1))));
+      return GLYPHS[idx]!;
+    })
+    .join('');
+}
+
+function formatRatio(r: number | null): string {
+  if (r === null) return '—';
+  return `${(r * 100).toFixed(0)}%`;
+}
+
+function formatDays(d: number | null): string {
+  if (d === null) return '—';
+  if (d < 1) {
+    const hours = Math.round(d * 24);
+    return hours <= 0 ? '<1h' : `${hours}h`;
+  }
+  return `${d.toFixed(1)}d`;
+}
+
+const memoryWeeklyCounts = health?.memory.weekly.map((b) => b.count) ?? [];
+const filedWeeklyCounts = health?.escalations.weekly_filed.map((b) => b.count) ?? [];
+const resolvedWeeklyCounts = health?.escalations.weekly_resolved.map((b) => b.count) ?? [];
+const declinedWeeklyCounts = health?.escalations.weekly_declined.map((b) => b.count) ?? [];
+const memoryBars = sparkline(memoryWeeklyCounts);
+const filedBars = sparkline(filedWeeklyCounts);
+const resolvedBars = sparkline(resolvedWeeklyCounts);
+const declinedBars = sparkline(declinedWeeklyCounts);
+const toolCounts = health?.activity.by_tool.map((t) => t.count) ?? [];
+const toolBars = sparkline(toolCounts);
+---
+
+<BaseLayout title={fullName ? `Health · ${fullName}` : 'Health · Praxis'}>
+  <main class="container">
+    <RouteHeader
+      current="health"
+      personaName={fullName}
+      escalationOpenCount={openCount}
+      updatedAt={updatedAt}
+    />
+
+    <div class="page-body">
+      <div class="group-head">
+        <span class="group-counter">
+          {health
+            ? `4-week windows · 30-day activity & autonomy windows`
+            : 'unable to assemble report'}
+        </span>
+      </div>
+      <p class="page-lede">
+        Read-only observability. Aggregations across the role's writes, escalations, activity logs, and autonomous edits — the firehose, summarised.
+      </p>
+
+      {healthError && (
+        <EmptyState>Failed to load health report: {healthError}</EmptyState>
+      )}
+
+      {health && (
+        <>
+          <div class="group">
+            <div class="group-head">
+              <span class="group-title">Memory</span>
+              <span class="group-counter">
+                {health.memory.total} {health.memory.total === 1 ? 'entry' : 'entries'} · from <code>memory/</code>
+              </span>
+            </div>
+            {health.memory.total === 0 ? (
+              <EmptyState>
+                No memory entries yet. As the role works, observations land in <code>memory/&lt;category&gt;/</code>.
+              </EmptyState>
+            ) : (
+              <div class="health-panel">
+                <div class="health-stat">
+                  Last update: <strong>{health.memory.last_update ?? '—'}</strong>
+                </div>
+                <div class="health-table-wrap">
+                  <div class="health-table-title">Writes by week</div>
+                  <table class="health-table">
+                    <thead>
+                      <tr>
+                        <th>week ending</th>
+                        <th class="num">count</th>
+                        <th class="bar">·</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {health.memory.weekly.map((b, i) => (
+                        <tr>
+                          <td>{b.label}</td>
+                          <td class="num">{b.count}</td>
+                          <td class="bar">{memoryBars[i]}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div class="health-table-wrap">
+                  <div class="health-table-title">By category</div>
+                  <table class="health-table">
+                    <thead>
+                      <tr>
+                        <th>category</th>
+                        <th class="num">count</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {health.memory.by_category.map((c) => (
+                        <tr>
+                          <td>{c.category}</td>
+                          <td class="num">{c.count}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div class="group">
+            <div class="group-head">
+              <span class="group-title">Escalations</span>
+              <span class="group-counter">
+                {health.escalations.total} total · {health.escalations.counts_by_status.open} open · from <code>escalations/</code>
+              </span>
+            </div>
+            {health.escalations.total === 0 ? (
+              <EmptyState>
+                No escalations on file. Help requests, improvements, and proposed skills will surface here.
+              </EmptyState>
+            ) : (
+              <div class="health-panel">
+                <div class="health-stat">
+                  Median time-to-triage (28d):{' '}
+                  <strong>{formatDays(health.escalations.median_time_to_triage_days)}</strong>
+                  {health.escalations.triage_sample_size > 0 && (
+                    <span class="health-stat-aside">
+                      · n={health.escalations.triage_sample_size}
+                    </span>
+                  )}
+                </div>
+                <div class="health-table-wrap">
+                  <div class="health-table-title">Filed / resolved / declined by week</div>
+                  <table class="health-table esc-weekly">
+                    <thead>
+                      <tr>
+                        <th>week ending</th>
+                        <th class="num">filed</th>
+                        <th class="num">resolved</th>
+                        <th class="num">declined</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {health.escalations.weekly_filed.map((b, i) => (
+                        <tr>
+                          <td>{b.label}</td>
+                          <td class="num">
+                            <span class="bar-inline">{filedBars[i]}</span>
+                            {b.count}
+                          </td>
+                          <td class="num">
+                            <span class="bar-inline">{resolvedBars[i]}</span>
+                            {health.escalations.weekly_resolved[i]?.count ?? 0}
+                          </td>
+                          <td class="num">
+                            <span class="bar-inline">{declinedBars[i]}</span>
+                            {health.escalations.weekly_declined[i]?.count ?? 0}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div class="health-stat-row">
+                  <span>
+                    open: <strong>{health.escalations.counts_by_status.open}</strong>
+                  </span>
+                  <span>
+                    resolved: <strong>{health.escalations.counts_by_status.resolved}</strong>
+                  </span>
+                  <span>
+                    accepted: <strong>{health.escalations.counts_by_status.accepted}</strong>
+                  </span>
+                  <span>
+                    declined: <strong>{health.escalations.counts_by_status.declined}</strong>
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div class="group">
+            <div class="group-head">
+              <span class="group-title">Activity</span>
+              <span class="group-counter">
+                {health.activity.total} {health.activity.total === 1 ? 'call' : 'calls'} in last {health.activity.window_days}d · from <code>logs/</code>
+              </span>
+            </div>
+            {health.activity.total === 0 ? (
+              <EmptyState>
+                No activity in the last {health.activity.window_days} days. Chat tool calls and decision logs feed this surface.
+              </EmptyState>
+            ) : (
+              <div class="health-panel">
+                <div class="health-table-wrap">
+                  <div class="health-table-title">Tool-call distribution (30d)</div>
+                  <table class="health-table">
+                    <thead>
+                      <tr>
+                        <th>tool</th>
+                        <th class="num">count</th>
+                        <th class="bar">·</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {health.activity.by_tool.map((t, i) => (
+                        <tr>
+                          <td><code>{t.tool}</code></td>
+                          <td class="num">{t.count}</td>
+                          <td class="bar">{toolBars[i]}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div class="group">
+            <div class="group-head">
+              <span class="group-title">Autonomous edits</span>
+              <span class="group-counter">
+                {health.autonomy.git_unavailable
+                  ? 'git unavailable'
+                  : `${health.autonomy.role_commits} role ${health.autonomy.role_commits === 1 ? 'commit' : 'commits'} · ${health.autonomy.revert_commits} ${health.autonomy.revert_commits === 1 ? 'revert' : 'reverts'} (30d) · from git`}
+              </span>
+            </div>
+            {health.autonomy.git_unavailable ? (
+              <EmptyState>
+                Git history isn't available for this role. Initialise a repo to surface autonomous edits + revert ratio.
+              </EmptyState>
+            ) : health.autonomy.role_commits === 0 ? (
+              <EmptyState>
+                No role-authored commits in the last {health.autonomy.window_days} days.
+              </EmptyState>
+            ) : (
+              <div class="health-panel">
+                <div class="health-stat">
+                  Revert ratio:{' '}
+                  <strong>{formatRatio(health.autonomy.revert_ratio)}</strong>
+                  <span class="health-stat-aside">
+                    · {health.autonomy.revert_commits} / {health.autonomy.role_commits}
+                  </span>
+                </div>
+                <p class="health-prose">
+                  Reverts of <code>role(…)</code> commits over the same {health.autonomy.window_days}-day window. A rising ratio is the supervisor's signal that autonomous edits are drifting.
+                </p>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  </main>
+
+  <style>
+    .health-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 1.2rem;
+    }
+    .health-stat {
+      font-size: 13px;
+      color: var(--ink);
+    }
+    .health-stat strong {
+      font-family: ui-monospace, monospace;
+      font-weight: 600;
+    }
+    .health-stat-aside {
+      color: var(--ink-muted);
+      font-family: ui-monospace, monospace;
+      font-size: 12px;
+      margin-left: 0.4rem;
+    }
+    .health-stat-row {
+      display: flex;
+      gap: 1.5rem;
+      flex-wrap: wrap;
+      font-size: 12.5px;
+      color: var(--ink-muted);
+    }
+    .health-stat-row strong {
+      color: var(--ink);
+      font-family: ui-monospace, monospace;
+      font-weight: 600;
+    }
+    .health-table-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+    .health-table-title {
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--ink-muted);
+    }
+    .health-table {
+      border-collapse: collapse;
+      font-size: 12.5px;
+      font-family: ui-monospace, monospace;
+      min-width: 320px;
+    }
+    .health-table th,
+    .health-table td {
+      text-align: left;
+      padding: 0.3rem 0.9rem 0.3rem 0;
+      border-bottom: 1px solid var(--rule);
+      vertical-align: baseline;
+    }
+    .health-table th {
+      font-weight: 600;
+      color: var(--ink-muted);
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .health-table td.num,
+    .health-table th.num {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    .health-table td.bar,
+    .health-table th.bar {
+      text-align: left;
+      color: var(--ink-soft);
+      padding-left: 0.4rem;
+    }
+    .health-table .bar-inline {
+      display: inline-block;
+      width: 1ch;
+      color: var(--ink-soft);
+      margin-right: 0.4rem;
+    }
+    .health-table code {
+      font-family: ui-monospace, monospace;
+      font-size: 12.5px;
+    }
+    .health-prose {
+      font-size: 12.5px;
+      color: var(--ink-muted);
+      margin: 0;
+      max-width: 56ch;
+    }
+  </style>
+</BaseLayout>
