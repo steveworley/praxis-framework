@@ -13,17 +13,23 @@ Requires Node.js 20 or newer.
 ## Quick start
 
 ```bash
+mkdir my-role && cd my-role
+
 # Interactive wizard — walks organisation context, role definition,
 # voice traits, capabilities, inhibitions, and verbs.
-praxis init
+npx @praxis-framework/cli init
 
 # Or hand it a config file (useful for CI / reproducible setups).
-praxis init --config role.json --path ./my-role
+npx @praxis-framework/cli init --config role.json --path .
+
+# Set your API key and bring the dashboard up.
+cp .env.example .env && vim .env   # set ANTHROPIC_API_KEY
+docker compose up                   # pulls ghcr.io/steveworley/praxis-framework/dashboard:main
 ```
 
-The wizard emits a populated role directory with `persona.md`, `CLAUDE.md`, `verbs/`, `lib/`, `memory/`, `escalations/`, and `output/`. See `examples/sample-role.json` for the config schema.
+Open `http://localhost:4321/`.
 
-A populated role is its own runtime artefact — see the [framework README](https://github.com/steveworley/praxis-framework#readme) for how to plug it into compose and run it.
+The wizard emits a populated role directory with `persona.md`, `CLAUDE.md`, `verbs/`, `lib/`, `memory/`, `escalations/`, `output/`, plus `docker-compose.yml` + `.env.example` so the role is runnable with one `docker compose up` — no framework clone required. See `examples/sample-role.json` for the config schema.
 
 ## Commands
 

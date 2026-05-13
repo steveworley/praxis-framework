@@ -70,6 +70,8 @@ describe('seedRole', () => {
       'lib/autonomy.yaml',
       'lib/output-schemas.yaml',
       '.gitignore',
+      'docker-compose.yml',
+      '.env.example',
       'verbs/first-verb.md',
     ];
     for (const rel of expected) {
@@ -227,6 +229,45 @@ describe('seedRole', () => {
         expect(e.code).toBe('TEMPLATE_MISSING');
       }
     }
+  });
+
+  describe('runtime scaffolding (docker-compose + .env)', () => {
+    it('writes docker-compose.yml pointing at the GHCR dashboard image', async () => {
+      const result = await seedRole(sampleInput(), tmp);
+      expect(result.filesWritten).toContain('docker-compose.yml');
+
+      const compose = await fs.readFile(path.join(tmp, 'docker-compose.yml'), 'utf-8');
+      // The published image — operators get a runnable role on first up.
+      expect(compose).toContain('ghcr.io/steveworley/praxis-framework/dashboard:main');
+      // No {ROLE_NAME} substitution should leak into this verbatim file.
+      expect(compose).not.toContain('Pat Example');
+      expect(compose).not.toContain('{ROLE_NAME}');
+      // Sanity-check the compose still references the role mount and the API key passthrough.
+      expect(compose).toContain('.:/role');
+      expect(compose).toContain('ANTHROPIC_API_KEY');
+    });
+
+    it('writes .env.example with the ANTHROPIC_API_KEY placeholder', async () => {
+      const result = await seedRole(sampleInput(), tmp);
+      expect(result.filesWritten).toContain('.env.example');
+
+      const env = await fs.readFile(path.join(tmp, '.env.example'), 'utf-8');
+      expect(env).toContain('ANTHROPIC_API_KEY=');
+      // PRAXIS_MCPS appears as a commented hint, not a default.
+      expect(env).toContain('# PRAXIS_MCPS=');
+    });
+
+    it('writes a .gitignore that excludes .env but keeps .env.example committable', async () => {
+      const result = await seedRole(sampleInput(), tmp);
+      expect(result.filesWritten).toContain('.gitignore');
+
+      const ignore = await fs.readFile(path.join(tmp, '.gitignore'), 'utf-8');
+      // Match the standalone `.env` rule on its own line.
+      expect(ignore.split('\n')).toContain('.env');
+      // `.env.example` must NOT match the `.env` rule (the rule is exact, not a glob)
+      // and must NOT be explicitly ignored elsewhere.
+      expect(ignore).not.toMatch(/^\.env\.example$/m);
+    });
   });
 
   describe('lib/tools.yaml', () => {

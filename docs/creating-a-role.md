@@ -2,30 +2,52 @@
 
 A walkthrough for setting up a new Praxis role. The wizard does most of the work; you author the persona content and the role's first agents.
 
-## 1. Clone the framework
+There are two seeding paths — pick whichever fits your habits:
 
-The framework repo *is* the seed. Clone it into the path you want the role to live at:
+- **CLI (recommended for fresh roles)** — `npx @praxis-framework/cli init` writes the role into an empty directory along with a `docker-compose.yml` that pulls the published dashboard image. No framework clone required.
+- **Dashboard wizard** — clone the framework, run the dashboard against the clone, and submit the wizard at `/setup`. Useful when you want the dashboard's research surfaces to help draft the persona before submit.
+
+## 1. Seed the role
+
+### Option A — CLI
+
+```bash
+mkdir ~/Documents/agents/my-role && cd ~/Documents/agents/my-role
+npx @praxis-framework/cli init                   # interactive wizard
+# or
+npx @praxis-framework/cli init --config role.json --path .
+```
+
+The CLI writes the role files plus `docker-compose.yml` and `.env.example` at the role root. Skip to step 2.
+
+### Option B — Dashboard wizard
+
+The framework repo doubles as a seed. Clone it into the path you want the role to live at:
 
 ```bash
 git clone https://github.com/steveworley/praxis-framework.git ~/Documents/agents/my-role
 cd ~/Documents/agents/my-role
-```
-
-For a second role, clone again into a different path. The framework doesn't supervise multiple roles — multi-role means multiple clones.
-
-## 2. Run the dashboard
-
-```bash
-cd dashboard
-npm install
-npm run dev
+docker compose up
 ```
 
 Open `http://localhost:4321/`. Since `persona.md` doesn't exist at the role root yet, the dashboard redirects to **`/setup`** — the wizard.
 
-## 3. Walk through the wizard
+For a second role, run the CLI again or clone the framework again — one role per directory.
 
-The wizard is the role-planning UX. It collects:
+## 2. Bring the dashboard up
+
+The seed writes a `docker-compose.yml` at the role root that pulls the published dashboard image. After running the wizard, set your API key and start the stack:
+
+```bash
+cp .env.example .env && vim .env   # set ANTHROPIC_API_KEY
+docker compose up
+```
+
+Open `http://localhost:4321/`. The dashboard reads `persona.md` from `/role` inside the container (the directory mount) and renders the role's interior.
+
+## 3. What the wizard captures
+
+Both seed paths run the same wizard and write the same files. The wizard collects:
 
 - **Role basics** — name, one-line description, optional email / location / reports-to
 - **Voice & personality** — repeating trait label + concrete description ("drops articles in casual writing" beats "friendly")
@@ -33,33 +55,35 @@ The wizard is the role-planning UX. It collects:
 - **Hard inhibitions** — first-person never-statements (these become the role's constitution)
 - **Initial verbs (optional)** — slug + one-line purpose for any starter verb files you want stubbed out
 
-On submit the wizard writes two visible git commits to the role's repo:
+The **dashboard wizard** writes two visible git commits to the role's repo (the framework checkout):
 
-1. **`feat: seed role from praxis-framework template`** — populates `CLAUDE.md`, `persona.md`, `verbs/escalate.md`, `memory/`, `escalations/`, `lib/`, `.gitignore`
+1. **`feat: seed role from praxis-framework template`** — populates `CLAUDE.md`, `persona.md`, `verbs/escalate.md`, `memory/`, `escalations/`, `lib/`, `.gitignore`, `docker-compose.yml`, `.env.example`
 2. **`chore: tidy framework-only files post-seed`** — removes `template/`, `examples/`, `scripts/new-role.sh`, replaces `README.md` with a role-shaped one
 
 After seeding, `/` redirects to `/interior`. The wizard refuses to run again on a populated role.
+
+The **CLI** writes the same files but doesn't touch git — the role directory is yours to commit when you're ready.
 
 You now have:
 
 ```
 my-role/
 ├── CLAUDE.md
-├── README.md            # role-shaped, replaced from the framework's
-├── persona.md           # populated from your wizard inputs (role identity)
+├── persona.md             # populated from your wizard inputs (role identity)
+├── docker-compose.yml     # pulls the published dashboard image
+├── .env.example           # ANTHROPIC_API_KEY etc. — copy to .env and edit
+├── .gitignore
 ├── verbs/
 │   ├── escalate.md
 │   ├── proposed/README.md
-│   └── {slug}.md        # any starter verbs you stubbed
+│   └── {slug}.md          # any starter verbs you stubbed
 ├── lib/
 ├── memory/
 │   ├── README.md
 │   ├── people/, accounts/, notes/  (each with .gitkeep)
 ├── escalations/
 │   └── README.md
-├── dashboard/           # the role's dashboard, ready to run
-├── docs/                # framework docs travel with the role
-└── .gitignore
+└── output/                # work-product taxonomy (.gitkeep'd leaves)
 ```
 
 ## 4. Refine the persona (`persona.md`)

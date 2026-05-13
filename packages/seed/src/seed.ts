@@ -38,6 +38,8 @@ const TEMPLATE_FILES: RolePathPair[] = [
   { source: 'lib/autonomy.yaml', target: 'lib/autonomy.yaml' },
   { source: 'lib/output-schemas.yaml', target: 'lib/output-schemas.yaml' },
   { source: '.gitignore', target: '.gitignore' },
+  { source: 'docker-compose.yml', target: 'docker-compose.yml' },
+  { source: '.env.example', target: '.env.example' },
 ];
 
 /**
@@ -45,10 +47,14 @@ const TEMPLATE_FILES: RolePathPair[] = [
  * injection. `lib/autonomy.yaml` is operator-edited post-seed so we leave
  * its placeholders alone. `lib/output-schemas.yaml` is framework-shipped
  * reference material — the operator should read it, not the substitutor.
+ * `docker-compose.yml` and `.env.example` are operator-edited runtime
+ * scaffolding — no `{ROLE_NAME}` references, copied as-is.
  */
 const VERBATIM_TARGETS = new Set<string>([
   'lib/autonomy.yaml',
   'lib/output-schemas.yaml',
+  'docker-compose.yml',
+  '.env.example',
 ]);
 
 /** Directories to ensure exist in the seeded role, even if empty. */
