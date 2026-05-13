@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
+import { simpleGit } from 'simple-git';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { parseToolsYaml } from './catalog.js';
@@ -445,6 +446,82 @@ describe('seedRole', () => {
         { slug: 'foo', description: ['bar'] },
       ]);
       expect(out).toBe(customised);
+    });
+  });
+
+  describe('git auto-init', () => {
+    it('initialises the target as a git repo when it is not one already', async () => {
+      // tmp is the freshly-mkdtemp'd empty dir from beforeEach — no .git.
+      const before = simpleGit(tmp);
+      expect(await before.checkIsRepo()).toBe(false);
+
+      await seedRole(sampleInput(), tmp);
+
+      const after = simpleGit(tmp);
+      expect(await after.checkIsRepo()).toBe(true);
+
+      // The init runs without committing — the seed contract is "populate +
+      // version-control"; the calling layer makes the commits. So we assert
+      // the repo exists but say nothing about HEAD/log state here.
+      const gitDir = await fs.stat(path.join(tmp, '.git'));
+      expect(gitDir.isDirectory()).toBe(true);
+    });
+
+    it('uses `main` as the initial branch when auto-initialising', async () => {
+      await seedRole(sampleInput(), tmp);
+      const git = simpleGit(tmp);
+      // The repo has no commits yet, so we read HEAD's symbolic ref rather
+      // than relying on `git.branch()` which reports an empty list pre-commit.
+      const head = await git.raw(['symbolic-ref', 'HEAD']);
+      expect(head.trim()).toBe('refs/heads/main');
+    });
+
+    it('is idempotent — leaves an existing repo (and its branch) untouched', async () => {
+      // Initialise the target manually with a non-`main` default branch and
+      // commit a marker file. The seed should run successfully without
+      // re-initialising or renaming the branch.
+      const git = simpleGit(tmp);
+      await git.init({ '--initial-branch': 'trunk' });
+      await git.addConfig('user.name', 'Seed Test', false, 'local');
+      await git.addConfig('user.email', 'seed@example.test', false, 'local');
+      await git.addConfig('commit.gpgsign', 'false', false, 'local');
+      await fs.writeFile(path.join(tmp, 'marker.txt'), 'pre-seed marker', 'utf-8');
+      await git.add(['marker.txt']);
+      await git.commit('pre-seed marker');
+
+      const result = await seedRole(sampleInput(), tmp, { overwrite: true });
+      expect(result.filesWritten.length).toBeGreaterThan(0);
+
+      // Branch preserved.
+      const head = await git.raw(['symbolic-ref', 'HEAD']);
+      expect(head.trim()).toBe('refs/heads/trunk');
+
+      // Pre-existing commit still reachable — confirms we didn't blow away
+      // the repo by re-initialising.
+      const log = await git.log();
+      expect(log.all.some((c) => c.message === 'pre-seed marker')).toBe(true);
+    });
+
+    it('surfaces a clear SeedError when the target directory does not exist', async () => {
+      const missing = path.join(tmp, 'does-not-exist');
+      try {
+        await seedRole(sampleInput(), missing);
+        throw new Error('expected throw');
+      } catch (e: unknown) {
+        expect(e).toBeInstanceOf(SeedError);
+        if (e instanceof SeedError) {
+          expect(e.code).toBe('WRITE_FAILED');
+          expect(e.message).toContain('does not exist');
+        }
+      }
+    });
+
+    it('does not initialise when running in dry-run mode', async () => {
+      const result = await seedRole(sampleInput(), tmp, { dryRun: true });
+      expect(result.filesWritten.length).toBeGreaterThan(0);
+
+      const git = simpleGit(tmp);
+      expect(await git.checkIsRepo()).toBe(false);
     });
   });
 });

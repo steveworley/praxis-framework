@@ -2,37 +2,39 @@
 
 A walkthrough for setting up a new Praxis role. The wizard does most of the work; you author the persona content and the role's first agents.
 
-There are two seeding paths — pick whichever fits your habits:
-
-- **CLI (recommended for fresh roles)** — `npx @praxis-framework/cli init` writes the role into an empty directory along with a `docker-compose.yml` that pulls the published dashboard image. No framework clone required.
-- **Dashboard wizard** — clone the framework, run the dashboard against the clone, and submit the wizard at `/setup`. Useful when you want the dashboard's research surfaces to help draft the persona before submit.
+The canonical bootstrap flow is `docker run` against an empty directory — zero install, the wizard at `/setup` writes the role files and inits git in the mounted dir. The CLI is the scripted alternative for CI or version-controlled role definitions.
 
 ## 1. Seed the role
 
-### Option A — CLI
+### Option A — docker run (recommended)
 
 ```bash
 mkdir ~/Documents/agents/my-role && cd ~/Documents/agents/my-role
-npx @praxis-framework/cli init                   # interactive wizard
-# or
-npx @praxis-framework/cli init --config role.json --path .
+docker run --rm -p 4321:4321 \
+  -v $(pwd):/role \
+  -e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY \
+  ghcr.io/steveworley/praxis-framework/dashboard:latest
 ```
 
-The CLI writes the role files plus `docker-compose.yml` and `.env.example` at the role root. Skip to step 2.
+Open `http://localhost:4321/`. Since `persona.md` doesn't exist at the role root yet, the dashboard redirects to **`/setup`** — the wizard. Walk it through; on submit the seed initialises git (if needed) and writes the role files plus `docker-compose.yml` + `.env.example` into the mounted directory as two visible commits.
 
-### Option B — Dashboard wizard
+> The GHCR image is currently private. Run `docker login ghcr.io -u <username> -p $GITHUB_TOKEN` with a PAT carrying `read:packages` before pulling.
 
-The framework repo doubles as a seed. Clone it into the path you want the role to live at:
+When the wizard finishes, kill the one-shot container with `Ctrl-C`. Skip to step 2.
+
+### Option B — CLI (scripted / CI)
+
+For reproducible role definitions captured in a JSON config:
 
 ```bash
-git clone https://github.com/steveworley/praxis-framework.git ~/Documents/agents/my-role
-cd ~/Documents/agents/my-role
-docker compose up
+mkdir ~/Documents/agents/my-role && cd ~/Documents/agents/my-role
+npm install -g @praxis-framework/cli
+praxis init                                       # interactive wizard
+# or
+praxis init --config role.json --path .          # non-interactive
 ```
 
-Open `http://localhost:4321/`. Since `persona.md` doesn't exist at the role root yet, the dashboard redirects to **`/setup`** — the wizard.
-
-For a second role, run the CLI again or clone the framework again — one role per directory.
+The CLI writes the role files plus `docker-compose.yml` and `.env.example` at the role root, and auto-initialises the directory as a git repo. The CLI doesn't make commits — that's left to the operator (run `git add . && git commit` when you're ready).
 
 ## 2. Bring the dashboard up
 
@@ -45,6 +47,8 @@ docker compose up
 
 Open `http://localhost:4321/`. The dashboard reads `persona.md` from `/role` inside the container (the directory mount) and renders the role's interior.
 
+For a second role, run the seed against a different directory — one role per directory.
+
 ## 3. What the wizard captures
 
 Both seed paths run the same wizard and write the same files. The wizard collects:
@@ -55,14 +59,14 @@ Both seed paths run the same wizard and write the same files. The wizard collect
 - **Hard inhibitions** — first-person never-statements (these become the role's constitution)
 - **Initial verbs (optional)** — slug + one-line purpose for any starter verb files you want stubbed out
 
-The **dashboard wizard** writes two visible git commits to the role's repo (the framework checkout):
+The **dashboard wizard** writes two visible git commits to the role's repo. The seed auto-initialises the directory as a git repo (`--initial-branch=main`) on first run if it isn't one already, so the wizard works against both a freshly-`mkdir`'d empty dir and an existing repo:
 
 1. **`feat: seed role from praxis-framework template`** — populates `CLAUDE.md`, `persona.md`, `verbs/escalate.md`, `memory/`, `escalations/`, `lib/`, `.gitignore`, `docker-compose.yml`, `.env.example`
 2. **`chore: tidy framework-only files post-seed`** — removes `template/`, `examples/`, `scripts/new-role.sh`, replaces `README.md` with a role-shaped one
 
 After seeding, `/` redirects to `/interior`. The wizard refuses to run again on a populated role.
 
-The **CLI** writes the same files but doesn't touch git — the role directory is yours to commit when you're ready.
+The **CLI** writes the same files and auto-initialises the directory as a git repo, but doesn't make commits — the role directory is yours to `git add . && git commit` when you're ready.
 
 You now have:
 

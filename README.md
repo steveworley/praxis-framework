@@ -66,43 +66,51 @@ Constitutional surfaces stay gated regardless of yaml. The chat is never the pla
 
 ## Quickstart
 
-Three paths to a populated role, all of them write the same files.
-
-### CLI
+The fastest way to seed a role and see it running — zero install, one command:
 
 ```bash
 mkdir my-role && cd my-role
-npx @praxis-framework/cli init                         # interactive Ink wizard
-# or
-npx @praxis-framework/cli init --config ./role.json    # non-interactive (CI-safe)
-
-cp .env.example .env && vim .env                        # set ANTHROPIC_API_KEY
-docker compose up                                       # pulls the dashboard image
+docker run --rm -p 4321:4321 \
+  -v $(pwd):/role \
+  -e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY \
+  ghcr.io/steveworley/praxis-framework/dashboard:latest
 ```
 
-The CLI writes `docker-compose.yml` + `.env.example` alongside the role files, so a fresh seed is one `docker compose up` away from a running dashboard — no framework clone required. A sample config lives at [`cli/examples/sample-role.json`](cli/examples/sample-role.json). The CLI also ships `praxis log` for appending JSONL decision lines from inside verb playbooks — see [`cli/README.md`](cli/README.md).
+Open `http://localhost:4321/`. With nothing at the role root, the dashboard redirects to `/setup` — the wizard walks identity → voice → capabilities → hard inhibitions → optional starter verbs. On submit, two visible commits land in the mounted directory:
 
-### Dashboard wizard
+1. `feat: seed role from praxis-framework template` — populates `persona.md`, `CLAUDE.md`, `verbs/`, `lib/`, `memory/`, `escalations/`, `docker-compose.yml`, `.env.example`.
+2. `chore: tidy framework-only files post-seed` — removes framework-only artefacts, replaces `README.md`.
 
-```bash
-git clone https://github.com/steveworley/praxis-framework.git my-role
-cd my-role/dashboard
-npm install
-npm run dev
-```
-
-Open `http://localhost:4321/`. With no `persona.md` at the role root, `/` redirects to `/setup`. Walk identity → voice → capabilities → inhibitions → optional starter verbs. On submit, two visible commits land:
-
-1. `feat: seed role from praxis-framework template` — populates `persona.md`, `CLAUDE.md`, `verbs/`, `lib/`, `memory/`, `escalations/`.
-2. `chore: tidy framework-only files post-seed` — removes `template/`, `examples/`, replaces `README.md`.
-
-### Docker
+After the wizard, kill the one-shot container with `Ctrl-C` and bring the stack up via the freshly-seeded compose file:
 
 ```bash
+cp .env.example .env && vim .env   # set ANTHROPIC_API_KEY
 docker compose up
 ```
 
-From the framework/role repo root. Mounts the repo as `/role` inside the container; the dashboard runs from `/role/dashboard` and writes back through the volume mount. See [`docker-compose.yml`](docker-compose.yml) and [`dashboard/Dockerfile`](dashboard/Dockerfile).
+> The GHCR image is currently private. Before the pull works, `docker login ghcr.io -u <username> -p $GITHUB_TOKEN` with a PAT carrying `read:packages`.
+
+### Scripted setup (CI, reproducible roles)
+
+For non-interactive seeding from a config file — useful for CI or version-controlled role definitions:
+
+```bash
+npm install -g @praxis-framework/cli
+mkdir my-role && cd my-role
+praxis init --config ./role.json --path .
+```
+
+A sample config lives at [`cli/examples/sample-role.json`](cli/examples/sample-role.json). The CLI also ships `praxis log` for appending JSONL decision lines from inside verb playbooks — see [`cli/README.md`](cli/README.md).
+
+### Framework development
+
+If you're contributing to praxis-framework itself (not seeding a role to operate):
+
+```bash
+git clone https://github.com/steveworley/praxis-framework.git
+cd praxis-framework
+docker compose up    # bind-mounts source for HMR via the dev Dockerfile
+```
 
 ### After the role is populated
 
@@ -111,7 +119,7 @@ Drive it via either runtime — they consume the same files:
 ```bash
 cd /path/to/my-role && claude              # technical operator
 # or
-cd dashboard && npm run dev                # non-technical operator → /chat
+docker compose up                          # non-technical operator → /chat
 ```
 
 See [`docs/creating-a-role.md`](docs/creating-a-role.md) for the bootstrap walkthrough.
