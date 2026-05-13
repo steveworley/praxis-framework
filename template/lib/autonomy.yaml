@@ -76,6 +76,59 @@ surfaces:
   #     constraint means I can't break existing entries; the max_pending
   #     forces a compaction conversation if I'm appending too fast.
 
+  # === Inline-enrichment — soft fields on existing entries ===
+
+  # Example (uncomment + adapt). Required fields on an inline-enrichment
+  # surface:
+  #
+  #   root_key    — top-level YAML key whose list of entries I may touch
+  #   unique_by   — field on each entry that identifies which one I mean
+  #   soft_fields — whitelist of field names I may update within an entry
+  #
+  # Structured fields (everything not in `soft_fields`) are operator-owned;
+  # I can never create or delete entries. Use this for reference data where
+  # the structure is yours but the soft texture per-entry is the role's
+  # lived experience (notes the role observed, calibration timestamps, etc).
+  #
+  # - path: lib/team.yaml
+  #   mode: inline-enrichment
+  #   root_key: members
+  #   unique_by: id
+  #   soft_fields:
+  #     - notes
+  #     - last_observed_at
+  #   why: |
+  #     Structured team data is operator-owned (name, role, email), but I
+  #     keep the notes column current with what I observe in day-to-day
+  #     interactions. Cost of wrong: a stale calibration note (recoverable
+  #     by `git revert`); the soft_fields whitelist means I can never
+  #     touch the structured org-chart fields.
+
+  # === Bounded — numeric parameters within operator-set ranges ===
+
+  # Example (uncomment + adapt). Required field on a bounded surface:
+  #
+  #   bounds — per-parameter map of {min, max, step?} describing the
+  #            ranges I may tune within. Parameters NOT in `bounds` are
+  #            operator-only; I refuse to touch them.
+  #
+  # The file at `path:` is a flat YAML map of `key: value` pairs (operator
+  # usually seeds it with defaults). I adjust values using `adjust_param`;
+  # the framework refuses values outside the declared range, off-step (when
+  # `step` is set), or keyed by a name outside the bounds map.
+  #
+  # - path: lib/warmup.yaml
+  #   mode: bounded
+  #   bounds:
+  #     sends_per_day: { min: 10, max: 100, step: 5 }
+  #     weeks_to_full_send_rate: { min: 4, max: 12 }
+  #     new_thread_ratio: { min: 0.1, max: 0.9 }
+  #   why: |
+  #     Warmup throttle parameters. I tune within ranges based on observed
+  #     deliverability; operator-set ceilings cap the blast radius. Cost of
+  #     wrong: overcautious throttle (recoverable; affects send rate, not
+  #     correctness).
+
 # === Implicitly gated (do NOT list here unless opening up) ===
 #
 # These remain operator-only. Listed for documentation:
@@ -84,5 +137,4 @@ surfaces:
 # - verbs/*.md (existing files)  (capability surface — behavioral risk)
 # - lib/customers.yaml           (legal/business — never cold-email a customer)
 # - lib/compliance.yaml          (legal/safety — Spam Act + opt-out gates)
-# - lib/team.yaml structural     (org chart — though `notes` could be inline-enrichment)
 # - CLAUDE.md                    (constitution — global behavior)

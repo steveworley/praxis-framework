@@ -190,6 +190,86 @@ describe('buildSystemPrompt', () => {
     const prompt = await buildSystemPrompt(tempDir);
     expect(prompt).not.toContain('Operator-opened append-only surfaces');
   });
+
+  it('lists operator-opened inline-enrichment surfaces with their config', async () => {
+    await seedPersona();
+    await fs.mkdir(path.join(tempDir, 'lib'), { recursive: true });
+    await fs.writeFile(
+      path.join(tempDir, 'lib', 'autonomy.yaml'),
+      [
+        'surfaces:',
+        '  - path: lib/team.yaml',
+        '    mode: inline-enrichment',
+        '    root_key: members',
+        '    unique_by: id',
+        '    soft_fields:',
+        '      - notes',
+        '      - last_observed_at',
+        '    why: |',
+        '      Structured team data is operator-owned; I keep notes current.',
+      ].join('\n'),
+      'utf-8',
+    );
+    const prompt = await buildSystemPrompt(tempDir);
+    expect(prompt).toContain('Operator-opened inline-enrichment surfaces');
+    expect(prompt).toContain('`lib/team.yaml`');
+    expect(prompt).toContain('root_key: members');
+    expect(prompt).toContain('unique_by: id');
+    expect(prompt).toContain('soft_fields: notes, last_observed_at');
+    expect(prompt).toContain('Structured team data is operator-owned');
+  });
+
+  it('lists enrich_entry in the operator-greeting tool block', async () => {
+    await seedPersona();
+    const prompt = await buildSystemPrompt(tempDir);
+    expect(prompt).toContain('`enrich_entry`');
+    expect(prompt).toContain('nine tools available');
+  });
+
+  it('lists adjust_param in the operator-greeting tool block', async () => {
+    await seedPersona();
+    const prompt = await buildSystemPrompt(tempDir);
+    expect(prompt).toContain('`adjust_param`');
+  });
+
+  it('lists operator-opened bounded surfaces with their bounds', async () => {
+    await seedPersona();
+    await fs.mkdir(path.join(tempDir, 'lib'), { recursive: true });
+    await fs.writeFile(
+      path.join(tempDir, 'lib', 'autonomy.yaml'),
+      [
+        'surfaces:',
+        '  - path: lib/warmup.yaml',
+        '    mode: bounded',
+        '    bounds:',
+        '      sends_per_day: { min: 10, max: 100, step: 5 }',
+        '      weeks_to_full_send_rate: { min: 4, max: 12 }',
+        '      new_thread_ratio: { min: 0.1, max: 0.9 }',
+        '    why: |',
+        '      Warmup throttle parameters; I tune within ranges.',
+      ].join('\n'),
+      'utf-8',
+    );
+    const prompt = await buildSystemPrompt(tempDir);
+    expect(prompt).toContain('Operator-opened bounded parameters');
+    expect(prompt).toContain('`lib/warmup.yaml`');
+    expect(prompt).toContain('sends_per_day [10–100 step 5]');
+    expect(prompt).toContain('weeks_to_full_send_rate [4–12]');
+    expect(prompt).toContain('new_thread_ratio [0.1–0.9]');
+    expect(prompt).toContain('Warmup throttle parameters');
+  });
+
+  it('omits the bounded surfaces block when none are declared', async () => {
+    await seedPersona();
+    await fs.mkdir(path.join(tempDir, 'lib'), { recursive: true });
+    await fs.writeFile(
+      path.join(tempDir, 'lib', 'autonomy.yaml'),
+      'surfaces:\n  - path: memory/\n    mode: full\n',
+      'utf-8',
+    );
+    const prompt = await buildSystemPrompt(tempDir);
+    expect(prompt).not.toContain('Operator-opened bounded parameters');
+  });
 });
 
 describe('parseToolsYaml', () => {

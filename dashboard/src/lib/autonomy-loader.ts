@@ -13,6 +13,17 @@ const KNOWN_MODES: ReadonlySet<AutonomyMode> = new Set<AutonomyMode>([
   'gated',
 ]);
 
+/**
+ * A numeric bound for a `bounded`-mode parameter. `min` and `max` are
+ * required; `step` is optional — when declared, values must be a multiple of
+ * `step` starting from `min` (with a small floating-point tolerance).
+ */
+export interface Bound {
+  min: number;
+  max: number;
+  step?: number;
+}
+
 export interface AutonomySurface {
   /** Path under the role home — directory (`memory/`) or file (`lib/foo.yaml`). */
   path: string;
@@ -31,8 +42,23 @@ export interface AutonomySurface {
   /**
    * For `append-only` surfaces: the field on each entry whose value must be
    * unique across the list. Used to detect duplicate appends.
+   *
+   * For `inline-enrichment` surfaces: identifies which existing entry the
+   * role wants to update. Required when mode is `inline-enrichment`.
    */
   unique_by?: string;
+  /**
+   * For `inline-enrichment` surfaces: which fields within each entry the role
+   * may update. All other fields are hard. Required when mode is
+   * `inline-enrichment` — the framework refuses the call otherwise.
+   */
+  soft_fields?: string[];
+  /**
+   * For `bounded` surfaces: per-parameter numeric ranges the role may adjust
+   * within. Required when mode is `bounded`. Parameters absent from this map
+   * are NOT adjustable — operator-only.
+   */
+  bounds?: Record<string, Bound>;
 }
 
 export interface AutonomyConfig {
@@ -179,6 +205,15 @@ function parseEntry(lines: string[]): AutonomySurface | null {
   // basis. The first line's "indent" is whatever was after `- `, which is
   // typically 0; subsequent lines were indented further.
   const fields: Record<string, string> = {};
+  const listFields: Record<string, string[]> = {};
+  /**
+   * Nested mappings whose immediate children are themselves mappings —
+   * currently used for `bounds: { <param>: { min, max, step? } }`. Each
+   * child key maps to a small string→string map representing the inline
+   * scalars of that sub-entry. Values are stripped of quotes; numbers stay
+   * as strings here and are coerced in the typed-surface assembly below.
+   */
+  const mapFields: Record<string, Record<string, Record<string, string>>> = {};
 
   let idx = 0;
   while (idx < lines.length) {
@@ -227,6 +262,163 @@ function parseEntry(lines: string[]): AutonomySurface | null {
       continue;
     }
 
+    if (rest.length === 0) {
+      // Empty value — peek the next non-blank line. Three possibilities:
+      //   1. `- item` list items (block sequence)
+      //   2. `child: …` mapping entries (block mapping)
+      //   3. nothing indented past the key (empty scalar)
+      // Look ahead to distinguish (1) vs (2) before consuming anything.
+      let probe = idx + 1;
+      let firstSignificant: { idx: number; isDash: boolean; isMapping: boolean } | null = null;
+      while (probe < lines.length) {
+        const peek = lines[probe] ?? '';
+        const peekTrim = peek.trim();
+        if (peekTrim.length === 0) {
+          probe += 1;
+          continue;
+        }
+        const peekLeading = peek.length - peek.trimStart().length;
+        if (peekLeading <= fieldIndent) break;
+        firstSignificant = {
+          idx: probe,
+          isDash: /^\s*-\s+/.test(peek),
+          isMapping: /^\s*[A-Za-z_][A-Za-z0-9_]*\s*:/.test(peek),
+        };
+        break;
+      }
+
+      if (firstSignificant && firstSignificant.isDash) {
+        // Block sequence: gather `- item` lines.
+        let cursor = idx + 1;
+        const items: string[] = [];
+        while (cursor < lines.length) {
+          const peek = lines[cursor] ?? '';
+          const peekTrim = peek.trim();
+          if (peekTrim.length === 0) {
+            cursor += 1;
+            continue;
+          }
+          const peekLeading = peek.length - peek.trimStart().length;
+          if (peekLeading <= fieldIndent) break;
+          const dashMatch = /^\s*-\s+(.*)$/.exec(peek);
+          if (!dashMatch) break;
+          const item = stripQuotes((dashMatch[1] ?? '').trim());
+          if (item.length > 0) items.push(item);
+          cursor += 1;
+        }
+        listFields[key] = items;
+        idx = cursor;
+        continue;
+      }
+
+      if (firstSignificant && firstSignificant.isMapping) {
+        // Block mapping: each child line is `<child>: <rest>`. If `<rest>` is
+        // inline-flow `{a: 1, b: 2}`, parse it as the child's own scalar map.
+        // Otherwise the child has a nested block-mapping body that we walk
+        // line-by-line to gather its scalar fields. This handles both
+        // `bounds:` shapes the spec calls out.
+        const childIndent = firstSignificant.idx < lines.length
+          ? (lines[firstSignificant.idx] ?? '').length -
+            (lines[firstSignificant.idx] ?? '').trimStart().length
+          : fieldIndent + 2;
+        const children: Record<string, Record<string, string>> = {};
+        let cursor = idx + 1;
+        while (cursor < lines.length) {
+          const peek = lines[cursor] ?? '';
+          const peekTrim = peek.trim();
+          if (peekTrim.length === 0) {
+            cursor += 1;
+            continue;
+          }
+          if (peekTrim.startsWith('#')) {
+            cursor += 1;
+            continue;
+          }
+          const peekLeading = peek.length - peek.trimStart().length;
+          if (peekLeading <= fieldIndent) break;
+          if (peekLeading !== childIndent) {
+            // A deeper line we don't expect here (e.g. mis-indented).
+            cursor += 1;
+            continue;
+          }
+          const childMatch = /^(\s*)([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.*)$/.exec(peek);
+          if (!childMatch) {
+            cursor += 1;
+            continue;
+          }
+          const childKey = (childMatch[2] ?? '').trim();
+          const childRest = (childMatch[3] ?? '').trim();
+
+          if (childRest.startsWith('{') && childRest.endsWith('}')) {
+            // Inline-flow scalar map: `{a: 1, b: 2, c: 3}`.
+            children[childKey] = parseInlineFlowMap(childRest.slice(1, -1));
+            cursor += 1;
+            continue;
+          }
+          if (childRest.length === 0) {
+            // Block-mapping body — gather indented `<scalar>: <value>` lines.
+            const innerMap: Record<string, string> = {};
+            let innerCursor = cursor + 1;
+            while (innerCursor < lines.length) {
+              const innerPeek = lines[innerCursor] ?? '';
+              const innerTrim = innerPeek.trim();
+              if (innerTrim.length === 0) {
+                innerCursor += 1;
+                continue;
+              }
+              if (innerTrim.startsWith('#')) {
+                innerCursor += 1;
+                continue;
+              }
+              const innerLeading =
+                innerPeek.length - innerPeek.trimStart().length;
+              if (innerLeading <= childIndent) break;
+              const innerMatch =
+                /^(\s*)([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.*)$/.exec(innerPeek);
+              if (!innerMatch) {
+                innerCursor += 1;
+                continue;
+              }
+              const innerKey = (innerMatch[2] ?? '').trim();
+              const innerRest = (innerMatch[3] ?? '').trim();
+              innerMap[innerKey] = stripQuotes(innerRest);
+              innerCursor += 1;
+            }
+            children[childKey] = innerMap;
+            cursor = innerCursor;
+            continue;
+          }
+          // Scalar value (unsupported here — children are expected to be
+          // sub-mappings under `bounds:`). Skip silently.
+          cursor += 1;
+        }
+        mapFields[key] = children;
+        idx = cursor;
+        continue;
+      }
+
+      // Nothing indented past the key — treat as empty scalar.
+      fields[key] = '';
+      idx += 1;
+      continue;
+    }
+
+    if (rest.startsWith('[') && rest.endsWith(']')) {
+      // Inline flow sequence: `[a, b, c]`. Parse as a list field — easier to
+      // consume from the typed surface than a stringly-typed scalar.
+      const inner = rest.slice(1, -1).trim();
+      const items =
+        inner.length === 0
+          ? []
+          : inner
+              .split(',')
+              .map((s) => stripQuotes(s.trim()))
+              .filter((s) => s.length > 0);
+      listFields[key] = items;
+      idx += 1;
+      continue;
+    }
+
     fields[key] = stripQuotes(rest);
     idx += 1;
   }
@@ -251,7 +443,84 @@ function parseEntry(lines: string[]): AutonomySurface | null {
   if (fields['unique_by'] && fields['unique_by'].length > 0) {
     surface.unique_by = fields['unique_by'];
   }
+  if (listFields['soft_fields'] && listFields['soft_fields'].length > 0) {
+    surface.soft_fields = listFields['soft_fields'];
+  }
+  if (mapFields['bounds']) {
+    const bounds = assembleBounds(mapFields['bounds']);
+    if (Object.keys(bounds).length > 0) surface.bounds = bounds;
+  }
   return surface;
+}
+
+/**
+ * Parse the inner text of an inline-flow map `{a: 1, b: 2.5, c: 'three'}`.
+ * Returns a string→string map; numeric coercion is the caller's problem.
+ * Handles single/double-quoted values and stops at top-level commas only —
+ * we keep this small since the schema is shallow (no nested braces).
+ */
+function parseInlineFlowMap(inner: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  // Split on commas not inside quotes. Bounds entries don't contain commas
+  // inside their values in practice, so this stays simple.
+  const parts: string[] = [];
+  let current = '';
+  let quoted: '"' | "'" | null = null;
+  for (const ch of inner) {
+    if (quoted) {
+      current += ch;
+      if (ch === quoted) quoted = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quoted = ch;
+      current += ch;
+      continue;
+    }
+    if (ch === ',') {
+      parts.push(current);
+      current = '';
+      continue;
+    }
+    current += ch;
+  }
+  if (current.trim().length > 0) parts.push(current);
+
+  for (const part of parts) {
+    const m = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.*?)\s*$/.exec(part);
+    if (!m) continue;
+    const k = (m[1] ?? '').trim();
+    const v = stripQuotes((m[2] ?? '').trim());
+    out[k] = v;
+  }
+  return out;
+}
+
+/**
+ * Coerce a parsed `bounds:` block (string→string children) into a typed
+ * `Record<string, Bound>`. Entries missing `min` or `max`, or whose values
+ * aren't finite numbers, are dropped — the executor surfaces a clear refusal
+ * at call time when a parameter is missing required fields.
+ */
+function assembleBounds(
+  raw: Record<string, Record<string, string>>,
+): Record<string, Bound> {
+  const out: Record<string, Bound> = {};
+  for (const [paramName, attrs] of Object.entries(raw)) {
+    const minStr = attrs['min'];
+    const maxStr = attrs['max'];
+    if (minStr === undefined || maxStr === undefined) continue;
+    const min = Number.parseFloat(minStr);
+    const max = Number.parseFloat(maxStr);
+    if (!Number.isFinite(min) || !Number.isFinite(max)) continue;
+    const bound: Bound = { min, max };
+    if (attrs['step'] !== undefined) {
+      const step = Number.parseFloat(attrs['step']);
+      if (Number.isFinite(step) && step > 0) bound.step = step;
+    }
+    out[paramName] = bound;
+  }
+  return out;
 }
 
 function stripQuotes(value: string): string {

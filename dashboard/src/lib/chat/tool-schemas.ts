@@ -172,6 +172,99 @@ export const APPEND_ENTRY_TOOL: Anthropic.Tool = {
   },
 };
 
+export const ENRICH_ENTRY_TOOL: Anthropic.Tool = {
+  name: 'enrich_entry',
+  description:
+    'Update declared soft fields within an existing entry on an operator-' +
+    'opened inline-enrichment YAML surface (e.g. `lib/team.yaml`). Use this ' +
+    "when an entry's structured fields (name, role, email) are operator-" +
+    'owned but the soft texture (notes, calibration text, last-observed ' +
+    'timestamp) is yours to keep current. You can never create entries, ' +
+    'delete entries, or touch fields outside the surface\'s declared ' +
+    "`soft_fields`. The autonomy.yaml entry declares which list the entries " +
+    'live in (`root_key`), which field identifies a specific entry ' +
+    '(`unique_by`), and the whitelist of fields you may update ' +
+    '(`soft_fields`). Refusals tell you which declaration is missing or ' +
+    'which field is off-limits — read the error and adjust.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      path: {
+        type: 'string',
+        description:
+          'Relative path to the inline-enrichment YAML surface, e.g. ' +
+          '"lib/team.yaml". Must be listed in your role\'s lib/autonomy.yaml ' +
+          'with mode: inline-enrichment.',
+      },
+      entry_id: {
+        type: 'string',
+        description:
+          'Value of the entry\'s `unique_by` field — the identifier of the ' +
+          'specific entry you want to update. The tool looks for an existing ' +
+          'entry where `<unique_by>` equals this value; it refuses if no such ' +
+          'entry exists (you cannot create entries via inline-enrichment).',
+      },
+      soft_fields: {
+        type: 'object',
+        description:
+          'Map of field name to new value. Every key must appear in the ' +
+          "surface's declared `soft_fields` list (read the autonomy.yaml " +
+          'entry to confirm before calling). Values can be strings, numbers, ' +
+          'booleans, or null. If a field already exists on the entry, its ' +
+          "value is replaced; if it doesn't yet exist, it's appended to the " +
+          "entry. Other fields on the entry are preserved.",
+        additionalProperties: {
+          type: ['string', 'number', 'boolean', 'null'],
+        },
+      },
+    },
+    required: ['path', 'entry_id', 'soft_fields'],
+  },
+};
+
+export const ADJUST_PARAM_TOOL: Anthropic.Tool = {
+  name: 'adjust_param',
+  description:
+    'Adjust a numeric parameter within an operator-declared range on a ' +
+    '`bounded` YAML surface (e.g. `lib/warmup.yaml`). Use this for ' +
+    'operational tuning — send-rate caps, warmup throttles, retry counts, ' +
+    'confidence thresholds — where the operator sets the safe band and you ' +
+    'tune within it based on observed behaviour. The autonomy.yaml entry ' +
+    'declares per-parameter `{min, max, step?}`; keys outside that map are ' +
+    'operator-only and adjust_param refuses. Refusal messages call out which ' +
+    'bound was violated (below min, above max, off-step) or which key is ' +
+    "off-limits — read the error and either correct the value or surface " +
+    'the friction to your operator.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      path: {
+        type: 'string',
+        description:
+          'Relative path to the bounded YAML surface, e.g. ' +
+          '"lib/warmup.yaml". Must be listed in your role\'s lib/autonomy.yaml ' +
+          'with mode: bounded.',
+      },
+      key: {
+        type: 'string',
+        description:
+          'Parameter name. Must appear in the surface\'s declared `bounds` ' +
+          "map (read the autonomy.yaml entry to confirm before calling). " +
+          'Parameters absent from `bounds` are operator-only — refusal lists ' +
+          'the keys you may adjust.',
+      },
+      value: {
+        type: 'number',
+        description:
+          "New value. Must satisfy `min <= value <= max` from the parameter's " +
+          'declared bound. When the bound declares `step`, the value must also ' +
+          'be a multiple of `step` starting from `min`.',
+      },
+    },
+    required: ['path', 'key', 'value'],
+  },
+};
+
 export const LOG_DECISION_TOOL: Anthropic.Tool = {
   name: 'log_decision',
   description:
@@ -333,16 +426,19 @@ export const UPDATE_OUTPUT_STATUS_TOOL: Anthropic.Tool = {
 
 /**
  * The full toolset, in the order the model sees them. Memory first — most
- * common action; logging last — least conversational. `append_entry` slots
- * after the high-frequency growth tools and before logging. The output
- * tools sit between the role-growth tools and the audit tools — they're
- * work product, not introspection.
+ * common action; logging last — least conversational. The lib-surgery tools
+ * (`append_entry`, `enrich_entry`, `adjust_param`) sit together after the
+ * high-frequency growth tools and before the output tools. The output tools
+ * sit between the role-growth tools and the audit tools — they're work
+ * product, not introspection.
  */
 export const CHAT_TOOLS: readonly Anthropic.Tool[] = [
   WRITE_MEMORY_TOOL,
   CREATE_ESCALATION_TOOL,
   PROPOSE_VERB_TOOL,
   APPEND_ENTRY_TOOL,
+  ENRICH_ENTRY_TOOL,
+  ADJUST_PARAM_TOOL,
   WRITE_OUTPUT_TOOL,
   UPDATE_OUTPUT_STATUS_TOOL,
   LOG_DECISION_TOOL,

@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    name: Typecheck + test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build seed package
+        # The CLI + dashboard import @praxis/seed via the workspace link,
+        # which resolves to the package's dist/ — so it must be built first.
+        run: npm run build --workspace=@praxis/seed
+
+      - name: Typecheck (all workspaces)
+        run: npm run check
+
+      - name: Tests (all workspaces)
+        run: npm test
+
+      - name: Build dashboard
+        run: npm run build --workspace=praxis-dashboard
+
+      - name: Build CLI
+        run: npm run build --workspace=@praxis/cli

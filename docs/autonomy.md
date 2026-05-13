@@ -72,10 +72,72 @@ The role can update soft fields (notes, calibration text, enrichment strings) wi
 
 Use for: reference data where structure is operator-owned but the soft texture per-entry is the role's lived experience.
 
+**The chat tool**: from `/chat`, the model uses `enrich_entry({path, entry_id, soft_fields})`. The framework reads the surface's autonomy.yaml entry to find the YAML list key (`root_key`), the entry-identifier field (`unique_by`), and the whitelist of fields the role may touch (`soft_fields`). The full shape:
+
+```yaml
+# lib/autonomy.yaml
+surfaces:
+  - path: lib/team.yaml
+    mode: inline-enrichment
+    root_key: members
+    unique_by: id
+    soft_fields:
+      - notes
+      - last_observed_at
+    why: |
+      Structured team data is operator-owned (name, role, email), but the
+      role keeps the notes column current with what it observes in
+      day-to-day interactions.
+```
+
+And a matching file the role enriches:
+
+```yaml
+# lib/team.yaml
+members:
+  - id: steve
+    name: Steve Worley         # operator-owned (hard)
+    role: Operator             # operator-owned (hard)
+    email: sj.worley88@gmail.com  # operator-owned (hard)
+    notes: morning person; pings via Slack for anything urgent.  # soft
+    last_observed_at: 2026-05-08                                  # soft
+```
+
+**Refusals the role sees**: missing `soft_fields` / `unique_by` declaration in autonomy.yaml; surface in a different mode; no entry with the given `entry_id` (inline-enrichment can't create entries — file a `proposed_skill` escalation if a new entry shape is needed); a supplied key isn't in the whitelist (the refusal lists the declared soft fields so the role can self-correct).
+
 ### `bounded`
 The role can adjust parameters within ranges the operator has set. The bounds live alongside the entry in `lib/autonomy.yaml`.
 
 Use for: operational parameters where there's a clear safe range (e.g. retry counts, wave thresholds, daily limits). The operator sets the band; the role adapts within it.
+
+**The chat tool**: from `/chat`, the model uses `adjust_param({path, key, value})`. The framework reads the surface's autonomy.yaml entry to find the per-parameter `bounds` block. Each parameter declares `min` and `max` (required) and optionally `step` (when set, the value must be a multiple of `step` starting from `min`). The full shape:
+
+```yaml
+# lib/autonomy.yaml
+surfaces:
+  - path: lib/warmup.yaml
+    mode: bounded
+    bounds:
+      sends_per_day: { min: 10, max: 100, step: 5 }
+      weeks_to_full_send_rate: { min: 4, max: 12 }
+      new_thread_ratio: { min: 0.1, max: 0.9 }
+    why: |
+      Warmup throttle parameters. The role can adjust based on observed
+      deliverability; operator-set ceilings cap risk.
+```
+
+And a matching file the role tunes:
+
+```yaml
+# lib/warmup.yaml — operator-authored ceilings, role tunes within
+sends_per_day: 25
+weeks_to_full_send_rate: 6
+new_thread_ratio: 0.3
+```
+
+The file is a flat top-level `key: value` map. The role can only adjust keys declared in `bounds` — keys absent from the bounds map are operator-only. The block-mapping form `sends_per_day:\n  min: 10\n  max: 100\n  step: 5` is also accepted in autonomy.yaml for operators who prefer that style.
+
+**Refusals the role sees**: missing `bounds` declaration in autonomy.yaml; surface in a different mode; key not in `bounds` (the refusal lists the declared bounded keys); value below `min`, above `max`, or not a multiple of `step` starting from `min`. Floating-point comparison uses a small tolerance (`1e-9`) so step-aligned decimals (`0.1 + 4*0.05 = 0.3`) pass cleanly.
 
 ### `gated` (default)
 The role never edits autonomously. Everything is gated unless explicitly opened in `lib/autonomy.yaml`.
@@ -86,11 +148,59 @@ Whatever surfaces are open, three things hold:
 
 1. **Visibility** — every autonomous edit is a git commit signed by the role (`--author="{role full name} <{role email}>"`). The dashboard's `/role` page surfaces "Recent edits by {role}" with a diff preview. Operators read it like a manager reviewing a direct report's working files.
 
-   Actor convention: dashboard-mediated commits use two synthetic identities so `git log --author=` filtering stays clean — `Praxis Role <role@praxis.local>` for autonomous chat-side writes (`write_memory`, `create_escalation`, `propose_verb`, `log_decision`), and the operator's configured `user.name`/`user.email` (falling back to `Operator <operator@praxis.local>` when no git identity is set) for triage-side actions (accept/decline/comment escalations, accept/decline/edit proposed verbs). Commit subjects follow conventional-commit shape: `role(<scope>): <subject>` and `operator(triage): <subject>` respectively. Operators who drive the role via Claude Code commit under their own git identity as usual — the synthetic actors only apply to dashboard-mediated mutations.
+   Actor convention: dashboard-mediated commits use two synthetic identities so `git log --author=` filtering stays clean — `Praxis Role <role@praxis.local>` for autonomous chat-side writes (`write_memory`, `create_escalation`, `propose_verb`, `log_decision`, `append_entry`, `enrich_entry`, `adjust_param`, `write_output`, `update_output_status`), and the operator's configured `user.name`/`user.email` (falling back to `Operator <operator@praxis.local>` when no git identity is set) for triage-side actions (accept/decline/comment escalations, accept/decline/edit proposed verbs). Commit subjects follow conventional-commit shape: `role(<scope>): <subject>` and `operator(triage): <subject>` respectively. Operators who drive the role via Claude Code commit under their own git identity as usual — the synthetic actors only apply to dashboard-mediated mutations.
 
 2. **Reversibility** — `git revert <sha>` is the rollback. Every autonomous edit is one commit, attributed to the role, on a known set of paths. No autonomous edit is irreversible.
 
 3. **Lock toggle** — `lib/autonomy.yaml` is operator-authored. Any surface can be downgraded to `gated` with a one-line edit. If the role starts making changes the operator keeps reverting, the operator pulls the lever.
+
+## Co-authoring constitutional changes
+
+`gated` doesn't mean "edit by hand in your IDE." The constitutional surfaces (`persona.md`, live `verbs/*.md`, `CLAUDE.md`, `lib/customers.yaml`, `lib/compliance.yaml`, `lib/autonomy.yaml`, `lib/tools.yaml`) stay off-limits to the role's autonomous tool calls, but the dashboard ships an *operator-driven* path for applying changes that the role asked for via an `improvement` escalation. The flow is:
+
+1. The role files an `improvement` escalation (e.g. *"my voice is too formal for engineering contacts; can we add a more concise mode?"*).
+2. The operator accepts the escalation on `/triage`.
+3. The operator clicks **Have <persona> draft a proposal →** on the same card, which opens `/triage/draft/<escalation_id>`.
+4. The model reads the role's files (persona, CLAUDE.md, every live verb, non-constitutional libs) and decides which one(s) to change. It calls a `propose_file_change` tool 1..N times, returning each proposed file with a one-sentence rationale and a unified diff. A tone change might propose just `persona.md`; a deeper voice shift might propose `persona.md` + a verb together.
+5. The dashboard renders the proposals as a list of cards (one per file). For each, the operator can review the diff, switch to an inline editor to tweak the bytes, or drop the file from the apply set. An optional "anything else to tell <persona>?" textarea drives re-drafts.
+6. Clicking **Apply all** writes every remaining file atomically and commits the whole set as ONE operator-attributed commit with a `Co-Authored-By: Praxis Role` trailer.
+
+The model is a drafting assistant; the operator is the actor. The chat tools' autonomy gate is *not* bypassed — chat tools still can't touch the constitution. Co-authoring is a separate surface, accessed only through `/triage/draft/<id>`, and gated by:
+
+- **An escalation must exist.** Every propose call and every apply is anchored to a `loadEscalation(id)` call. Co-authoring without an escalation isn't reachable.
+- **Allowed targets are a closed set.** `persona.md`, `CLAUDE.md`, `verbs/<slug>.md` (live verbs only — not `verbs/proposed/`), `lib/<filename>` (non-constitutional libs only — `customers.yaml`, `compliance.yaml`, `autonomy.yaml`, `tools.yaml` are refused at the tool boundary). Path traversal is refused at both the propose and apply paths.
+- **Frontmatter preservation.** If the original file has a `---` frontmatter block and the model drops it, the proposal is refused (and the model can retry) — and the same check runs again at apply time as belt-and-braces.
+
+### Commit shape
+
+Co-authored applies use the operator's git identity as author + committer (same fallback chain as triage actions), with a conventional-commit subject scoped to the target surface. Single-kind proposals (all files in the same category) use that category as the scope; mixed-kind proposals use `coauthor`:
+
+```
+operator(persona): apply proposal for Voice too formal for engineering contacts (#2026-05-08-tone)
+
+Applied co-authored multi-file change for escalation 2026-05-08-tone.
+
+Escalation: 2026-05-08-tone (improvement)
+Title: Voice too formal for engineering contacts
+
+Files changed:
+  - persona.md
+  - verbs/escalate.md
+
+Co-Authored-By: Praxis Role <role@praxis.local>
+```
+
+`git log --author=Praxis` finds every autonomous role-side commit; `git log --grep='Co-Authored-By: Praxis Role'` finds every co-authored apply. Two cleanly separated audit lenses on the same history.
+
+### Why this isn't a graduation of autonomy
+
+The role doesn't earn the ability to edit its constitution. The operator does it *for* the role, with the model's drafting help. Three reads of the same boundary:
+
+- The role's autonomous toolset (`write_memory`, `create_escalation`, `propose_verb`, `append_entry`, `enrich_entry`, `adjust_param`) is unchanged. The constitution is still gated.
+- The operator's existing options (open an editor, commit directly) are unchanged. The proposal-review flow is an additional path, not a replacement.
+- The model's role in co-authoring is bounded by the tool: it returns proposed file content for paths on the allowlist via `propose_file_change`, and an iteration cap (8) keeps any single proposal from runaway. It can't reach outside the propose-and-summarise loop, can't commit, and can't touch constitutional lib files.
+
+If the surface is the wrong abstraction for a given role's needs, the operator skips it and edits by hand. Co-authoring is a convenience, not a contract.
 
 ## The starter shape
 

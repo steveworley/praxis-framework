@@ -69,6 +69,8 @@ All endpoints return JSON. Read endpoints exist for parity / external consumers,
 | POST | `/api/triage/verbs/proposed/{slug}/accept` | Optional `{body_override}`; moves to `verbs/<slug>.md`, best-effort appends to CLAUDE.md verbs table |
 | POST | `/api/triage/verbs/proposed/{slug}/decline` | Required `{reason}`; flips to `declined`, keeps file in place |
 | POST | `/api/triage/verbs/proposed/{slug}/edit` | Required `{body}`; replaces draft body, frontmatter preserved |
+| POST | `/api/triage/propose` | Body `{escalation_id, hint?}`; the model reads the role's files and proposes 1..N file changes via the `propose_file_change` tool. Returns `{escalation_id, proposals: FileProposal[], summary, truncated?}` where each `FileProposal` carries `{path, current_content, proposed_content, diff_unified, rationale, kind}`. No disk write; the operator reviews before applying. |
+| POST | `/api/triage/apply` | Body `{escalation_id, proposals: [{path, proposed_content}, ...]}`; atomically writes every file (best-effort revert on partial failure) and creates ONE operator-attributed commit covering the whole set with a `Co-Authored-By: Praxis Role` trailer. Returns `{ok, commit_sha, commit_short_sha, files_changed, commit_warning?}`. |
 | GET | `/api/output?type=&status=&entity_type=&entity_id=&limit=` | List output entries, filterable by type / status / entity. Returns `OutputSummary[]` sorted by `updated` desc. |
 | GET | `/api/output/{type}/{...slug}` | Load one entry. For records, `{...slug}` is `<entity_type>/<entity_id>/<slug>`. Returns `{meta, body, body_html, frontmatter}`. |
 | POST | `/api/output/{type}/{...slug}` | Update status. Body `{status}` where status is one of the closed lifecycle enum. Operator-attributed commit via audit. |
@@ -95,7 +97,7 @@ What the chat reads when assembling the system prompt:
 | `persona.md` | Full body (sans H1) — voice, identity, capabilities, hard inhibitions |
 | `verbs/*.md` | Slug + one-liner per live verb (from frontmatter `summary:` / `description:` / `purpose:`, or the first non-heading line) |
 | `CLAUDE.md` § Hard rules | The hard-rules block (matched on `## Hard rules` heading, sliced to the next section) |
-| `lib/autonomy.yaml` | Open surfaces (`mode != gated`) become the allow list; `persona.md`, `verbs/*.md`, `CLAUDE.md`, and `lib/*` stay on the deny list regardless |
+| `lib/autonomy.yaml` | Open surfaces (`mode != gated`) become the allow list; the hard-coded `CONSTITUTIONAL_PATHS` (`persona.md`, `CLAUDE.md`, `lib/customers.yaml`, `lib/compliance.yaml`, `lib/autonomy.yaml`, `lib/tools.yaml`) plus direct `.md` children of `verbs/` stay on the deny list regardless. Other `lib/*` files follow whatever `lib/autonomy.yaml` declares for them. |
 | `lib/tools.yaml` | Capability name + description per entry |
 
 Conversations land at `<role-home>/memory/conversations/<thread_id>.md` in the same markdown shape as every other entry in the persona's notebook. Operators can grep, diff, or hand-edit them.
@@ -104,16 +106,21 @@ Attachments uploaded from the composer land at `<role-home>/lib/uploads/<thread_
 
 ### The learning loop
 
-The chat surface is where the non-technical operator's role *grows*. Every chat turn runs an Anthropic tool-use loop with four growth tools exposed to the model:
+The chat surface is where the non-technical operator's role *grows*. Every chat turn runs an Anthropic tool-use loop with a typed toolset exposed to the model, sorted into three groups by intent:
 
-| Tool | Writes to |
-|---|---|
-| `write_memory` | `memory/<category>/<slug>.md` |
-| `create_escalation` | `escalations/<date>-<random>-<slug>.md` |
-| `propose_verb` | `verbs/proposed/<slug>.md` |
-| `log_decision` | `logs/<date>.jsonl` or `campaigns/<id>/logs/...` |
+| Group | Tool | Writes to |
+|---|---|---|
+| Growth | `write_memory` | `memory/<category>/<slug>.md` |
+| Growth | `create_escalation` | `escalations/<date>-<random>-<slug>.md` |
+| Growth | `propose_verb` | `verbs/proposed/<slug>.md` |
+| Growth | `log_decision` | `logs/<date>.jsonl` or `campaigns/<id>/logs/...` |
+| Lib surgery | `append_entry` | operator-opened `append-only` YAML surface (e.g. `lib/research-strategies.yaml`) |
+| Lib surgery | `enrich_entry` | operator-opened `inline-enrichment` YAML surface (e.g. `lib/team.yaml`) |
+| Lib surgery | `adjust_param` | operator-opened `bounded` YAML surface (e.g. `lib/warmup.yaml`) |
+| Work product | `write_output` | `output/<type>/<slug>.md` (records nest under `<entity_type>/<entity_id>/`) |
+| Work product | `update_output_status` | status frontmatter on an existing `output/<type>/<slug>.md` |
 
-Every tool call is gated by `lib/autonomy.yaml` *and* a hard-coded constitutional list. Constitutional surfaces (`persona.md`, `verbs/*.md` outside `verbs/proposed/`, `lib/customers.yaml`, `lib/compliance.yaml`, `lib/team.yaml`, `lib/autonomy.yaml`, `CLAUDE.md`) are refused regardless of yaml — the chat surface is never the place to mutate the role's constitution.
+Every tool call is gated by `lib/autonomy.yaml` *and* a hard-coded constitutional list. Constitutional surfaces — `persona.md`, `CLAUDE.md`, `lib/customers.yaml`, `lib/compliance.yaml`, `lib/autonomy.yaml`, `lib/tools.yaml`, plus direct `.md` children of `verbs/` (live playbooks, not `verbs/proposed/`) — are refused regardless of yaml. Other `lib/*` files are operator-opened: the role can write to them in whichever mode `lib/autonomy.yaml` declares.
 
 Tool calls persist on the assistant turn as an HTML-comment-fenced JSON block inside the thread markdown file; the dashboard renders them inline below the turn label. Refusals (gated surface, duplicate slug, malformed input) render in the warning colour and tell the model why — the model can adjust and try again.
 
@@ -133,6 +140,22 @@ Two sections, both backed by the typed `/api/triage/*` routes:
 - **Proposed verbs** — drafts under `verbs/proposed/` with `status: proposed`. **Accept** atomically moves `verbs/proposed/<slug>.md` to `verbs/<slug>.md`, sets frontmatter `status: accepted`, and (best-effort) appends a row to `CLAUDE.md`'s verbs table. **Edit before accept** opens an inline textarea pre-filled with the draft body — operators can refine the prompt before promoting, then either **Save only** (keep refinements in `proposed/` without accepting) or **Save + accept** (the refined body goes straight into the new live verb). **Decline** flips the draft's frontmatter `status` to `declined` and records a reason; the file stays in `verbs/proposed/` as a record of what didn't make the cut.
 
 Every mutation is atomic (write-to-tmp + rename), every id/slug is regex-validated and path-traversal-checked, and the home page surfaces a "N items in triage" strip when the queue is non-empty. The nav tab carries a count badge.
+
+### Co-authoring constitutional changes (`/triage/draft/<id>`)
+
+Improvement escalations that land on constitutional surfaces (persona, CLAUDE.md, a live verb, a `lib/*` file) often deserve to become an actual text change, not just an "accepted, will action later" note. The triage card for each `improvement` escalation includes a **Have <persona> draft a proposal →** link that opens `/triage/draft/<escalation_id>`.
+
+The page is single-pane and proposal-review-shaped (not picker-shaped). The operator never picks a target file or writes a directive — the model decides which file(s) to change, based on the escalation alone:
+
+- **Escalation context** at top — the body rendered as prose, kind + urgency badges, date.
+- **Draft button** — when the page first loads. Clicking it sends the escalation id to `/api/triage/propose`; the model reads the role's files (persona, CLAUDE.md, every live verb, non-constitutional libs), then calls `propose_file_change` 1..N times to propose a coherent multi-file change set, ending with a one-paragraph summary.
+- **Proposal cards** — one per proposed file, each showing the path + kind badge (persona / CLAUDE.md / verb / lib), the model's one-sentence rationale, and a tabbed view (Diff / Edit inline). A small `×` button drops a file from the apply set. The diff renders with per-line backgrounds (additions green, removals red, hunk headers info-purple).
+- **Re-draft hint** — an optional "anything else to tell <persona>?" textarea. Used when the operator clicks **Re-draft** for a fresh proposal with extra guidance.
+- **Action row** — **Apply all (N files)** (primary), **Re-draft**, **Discard**.
+
+The flow bypasses the chat tools' autonomy gate by design: the operator is the actor, the model is just a drafting assistant. Apply commits the whole set as ONE operator-attributed commit with the trailer `Co-Authored-By: Praxis Role <role@praxis.local>`, so `git log --grep='Co-Authored-By: Praxis Role'` recovers every co-authored edit. Drop / Re-draft / Edit inline / Discard are all in-page operations; nothing is persisted server-side until **Apply all** lands.
+
+The applied escalation isn't auto-resolved — the operator can comment on it (or close it) from `/triage` separately. The audit trail is the commit + the escalation; we don't need a second state mutation.
 
 ## Output
 
@@ -164,11 +187,15 @@ Every dashboard-mediated mutation — chat-side tool calls and operator-side tri
 | `create_escalation` (chat) | `Praxis Role <role@praxis.local>` | `role(escalation): file <kind> — <slug>` |
 | `propose_verb` (chat) | `Praxis Role <role@praxis.local>` | `role(verb): propose <slug>` |
 | `log_decision` (chat) | `Praxis Role <role@praxis.local>` | `role(decision): log <decision_type>` |
+| `append_entry` (chat) | `Praxis Role <role@praxis.local>` | `role(lib): append <surface>` |
+| `enrich_entry` (chat) | `Praxis Role <role@praxis.local>` | `role(lib): enrich <surface>` |
+| `adjust_param` (chat) | `Praxis Role <role@praxis.local>` | `role(lib): adjust <surface>:<key>` |
 | `write_output` (chat) | `Praxis Role <role@praxis.local>` | `role(output): write <type> <slug>` |
 | `update_output_status` (chat) | `Praxis Role <role@praxis.local>` | `role(output): status <slug>: <prev> → <next>` |
 | `POST /api/output/.../{slug}` (dashboard) | operator (from `git config`) | `operator(output): status <slug>: <prev> → <next>` |
 | accept / decline / comment escalation (triage) | operator (from `git config`) | `operator(triage): <action> escalation <id>` |
 | accept / decline / edit proposed verb (triage) | operator (from `git config`) | `operator(triage): <action> proposed verb <slug>` |
+| co-author apply (triage/draft) | operator (from `git config`) | `operator(<persona\|claude-md\|verb\|lib\|coauthor>): apply proposal for <summary> (#<escalation_id>)` with a `Co-Authored-By: Praxis Role` trailer in the body. Single-kind proposal sets use the kind as the scope; mixed-kind sets fall back to `coauthor`. |
 
 The role's repo doesn't need to be a git repo on first launch — the audit module auto-initialises one and lays a `chore: praxis init audit baseline` commit before any mutation lands. If the operator hasn't set a git identity, operator-side commits fall back to `Operator <operator@praxis.local>` and the triage UI surfaces a soft banner inviting them to set `user.name`/`user.email`.
 
@@ -207,7 +234,7 @@ Both commits are visible in `git log` and can be reverted independently. The wiz
 - **Phase 0** (shipped): read-only role-watcher, hosted via Astro on the host
 - **Phase 1** (shipped — Dockerfile + compose): dockerized; framework repo mounted as a volume
 - **Phase 3** (shipped — the wizard): role-planning UX in `/setup`; converts the framework into a populated role
-- **Phase 2 (chat MVP)** (shipped): `/chat` ships the non-technical operator's conversational runtime; persona-as-system-prompt; persisted conversations under `memory/conversations/`. Tool use deferred to a follow-up.
+- **Phase 2 (chat)** (shipped): `/chat` ships the non-technical operator's conversational runtime; persona-as-system-prompt; persisted conversations under `memory/conversations/`; tool-use loop wired end-to-end with the typed toolset gated by `lib/autonomy.yaml` and `CONSTITUTIONAL_PATHS`.
 - **Phase 4** (planned): verb-tag taxonomy from verb frontmatter, verbs grouped by tag in the dashboard
 
 ## What it isn't

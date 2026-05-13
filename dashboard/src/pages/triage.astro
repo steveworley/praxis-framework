@@ -135,6 +135,11 @@ const bootstrap = {
               <button type="button" class="action-btn" @click="openAction(e.id, 'accept')">Accept</button>
               <button type="button" class="action-btn danger" @click="openAction(e.id, 'decline')">Decline</button>
               <button type="button" class="action-btn" @click="openAction(e.id, 'comment')">Comment</button>
+              <template x-if="e.kind === 'improvement'">
+                <a class="action-btn coauthor" :href="`/triage/draft/${encodeURIComponent(e.id)}`">
+                  Have <span x-text="personaShort"></span> draft a proposal →
+                </a>
+              </template>
             </div>
 
             <template x-if="pending[e.id] === 'accept'">
@@ -454,6 +459,20 @@ const bootstrap = {
     }
     .action-btn.ghost:hover {
       color: var(--ink);
+    }
+    /* Distinct treatment for the cross-page co-authoring link — same shape
+       as the inline action buttons but with the constitutional-edit accent
+       (info purple) so it reads as "this opens a different surface". */
+    a.action-btn.coauthor {
+      color: var(--info);
+      border-color: #d8c9e9;
+      text-decoration: none;
+    }
+    a.action-btn.coauthor:hover {
+      background: var(--info);
+      color: var(--surface);
+      border-color: var(--info);
+      text-decoration: none;
     }
 
     .action-form {
