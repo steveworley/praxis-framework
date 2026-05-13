@@ -6,7 +6,7 @@ _role-based agents that fit your business_
 
 ---
 
-A framework for **role-based agents that grow into a defined role**. You author the role's constitution — voice, hard rules, capabilities, reference data. The role grows within bounds you declare, every change lands as a git commit attributed to either the role or the operator, and the supervisor reads the role's interior like a manager reviewing a direct report's working files.
+A framework for **role-based agents that grow within a defined role**. You author the role's constitution — voice, hard rules, capabilities, reference data. The role grows within bounds you declare, every change lands as a git commit attributed to either the role or the operator, and the supervisor reads the role's interior like a manager reviewing a direct report's working files.
 
 The role is the unit of evolution, not the agent. See [`docs/philosophy.md`](docs/philosophy.md) for the framing, [`docs/comparison.md`](docs/comparison.md) for how praxis differs from self-improving (Hermes-class) agents.
 
@@ -16,7 +16,8 @@ Praxis is not a no-autonomy framework — it's a *differentiated* one. Different
 
 | Surface | What the role can do | How |
 |---|---|---|
-| `memory/`, `escalations/`, `verbs/proposed/`, `logs/`, `output/` | Write freely | Implicit `full` autonomy — these are the role's own working surfaces |
+| `memory/`, `escalations/`, `logs/`, `output/` | Write freely | Implicit `full` autonomy — these are the role's own working surfaces |
+| `verbs/proposed/` | Draft new verbs | Drafts land here freely, but only become live `verbs/*.md` after operator acceptance via `/triage` |
 | Operator-opened lists (e.g. `lib/research-strategies.yaml`) | Append new entries up to `max_pending` | `append-only` mode |
 | Operator-owned structured entries (e.g. `lib/team.yaml`) | Update declared soft fields on existing entries | `inline-enrichment` mode |
 | Operator-set parameter bands (e.g. `lib/warmup.yaml`) | Tune within `{min, max, step}` per key | `bounded` mode |
@@ -134,19 +135,9 @@ Praxis is the conventions; the reference roles inhabit them. [`examples/README.m
 
 A planned second role (a CSM agent, working name Caro) is sketched in [`docs/future/caro-second-role.md`](docs/future/caro-second-role.md) — a test of whether the primitives generalise from episodic BD work to durative account work.
 
-## Roadmap
+## Out of scope
 
-| Phase | Scope | Status |
-|---|---|---|
-| 0 | Conventions + template + read-only dashboard + docs | shipped |
-| 1 | Dockerized dashboard; framework repo as volume mount | shipped |
-| 1.5 | CLI (`praxis init`, `praxis init --config`, `praxis log`) | shipped |
-| 2 (chat) | `/chat` conversational runtime, tool-use loop, autonomy gate, co-authoring at `/triage/draft/[id]` | shipped |
-| 3 | Role-planning UX — the wizard at `/setup` | shipped |
-| 4 | Verb-tag taxonomy from frontmatter, dashboard groups verbs by tag | planned |
-| 2 (durable runtime) | Always-on runtime: scheduled cron, event-driven webhooks, queue-driven tasks. Reads the same files, follows the same conventions. | design sketch — see [`docs/future/phase-2-durable-runtime.md`](docs/future/phase-2-durable-runtime.md) |
-
-What's intentionally out of scope: multi-agent orchestration (one role per directory), cross-role learning (no shared memory pool), full-text search (grep against the role-home), and any LLM-provider lock-in (Claude Code uses whatever it runs; `/chat` uses the Anthropic SDK and is configurable per-deploy).
+Multi-agent orchestration (one role per directory), cross-role learning (no shared memory pool), full-text search (grep against the role-home), and any LLM-provider lock-in (Claude Code uses whatever it runs; `/chat` uses the Anthropic SDK and is configurable per-deploy).
 
 ## Deeper reading
 
