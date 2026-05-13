@@ -1,0 +1,767 @@
+---
+import Banner from '@/components/Banner.astro';
+import Breadcrumb from '@/components/Breadcrumb.astro';
+import RouteHeader from '@/components/RouteHeader.astro';
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import { personaNameFrom } from '@/lib/chat/persona-name';
+import { renderMarkdown } from '@/lib/markdown';
+import { parsePersona, type Persona } from '@/lib/persona-parser';
+import { detectMode, getRoleHome, nowIso } from '@/lib/role-home';
+import {
+  loadEscalation,
+  TriageNotFoundError,
+  type EscalationDetail,
+} from '@/lib/triage';
+import { listLibFiles, loadVerbs } from '@/lib/verbs-loader';
+
+/**
+ * /triage/draft/[id] — operator co-authoring surface.
+ *
+ * Anchored to a single escalation (path param `id`). Two panes:
+ *
+ *   - Left: the escalation as context, plus the target-file picker and the
+ *     operator's directive textarea.
+ *   - Right: the model's proposal — unified diff by default, swappable to an
+ *     editable textarea pre-filled with `proposed_content`.
+ *
+ * Both panes are server-rendered to first paint; Alpine handles the
+ * drafting / re-drafting / applying interactions client-side via the
+ * /api/triage/draft and /api/triage/apply endpoints.
+ *
+ * The page bypasses the chat-side autonomy gate by design: the operator is
+ * the actor here, the model is just a drafting assistant. Every apply commits
+ * as the operator with `Co-Authored-By: Praxis Role` so the audit story is
+ * still legible.
+ */
+
+export const prerender = false;
+
+const idParam = String(Astro.params['id'] ?? '');
+
+const roleHome = getRoleHome();
+const mode = detectMode(roleHome);
+if (mode === 'seed') {
+  return Astro.redirect('/setup');
+}
+
+let escalation: EscalationDetail | null = null;
+let escalationError: string | null = null;
+try {
+  escalation = await loadEscalation(roleHome, idParam);
+} catch (error: unknown) {
+  if (error instanceof TriageNotFoundError) {
+    escalationError = `No escalation with id '${idParam}' exists.`;
+  } else {
+    escalationError = error instanceof Error ? error.message : String(error);
+  }
+}
+
+const personaRes = await parsePersona(roleHome).catch(() => null);
+const persona: Persona | null = personaRes ?? null;
+const personaName = personaNameFrom(persona);
+const updatedAt = nowIso();
+
+const [verbsRes, libFilesRes] = await Promise.allSettled([
+  loadVerbs(roleHome),
+  listLibFiles(roleHome),
+]);
+const liveVerbSlugs: string[] =
+  verbsRes.status === 'fulfilled'
+    ? verbsRes.value.live.map((v) => v.file.replace(/\.md$/i, '')).filter((s) => !s.includes('/'))
+    : [];
+const libFiles: string[] =
+  libFilesRes.status === 'fulfilled' ? libFilesRes.value.map((p) => p.replace(/^lib\//, '')) : [];
+
+const escalationBodyHtml = escalation
+  ? renderMarkdown(stripDuplicateTitleH1(escalation.body, escalation.title))
+  : '';
+
+function stripDuplicateTitleH1(body: string, title: string): string {
+  const titleNorm = title.trim().toLowerCase();
+  if (!titleNorm) return body;
+  const match = /^\s*#\s+(.+?)\s*$/m.exec(body);
+  if (match && match[1].trim().toLowerCase() === titleNorm) {
+    return body.replace(match[0], '').replace(/^\s*\n/, '');
+  }
+  return body;
+}
+
+const bootstrap = {
+  escalationId: escalation?.id ?? idParam,
+  liveVerbSlugs,
+  libFiles,
+};
+---
+
+<BaseLayout title={escalation ? `Draft change · ${escalation.title}` : 'Draft change · Praxis'}>
+  <main class="container">
+    <RouteHeader
+      current="triage"
+      personaName={persona ? personaName.full : ''}
+      updatedAt={updatedAt}
+    />
+
+    <Breadcrumb
+      crumbs={[
+        { label: 'triage', href: '/triage' },
+        { label: 'draft change' },
+        { label: escalation?.id ?? idParam },
+      ]}
+    />
+
+    {escalationError && (
+      <Banner variant="error">{escalationError} <a href="/triage">Back to triage</a></Banner>
+    )}
+
+    {escalation && (
+      <div
+        class="draft-shell"
+        x-data="praxisCoauthor()"
+        x-init="init()"
+      >
+        <p class="page-lede large">
+          The role asked for this; you've accepted. Direct the model to draft the specific edit, review the diff, then apply it as a co-authored commit.
+        </p>
+
+        <template x-if="bannerError">
+          <Banner variant="error"><span x-text="bannerError"></span></Banner>
+        </template>
+        <template x-if="bannerWarning">
+          <Banner variant="warning"><span x-text="bannerWarning"></span></Banner>
+        </template>
+        <template x-if="bannerSuccess">
+          <Banner variant="success"><span x-text="bannerSuccess"></span></Banner>
+        </template>
+
+        <div class="panes">
+          <section class="pane pane-left">
+            <h2 class="pane-title">Context</h2>
+
+            <article class="esc-card">
+              <div class="esc-meta">
+                <span class="kind-label" x-text="kindLabel">{escalation.kind.toUpperCase()}</span>
+                <span class="esc-created">{escalation.created ?? ''}</span>
+                {escalation.urgency === 'high' && <span class="urg-high">high urgency</span>}
+              </div>
+              <h3 class="esc-title">{escalation.title}</h3>
+              <div class="prose esc-body" set:html={escalationBodyHtml}></div>
+            </article>
+
+            <fieldset class="picker">
+              <legend>Target file</legend>
+              <label class="radio-row">
+                <input type="radio" name="target_kind" value="persona" x-model="targetKind" />
+                <span><code>persona.md</code> — voice, identity, capabilities, hard inhibitions</span>
+              </label>
+              <label class="radio-row">
+                <input type="radio" name="target_kind" value="claude-md" x-model="targetKind" />
+                <span><code>CLAUDE.md</code> — operating manual</span>
+              </label>
+              <label class="radio-row">
+                <input type="radio" name="target_kind" value="verb" x-model="targetKind" />
+                <span>
+                  Verb (<code>verbs/&lt;slug&gt;.md</code>) —
+                  <select x-model="verbSlug" :disabled="targetKind !== 'verb'">
+                    <option value="">(pick a verb)</option>
+                    <template x-for="slug in liveVerbSlugs" :key="slug">
+                      <option :value="slug" x-text="slug"></option>
+                    </template>
+                  </select>
+                </span>
+              </label>
+              <label class="radio-row">
+                <input type="radio" name="target_kind" value="lib" x-model="targetKind" />
+                <span>
+                  Lib file (<code>lib/&lt;filename&gt;</code>) —
+                  <input
+                    type="text"
+                    x-model="libFilename"
+                    :disabled="targetKind !== 'lib'"
+                    placeholder="team.yaml"
+                    list="lib-files-suggest"
+                    class="lib-input"
+                  />
+                  <datalist id="lib-files-suggest">
+                    <template x-for="f in libFiles" :key="f">
+                      <option :value="f"></option>
+                    </template>
+                  </datalist>
+                </span>
+              </label>
+            </fieldset>
+
+            <label class="directive-block">
+              <span class="block-label">Directive</span>
+              <span class="block-help">
+                What specifically should change? Keep it concrete — the model will rewrite the
+                whole file to match.
+              </span>
+              <textarea
+                x-model="directive"
+                rows="6"
+                placeholder="Add a more concise mode for engineering contacts; keep the existing voice traits intact."
+              ></textarea>
+            </label>
+
+            <div class="action-row">
+              <button
+                type="button"
+                class="action-btn primary"
+                :disabled="!canDraft || state === 'drafting'"
+                @click="draft()"
+              >
+                <span x-show="state !== 'drafting'" x-text="state === 'drafted' ? 'Re-draft' : 'Draft proposal'"></span>
+                <span x-show="state === 'drafting'">Drafting...</span>
+              </button>
+              <template x-if="state === 'drafted'">
+                <button type="button" class="action-btn ghost" @click="discard()">Discard</button>
+              </template>
+            </div>
+          </section>
+
+          <section class="pane pane-right">
+            <h2 class="pane-title">
+              Proposal
+              <template x-if="state === 'drafted'">
+                <span class="target-path">→ <code x-text="proposal.target_path"></code></span>
+              </template>
+            </h2>
+
+            <template x-if="state === 'idle'">
+              <div class="empty-pane">
+                Pick a target and write a directive, then click <em>Draft proposal</em>.
+                The model will return a complete new file; you'll see the diff here.
+              </div>
+            </template>
+
+            <template x-if="state === 'drafting'">
+              <div class="empty-pane">Drafting via the model. This usually takes a few seconds...</div>
+            </template>
+
+            <template x-if="state === 'drafted'">
+              <div class="proposal-block">
+                <div class="proposal-tabs">
+                  <button
+                    type="button"
+                    class="tab-btn"
+                    :class="{ active: viewMode === 'diff' }"
+                    @click="viewMode = 'diff'"
+                  >
+                    Unified diff
+                  </button>
+                  <button
+                    type="button"
+                    class="tab-btn"
+                    :class="{ active: viewMode === 'edit' }"
+                    @click="viewMode = 'edit'"
+                  >
+                    Edit before applying
+                  </button>
+                </div>
+
+                <template x-if="viewMode === 'diff'">
+                  <div class="diff-view" x-html="renderDiff(proposal.diff_unified)"></div>
+                </template>
+
+                <template x-if="viewMode === 'edit'">
+                  <textarea
+                    class="edit-textarea"
+                    rows="24"
+                    x-model="editedContent"
+                    spellcheck="false"
+                  ></textarea>
+                </template>
+
+                <div class="apply-row">
+                  <button
+                    type="button"
+                    class="action-btn primary"
+                    :disabled="state !== 'drafted' || applying"
+                    @click="apply()"
+                  >
+                    <span x-show="!applying">Apply (commits as you, co-authored by the role)</span>
+                    <span x-show="applying">Applying...</span>
+                  </button>
+                </div>
+              </div>
+            </template>
+
+            <template x-if="state === 'applied'">
+              <div class="applied-block">
+                <p>
+                  Applied as commit <code x-text="applied.commit_short_sha"></code>. Redirecting to triage...
+                </p>
+              </div>
+            </template>
+          </section>
+        </div>
+      </div>
+    )}
+  </main>
+
+  <style>
+    /* /triage/draft/[id] — two-pane co-authoring surface. Inherits the
+       editorial aesthetic of /triage: monospace meta, plain prose body,
+       quiet action buttons. The diff view uses per-line backgrounds with
+       no flashy chrome — the goal is to read the change, not the renderer. */
+    .draft-shell {
+      margin-top: 1rem;
+    }
+    .panes {
+      display: grid;
+      grid-template-columns: minmax(320px, 1fr) minmax(420px, 1.2fr);
+      gap: 1.5rem;
+      align-items: start;
+    }
+    @media (max-width: 900px) {
+      .panes {
+        grid-template-columns: 1fr;
+      }
+    }
+    .pane {
+      border: 1px solid var(--rule);
+      background: var(--surface);
+      border-radius: 4px;
+      padding: 1.2rem 1.3rem;
+    }
+    .pane-title {
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--ink);
+      margin-bottom: 0.9rem;
+      display: flex;
+      align-items: baseline;
+      gap: 0.5rem;
+    }
+    .target-path {
+      font-family: ui-monospace, monospace;
+      font-size: 11.5px;
+      font-weight: 400;
+      letter-spacing: 0;
+      text-transform: none;
+      color: var(--ink-muted);
+    }
+    .target-path code {
+      font-size: 11px;
+    }
+
+    .esc-card {
+      padding: 0.9rem 1rem;
+      background: var(--surface-mute);
+      border-radius: 3px;
+      margin-bottom: 1.2rem;
+    }
+    .esc-meta {
+      display: flex;
+      gap: 0.6rem;
+      align-items: baseline;
+      font-family: ui-monospace, monospace;
+      font-size: 11.5px;
+      color: var(--ink-muted);
+      margin-bottom: 0.5rem;
+    }
+    .kind-label {
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 1px 5px;
+      border-radius: 2px;
+      background: #fbeed4;
+      color: var(--warn);
+    }
+    .esc-created {
+      color: var(--ink-faint);
+    }
+    .urg-high {
+      color: var(--danger);
+      font-weight: 600;
+    }
+    .esc-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--ink);
+      margin-bottom: 0.5rem;
+    }
+    .esc-body {
+      max-height: 220px;
+      overflow-y: auto;
+      font-size: 13px;
+    }
+
+    .picker {
+      border: 1px solid var(--rule);
+      border-radius: 3px;
+      padding: 0.7rem 0.9rem 0.9rem;
+      margin-bottom: 1rem;
+    }
+    .picker legend {
+      padding: 0 0.4rem;
+      font-size: 12px;
+      color: var(--ink-muted);
+    }
+    .radio-row {
+      display: flex;
+      gap: 0.55rem;
+      align-items: baseline;
+      padding: 0.3rem 0;
+      font-size: 13px;
+      color: var(--ink-soft);
+      flex-wrap: wrap;
+    }
+    .radio-row input[type='radio'] {
+      flex-shrink: 0;
+      margin-top: 0.15rem;
+    }
+    .radio-row select,
+    .radio-row input.lib-input {
+      font-family: inherit;
+      font-size: 12.5px;
+      padding: 0.2rem 0.4rem;
+      border: 1px solid var(--rule);
+      border-radius: 3px;
+      background: var(--surface);
+      color: var(--ink);
+      margin-left: 0.4rem;
+    }
+    .radio-row select:disabled,
+    .radio-row input.lib-input:disabled {
+      opacity: 0.45;
+    }
+
+    .directive-block {
+      display: block;
+      margin-bottom: 1rem;
+    }
+    .block-label {
+      display: block;
+      font-size: 12px;
+      color: var(--ink-muted);
+      margin-bottom: 0.2rem;
+      font-weight: 500;
+    }
+    .block-help {
+      display: block;
+      font-size: 11.5px;
+      color: var(--ink-faint);
+      margin-bottom: 0.45rem;
+    }
+    .directive-block textarea {
+      width: 100%;
+      font-family: inherit;
+      font-size: 13.5px;
+      line-height: 1.5;
+      padding: 0.55rem 0.7rem;
+      border: 1px solid var(--rule);
+      border-radius: 3px;
+      background: var(--surface);
+      color: var(--ink);
+      resize: vertical;
+    }
+    .directive-block textarea:focus {
+      outline: none;
+      border-color: var(--rule-strong);
+    }
+
+    .action-row,
+    .apply-row {
+      display: flex;
+      gap: 0.55rem;
+      flex-wrap: wrap;
+      align-items: baseline;
+      margin-top: 0.4rem;
+    }
+    .apply-row {
+      margin-top: 1rem;
+    }
+    .action-btn {
+      background: var(--surface);
+      border: 1px solid var(--rule);
+      border-radius: 3px;
+      padding: 0.4rem 0.95rem;
+      font-family: inherit;
+      font-size: 12.5px;
+      color: var(--ink-soft);
+      cursor: pointer;
+    }
+    .action-btn:hover:not(:disabled) {
+      border-color: var(--rule-strong);
+      color: var(--ink);
+    }
+    .action-btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+    .action-btn.primary {
+      border-color: var(--ink-soft);
+      color: var(--ink);
+      font-weight: 500;
+    }
+    .action-btn.primary:hover:not(:disabled) {
+      background: var(--ink);
+      color: var(--surface);
+    }
+    .action-btn.ghost {
+      border-color: transparent;
+      color: var(--ink-muted);
+    }
+    .action-btn.ghost:hover {
+      color: var(--ink);
+    }
+
+    .empty-pane {
+      padding: 1.5rem 0;
+      font-size: 13px;
+      color: var(--ink-muted);
+      font-style: italic;
+    }
+
+    .proposal-tabs {
+      display: flex;
+      gap: 0.4rem;
+      border-bottom: 1px solid var(--rule);
+      margin-bottom: 0.7rem;
+    }
+    .tab-btn {
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      padding: 0.4rem 0.6rem;
+      font-family: inherit;
+      font-size: 12.5px;
+      color: var(--ink-muted);
+      cursor: pointer;
+    }
+    .tab-btn:hover {
+      color: var(--ink);
+    }
+    .tab-btn.active {
+      color: var(--ink);
+      border-bottom-color: var(--ink);
+    }
+
+    .diff-view {
+      font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+      font-size: 12px;
+      line-height: 1.55;
+      background: var(--surface-mute);
+      border-radius: 3px;
+      padding: 0.55rem 0;
+      max-height: 540px;
+      overflow: auto;
+    }
+    :global(.diff-view .diff-line) {
+      display: block;
+      padding: 0 0.9rem;
+      white-space: pre;
+    }
+    :global(.diff-view .diff-line.added) {
+      background: #e6f4ea;
+      color: #0e5a25;
+    }
+    :global(.diff-view .diff-line.removed) {
+      background: #fbe2dc;
+      color: #8a1f12;
+    }
+    :global(.diff-view .diff-line.hunk) {
+      color: var(--info);
+      background: var(--surface-deep);
+      font-weight: 500;
+    }
+    :global(.diff-view .diff-line.meta) {
+      color: var(--ink-faint);
+    }
+
+    .edit-textarea {
+      width: 100%;
+      font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+      font-size: 12.5px;
+      line-height: 1.55;
+      padding: 0.7rem 0.9rem;
+      border: 1px solid var(--rule);
+      border-radius: 3px;
+      background: var(--surface);
+      color: var(--ink);
+      resize: vertical;
+      min-height: 320px;
+    }
+    .edit-textarea:focus {
+      outline: none;
+      border-color: var(--rule-strong);
+    }
+
+    .applied-block {
+      padding: 1rem 0;
+      font-size: 13.5px;
+      color: var(--ink-soft);
+    }
+    .applied-block code {
+      font-size: 12px;
+    }
+  </style>
+
+  <script
+    is:inline
+    define:vars={{ bootstrap }}
+  >
+    window.__praxisCoauthorBootstrap = bootstrap;
+  </script>
+  <script is:inline src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+  <script is:inline>
+    function praxisCoauthor() {
+      const boot = window.__praxisCoauthorBootstrap || { escalationId: '', liveVerbSlugs: [], libFiles: [] };
+      return {
+        escalationId: boot.escalationId,
+        liveVerbSlugs: boot.liveVerbSlugs || [],
+        libFiles: boot.libFiles || [],
+
+        // Target picker state.
+        targetKind: 'persona',
+        verbSlug: '',
+        libFilename: '',
+
+        // Operator directive.
+        directive: '',
+
+        // Lifecycle: idle | drafting | drafted | applied.
+        state: 'idle',
+        viewMode: 'diff',
+        proposal: null,
+        editedContent: '',
+        applied: null,
+        applying: false,
+
+        // Banners.
+        bannerError: '',
+        bannerWarning: '',
+        bannerSuccess: '',
+
+        init() {
+          this.state = 'idle';
+        },
+
+        get canDraft() {
+          if (this.directive.trim().length === 0) return false;
+          if (this.targetKind === 'verb' && this.verbSlug.trim().length === 0) return false;
+          if (this.targetKind === 'lib' && this.libFilename.trim().length === 0) return false;
+          return true;
+        },
+
+        currentTarget() {
+          if (this.targetKind === 'persona') return { kind: 'persona' };
+          if (this.targetKind === 'claude-md') return { kind: 'claude-md' };
+          if (this.targetKind === 'verb') return { kind: 'verb', slug: this.verbSlug.trim() };
+          if (this.targetKind === 'lib') return { kind: 'lib', filename: this.libFilename.trim() };
+          return null;
+        },
+
+        async draft() {
+          if (!this.canDraft) return;
+          this.bannerError = '';
+          this.bannerWarning = '';
+          this.bannerSuccess = '';
+          this.state = 'drafting';
+          try {
+            const res = await fetch('/api/triage/draft', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                escalation_id: this.escalationId,
+                target: this.currentTarget(),
+                directive: this.directive,
+              }),
+            });
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({}));
+              throw new Error(err.error || `Draft failed (${res.status})`);
+            }
+            const body = await res.json();
+            this.proposal = body;
+            this.editedContent = body.proposed_content || '';
+            this.viewMode = 'diff';
+            this.state = 'drafted';
+          } catch (e) {
+            this.bannerError = e instanceof Error ? e.message : String(e);
+            this.state = 'idle';
+          }
+        },
+
+        discard() {
+          this.proposal = null;
+          this.editedContent = '';
+          this.state = 'idle';
+          this.viewMode = 'diff';
+        },
+
+        async apply() {
+          if (!this.proposal || this.state !== 'drafted') return;
+          this.bannerError = '';
+          this.bannerWarning = '';
+          this.applying = true;
+          const finalContent = this.viewMode === 'edit' ? this.editedContent : this.proposal.proposed_content;
+          try {
+            const res = await fetch('/api/triage/apply', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                escalation_id: this.escalationId,
+                target_path: this.proposal.target_path,
+                proposed_content: finalContent,
+              }),
+            });
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({}));
+              throw new Error(err.error || `Apply failed (${res.status})`);
+            }
+            const body = await res.json();
+            this.applied = body;
+            if (body.commit_warning) this.bannerWarning = body.commit_warning;
+            this.bannerSuccess = `Applied as commit ${body.commit_short_sha || '(no sha)'}.`;
+            this.state = 'applied';
+            // Give the operator a beat to see the success banner before bouncing.
+            setTimeout(() => {
+              window.location.href = '/triage';
+            }, 1500);
+          } catch (e) {
+            this.bannerError = e instanceof Error ? e.message : String(e);
+          } finally {
+            this.applying = false;
+          }
+        },
+
+        get kindLabel() {
+          // Trivial getter so the Alpine template's x-text matches the
+          // rendered initial value without flashing during hydration.
+          return '';
+        },
+
+        /**
+         * Render a unified-diff string as colored per-line spans. Line
+         * classes are picked from the leading character:
+         *   ' '   context     → no class
+         *   '+'   addition    → .added (but skip the `+++` file marker)
+         *   '-'   removal     → .removed (but skip the `---` file marker)
+         *   '@@'  hunk header → .hunk
+         *   else  meta/index  → .meta
+         */
+        renderDiff(diffText) {
+          if (!diffText) return '';
+          const escape = (s) =>
+            s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+          const lines = diffText.split('\n');
+          const parts = [];
+          for (const raw of lines) {
+            let cls = 'diff-line';
+            if (raw.startsWith('@@')) cls += ' hunk';
+            else if (raw.startsWith('+++') || raw.startsWith('---') || raw.startsWith('Index:') || raw.startsWith('===')) cls += ' meta';
+            else if (raw.startsWith('+')) cls += ' added';
+            else if (raw.startsWith('-')) cls += ' removed';
+            parts.push(`<span class="${cls}">${escape(raw || ' ')}</span>`);
+          }
+          return parts.join('');
+        },
+      };
+    }
+  </script>
+</BaseLayout>
