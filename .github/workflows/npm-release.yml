@@ -1,5 +1,21 @@
 name: npm release
 
+# Publishes @praxis-framework/seed and @praxis-framework/cli to npm on
+# every push of a `v*.*.*` tag. Uses Trusted Publishing (OIDC) — no
+# long-lived NPM_TOKEN secret. Auth is granted via npm's trusted-publisher
+# config which must point at this repo + this workflow filename.
+#
+# One-time setup per package on npm:
+#   https://www.npmjs.com/package/<pkg>/access → Trusted publisher →
+#   Add GitHub Actions publisher:
+#     Repository owner: steveworley
+#     Repository name:  praxis-framework
+#     Workflow filename: npm-release.yml
+#     Environment:      (blank)
+#
+# npm 11.5.1+ is required for OIDC support; we upgrade npm explicitly
+# rather than relying on the version bundled with Node 20.
+
 on:
   push:
     tags: ['v*.*.*']
@@ -19,6 +35,9 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
           cache: 'npm'
 
+      - name: Upgrade npm for OIDC support
+        run: npm install -g npm@latest
+
       - name: Install dependencies
         run: npm ci
 
@@ -30,10 +49,6 @@ jobs:
 
       - name: Publish @praxis-framework/seed
         run: npm publish --access public --workspace=@praxis-framework/seed
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish @praxis-framework/cli
         run: npm publish --access public --workspace=@praxis-framework/cli
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
