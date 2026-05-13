@@ -1,12 +1,25 @@
 # Creating a role
 
-A walkthrough for setting up a new Praxis role. The wizard does most of the work; you author the persona content and the role's first agents.
-
-The canonical bootstrap flow is `docker run` against an empty directory — zero install, the wizard at `/setup` writes the role files and inits git in the mounted dir. The CLI is the scripted alternative for CI or version-controlled role definitions.
+A walkthrough for setting up a new Praxis role. The CLI does most of the work; you author the persona content and the role's first agents.
 
 ## 1. Seed the role
 
-### Option A — docker run (recommended)
+### Option A — CLI (recommended)
+
+```bash
+mkdir ~/Documents/agents/my-role && cd ~/Documents/agents/my-role
+npx @praxis-framework/cli@latest init               # interactive wizard
+# or
+npx @praxis-framework/cli@latest init --config role.json --path .   # non-interactive
+```
+
+The CLI writes the role files plus `docker-compose.yml` and `.env.example` at the role root, and auto-initialises the directory as a git repo on `main`. The CLI doesn't make commits — `git add . && git commit` when you're ready.
+
+For reproducible / version-controlled role definitions, the `--config` form takes a JSON role spec. See [`cli/examples/sample-role.json`](https://github.com/steveworley/praxis-framework/blob/main/cli/examples/sample-role.json).
+
+### Option B — dashboard wizard via docker run
+
+If you'd rather seed by clicking through a browser form instead of terminal prompts:
 
 ```bash
 mkdir ~/Documents/agents/my-role && cd ~/Documents/agents/my-role
@@ -16,25 +29,9 @@ docker run --rm -p 4321:4321 \
   ghcr.io/steveworley/praxis-framework/dashboard:latest
 ```
 
-Open `http://localhost:4321/`. Since `persona.md` doesn't exist at the role root yet, the dashboard redirects to **`/setup`** — the wizard. Walk it through; on submit the seed initialises git (if needed) and writes the role files plus `docker-compose.yml` + `.env.example` into the mounted directory as two visible commits.
+Open `http://localhost:4321/`. Since `persona.md` doesn't exist at the role root yet, the dashboard redirects to **`/setup`** — the wizard. Walk it through; on submit the seed initialises git (if needed) and writes the role files plus `docker-compose.yml` + `.env.example` into the mounted directory as two visible commits. When the wizard finishes, kill the one-shot container with `Ctrl-C` and continue to step 2.
 
 > The GHCR image is currently private. Run `docker login ghcr.io -u <username> -p $GITHUB_TOKEN` with a PAT carrying `read:packages` before pulling.
-
-When the wizard finishes, kill the one-shot container with `Ctrl-C`. Skip to step 2.
-
-### Option B — CLI (scripted / CI)
-
-For reproducible role definitions captured in a JSON config:
-
-```bash
-mkdir ~/Documents/agents/my-role && cd ~/Documents/agents/my-role
-npm install -g @praxis-framework/cli
-praxis init                                       # interactive wizard
-# or
-praxis init --config role.json --path .          # non-interactive
-```
-
-The CLI writes the role files plus `docker-compose.yml` and `.env.example` at the role root, and auto-initialises the directory as a git repo. The CLI doesn't make commits — that's left to the operator (run `git add . && git commit` when you're ready).
 
 ## 2. Bring the dashboard up
 
@@ -132,13 +129,13 @@ The role's world: rosters, customers, capabilities, compliance rules — anythin
 
 Praxis doesn't ship default `lib/` content — every role's world is different.
 
-## 8. Open Claude Code in the role's directory
+## 8. Operate the role through the dashboard
 
-```bash
-cd ~/Documents/agents/my-role && claude
-```
+The dashboard at `http://localhost:4321/chat` is the primary runtime. The model is fed the role's interior as a system prompt (persona body, live verbs, hard rules, autonomy stance, tool catalog). Tool use is enabled and gated by `lib/autonomy.yaml`. Every change the role makes — memory entries, escalations filed, output drafted, tool calls — lands as a git commit visible in `/role`'s recent-edits panel and as a feed entry in `/activity`.
 
-Claude Code reads `CLAUDE.md`, picks up the agents table, and is ready to operate. Give it a task; watch the dashboard fill in over time.
+Talk to the role through `/chat`. Watch the dashboard fill in over time.
+
+**Claude Code on the host** is supported for maintenance work — editing `persona.md`, refining live verbs, debugging the role's directory directly. `cd ~/Documents/agents/my-role && claude` opens it with full file and shell access. Use it when you need to touch the role's bones; for everyday operation, stay in the dashboard.
 
 ## 9. As the role grows
 

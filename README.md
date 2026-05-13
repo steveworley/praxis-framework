@@ -49,24 +49,35 @@ A praxis role lives in one directory:
 
 See [`docs/architecture.md`](docs/architecture.md) for the full layout.
 
-## Two runtimes, one role
-
-Praxis distinguishes two operator profiles. Both consume the same role files:
-
-- **Claude Code on the host** — the technical operator's runtime. `cd /path/to/role && claude`. `CLAUDE.md` loads, the agent works against the conventions with full file/shell access. Commits land under the operator's git identity as usual.
-- **The dashboard's `/chat`** — the non-technical operator's runtime. The model is fed the role's interior as a system prompt (persona body, live verbs, hard rules, autonomy stance, tool catalog) so it embodies the role in conversation. Tool use is enabled and gated by `lib/autonomy.yaml` + `CONSTITUTIONAL_PATHS`. Conversations persist as markdown under `memory/conversations/`.
-
-The chat surface exposes nine typed tools, grouped by intent:
-
-- **Growth** — `write_memory`, `create_escalation`, `propose_verb`, `log_decision`. The role's own observational surfaces.
-- **Lib surgery** — `append_entry`, `enrich_entry`, `adjust_param`. Operator-opened YAML under the modes declared in `lib/autonomy.yaml`.
-- **Work product** — `write_output`, `update_output_status`. The framework's typed `output/` taxonomy.
-
-Constitutional surfaces stay gated regardless of yaml. The chat is never the place to mutate the role's constitution — that's what `/triage/draft/<id>` co-authoring is for (operator-driven, model-assisted).
-
 ## Quickstart
 
-The fastest way to seed a role and see it running — zero install, one command:
+```bash
+mkdir my-role && cd my-role
+npx @praxis-framework/cli@latest init      # interactive wizard
+cp .env.example .env && vim .env           # set ANTHROPIC_API_KEY
+docker compose up                          # pulls the published dashboard image
+```
+
+That's it. The CLI walks you through identity, voice, capabilities, hard inhibitions, and optional starter verbs. It writes role files plus a `docker-compose.yml` and `.env.example` so the role is runnable with one `docker compose up` — no framework clone required. The seed auto-initialises the directory as a git repo on `main`.
+
+Open `http://localhost:4321/`. The dashboard is your primary surface — `/chat` to operate the role, `/triage` to review what it raises, `/role` to inspect the constitution. See [`docs/dashboard.md`](docs/dashboard.md).
+
+> The published dashboard image is currently private. Before `docker compose up` works, `docker login ghcr.io -u <username> -p $GITHUB_TOKEN` with a PAT carrying `read:packages`.
+
+### Scripted setup
+
+For CI or version-controlled role definitions:
+
+```bash
+mkdir my-role && cd my-role
+npx @praxis-framework/cli@latest init --config ./role.json --path .
+```
+
+Sample config at [`cli/examples/sample-role.json`](cli/examples/sample-role.json). The CLI also ships `praxis log` for appending JSONL decision lines from inside verb playbooks — see [`cli/README.md`](cli/README.md).
+
+### Alternative: seed via the dashboard wizard
+
+If you'd rather seed by clicking through a browser form instead of the CLI's terminal prompts:
 
 ```bash
 mkdir my-role && cd my-role
@@ -76,31 +87,7 @@ docker run --rm -p 4321:4321 \
   ghcr.io/steveworley/praxis-framework/dashboard:latest
 ```
 
-Open `http://localhost:4321/`. With nothing at the role root, the dashboard redirects to `/setup` — the wizard walks identity → voice → capabilities → hard inhibitions → optional starter verbs. On submit, two visible commits land in the mounted directory:
-
-1. `feat: seed role from praxis-framework template` — populates `persona.md`, `CLAUDE.md`, `verbs/`, `lib/`, `memory/`, `escalations/`, `docker-compose.yml`, `.env.example`.
-2. `chore: tidy framework-only files post-seed` — removes framework-only artefacts, replaces `README.md`.
-
-After the wizard, kill the one-shot container with `Ctrl-C` and bring the stack up via the freshly-seeded compose file:
-
-```bash
-cp .env.example .env && vim .env   # set ANTHROPIC_API_KEY
-docker compose up
-```
-
-> The GHCR image is currently private. Before the pull works, `docker login ghcr.io -u <username> -p $GITHUB_TOKEN` with a PAT carrying `read:packages`.
-
-### Scripted setup (CI, reproducible roles)
-
-For non-interactive seeding from a config file — useful for CI or version-controlled role definitions:
-
-```bash
-npm install -g @praxis-framework/cli
-mkdir my-role && cd my-role
-praxis init --config ./role.json --path .
-```
-
-A sample config lives at [`cli/examples/sample-role.json`](cli/examples/sample-role.json). The CLI also ships `praxis log` for appending JSONL decision lines from inside verb playbooks — see [`cli/README.md`](cli/README.md).
+Same outputs as the CLI — `/setup` writes role files + `docker-compose.yml` + `.env.example` into the mounted directory as two visible commits. Useful if you don't have Node.js handy.
 
 ### Framework development
 
@@ -112,15 +99,19 @@ cd praxis-framework
 docker compose up    # bind-mounts source for HMR via the dev Dockerfile
 ```
 
-### After the role is populated
+## Runtime
 
-Drive it via either runtime — they consume the same files:
+**The dashboard is the primary runtime.** Open `http://localhost:4321/chat` and talk to the role — the model is fed the role's interior as a system prompt (persona body, live verbs, hard rules, autonomy stance, tool catalog). Tool use is enabled, gated by `lib/autonomy.yaml` + `CONSTITUTIONAL_PATHS`. Conversations persist as markdown under `memory/conversations/`. Every change the role makes is a git commit, visible in `/role`'s recent-edits panel.
 
-```bash
-cd /path/to/my-role && claude              # technical operator
-# or
-docker compose up                          # non-technical operator → /chat
-```
+The chat surface exposes thirteen typed tools, grouped by intent:
+
+- **Growth** — `write_memory`, `archive_memory`, `consolidate_memory`, `create_escalation`, `propose_verb`, `log_decision`, `run_verb`, `complete_verb`. The role's observational + verb-invocation surfaces.
+- **Lib surgery** — `append_entry`, `enrich_entry`, `adjust_param`. Operator-opened YAML under the modes declared in `lib/autonomy.yaml`.
+- **Work product** — `write_output`, `update_output_status`. The framework's typed `output/` taxonomy.
+
+Constitutional surfaces stay gated regardless of yaml. The chat is never the place to mutate the role's constitution — that's what `/triage/draft/<id>` co-authoring is for (operator-driven, model-assisted).
+
+**Claude Code on the host** is supported for maintenance work — editing `persona.md` and live verbs, refining `lib/`, debugging the role's directory directly. `cd /path/to/role && claude` gives full file and shell access. Use it when you need to touch the role's bones; for everyday operation, drive the role through the dashboard.
 
 See [`docs/creating-a-role.md`](docs/creating-a-role.md) for the bootstrap walkthrough.
 

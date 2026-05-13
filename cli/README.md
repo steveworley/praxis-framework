@@ -1,35 +1,36 @@
 # @praxis-framework/cli
 
-Operator CLI for the [praxis-framework](https://github.com/steveworley/praxis-framework). Use this for **scripted / CI setup** or for running `praxis log` from inside verbs. For first-time exploration of the framework, the [`docker run` flow](https://github.com/steveworley/praxis-framework#quickstart) is lower friction — no install, the dashboard wizard writes the same files into the mounted directory.
-
-## Install
-
-```bash
-npm install -g @praxis-framework/cli
-```
-
-Requires Node.js 20 or newer.
+Operator CLI for the [praxis-framework](https://github.com/steveworley/praxis-framework) — the fastest way to seed a new role and bring the dashboard up.
 
 ## Quick start
 
 ```bash
 mkdir my-role && cd my-role
 
-# Interactive wizard — walks organisation context, role definition,
-# voice traits, capabilities, inhibitions, and verbs.
-praxis init
+# Walk the interactive wizard.
+npx @praxis-framework/cli@latest init
 
 # Or hand it a config file (useful for CI / reproducible setups).
-praxis init --config role.json --path .
+npx @praxis-framework/cli@latest init --config role.json --path .
 
 # Set your API key and bring the dashboard up.
 cp .env.example .env && vim .env   # set ANTHROPIC_API_KEY
 docker compose up                   # pulls ghcr.io/steveworley/praxis-framework/dashboard:main
 ```
 
-Open `http://localhost:4321/`.
+Open `http://localhost:4321/`. The dashboard is your primary surface — `/chat` to operate the role, `/triage` to review what it raises, `/role` to inspect the constitution.
 
-The CLI emits a populated role directory with `persona.md`, `CLAUDE.md`, `verbs/`, `lib/`, `memory/`, `escalations/`, `output/`, plus `docker-compose.yml` + `.env.example` so the role is runnable with one `docker compose up` — no framework clone required. The seed auto-initialises the target as a git repo on `main`, so you can run `praxis init` against a freshly-`mkdir`'d empty dir without pre-running `git init`. Commits are left for you to make when you're ready. See `examples/sample-role.json` for the config schema.
+The CLI emits a populated role directory with `persona.md`, `CLAUDE.md`, `verbs/`, `lib/`, `memory/`, `escalations/`, `output/`, plus `docker-compose.yml` + `.env.example` so the role is runnable with one `docker compose up` — no framework clone required. The seed auto-initialises the target as a git repo on `main`, so you can run `init` against a freshly-`mkdir`'d empty dir without pre-running `git init`. Commits are left for you to make when you're ready. See `examples/sample-role.json` for the config schema.
+
+## Install
+
+If you'd rather pin the CLI globally instead of going through `npx`:
+
+```bash
+npm install -g @praxis-framework/cli
+```
+
+Requires Node.js 20 or newer.
 
 ## Commands
 
