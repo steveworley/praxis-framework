@@ -1,0 +1,40 @@
+---
+import OutputDetail from './OutputDetail.astro';
+import type { OutputSummary } from '@/lib/output/types';
+
+/**
+ * Editorial detail view for a `document` output. Title is the H1; the body
+ * renders as prose via the server-side markdown pass. Audience meta sits
+ * inline with the status pill.
+ */
+interface Props {
+  meta: OutputSummary;
+  bodyHtml: string;
+}
+
+const { meta, bodyHtml } = Astro.props;
+const audience = typeof meta.extras['audience'] === 'string' ? meta.extras['audience'] : null;
+---
+
+<OutputDetail
+  title={meta.title}
+  status={meta.status}
+  path={meta.path}
+  updated={meta.updated}
+>
+  {audience && (
+    <Fragment slot="meta-extra">
+      <span class="dot">·</span>
+      <span>for {audience}</span>
+    </Fragment>
+  )}
+  <div class="prose" set:html={bodyHtml}></div>
+</OutputDetail>
+
+<style>
+  /* The rendered body wears the canonical `.prose` class — typography lives
+     in global.css. Constrain measure to a readable column on this surface. */
+  .prose {
+    max-width: 720px;
+  }
+</style>

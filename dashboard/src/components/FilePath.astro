@@ -1,0 +1,22 @@
+---
+/** Render a file path as an inline, muted, monospace token without the
+ * global `code` element's tinted background. Used in card metadata rows
+ * across /output, /escalations, /triage, etc. where the path is reference
+ * information, not a copy-paste target. */
+interface Props {
+  path: string;
+}
+
+const { path } = Astro.props;
+---
+
+<code class="file-path">{path}</code>
+
+<style>
+  .file-path {
+    background: none;
+    padding: 0;
+    color: var(--ink-faint);
+    font-size: 11px;
+  }
+</style>

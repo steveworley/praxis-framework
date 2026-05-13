@@ -11,7 +11,7 @@ let tempDir: string;
 beforeEach(async () => {
   tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'praxis-esc-'));
   await fs.mkdir(path.join(tempDir, 'escalations'), { recursive: true });
-  await fs.mkdir(path.join(tempDir, 'agents', 'proposed'), { recursive: true });
+  await fs.mkdir(path.join(tempDir, 'verbs', 'proposed'), { recursive: true });
 });
 
 afterEach(async () => {
@@ -33,25 +33,25 @@ describe('assembleEscalations', () => {
       'utf-8',
     );
     await fs.writeFile(
-      path.join(tempDir, 'agents', 'proposed', 'shiny-thing.md'),
+      path.join(tempDir, 'verbs', 'proposed', 'shiny-thing.md'),
       'draft body content',
       'utf-8',
     );
     await fs.writeFile(
       path.join(tempDir, 'escalations', '2026-05-01-shiny.md'),
-      `---\nkind: proposed_skill\nurgency: normal\ncreated: 2026-05-01\nstatus: open\nproposed_skill: agents/proposed/shiny-thing.md\n---\n\n# Shiny thing\n\nbody`,
+      `---\nkind: proposed_skill\nurgency: normal\ncreated: 2026-05-01\nstatus: open\nproposed_skill: verbs/proposed/shiny-thing.md\n---\n\n# Shiny thing\n\nbody`,
       'utf-8',
     );
     const result = await assembleEscalations(tempDir);
     expect(result.entries).toHaveLength(1);
     const entry = result.entries[0];
     expect(entry?.kind).toBe('proposed_skill');
-    expect(entry?.proposed_skill_path).toBe('agents/proposed/shiny-thing.md');
+    expect(entry?.proposed_skill_path).toBe('verbs/proposed/shiny-thing.md');
     expect(entry?.proposed_skill_body).toBe('draft body content');
     expect(result.countsByStatus.open).toBe(1);
   });
 
-  it('refuses to inline drafts outside agents/proposed (path traversal)', async () => {
+  it('refuses to inline drafts outside verbs/proposed (path traversal)', async () => {
     await fs.writeFile(path.join(tempDir, 'secret.md'), 'leaked', 'utf-8');
     await fs.writeFile(
       path.join(tempDir, 'escalations', '2026-05-01-evil.md'),

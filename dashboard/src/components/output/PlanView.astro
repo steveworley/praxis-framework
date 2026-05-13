@@ -1,0 +1,106 @@
+---
+import OutputDetail from './OutputDetail.astro';
+import type { OutputSummary } from '@/lib/output/types';
+
+/**
+ * Plan view. The body is a markdown checklist (`- [ ]` / `- [x]`); we
+ * parse the raw body for those tokens to compute progress, and render the
+ * body through the HTML pass so the checkboxes appear as plain text (the
+ * dashboard doesn't toggle them — that's a follow-up).
+ */
+interface Props {
+  meta: OutputSummary;
+  body: string;
+  bodyHtml: string;
+}
+
+const { meta, body, bodyHtml } = Astro.props;
+const goal = typeof meta.extras['goal'] === 'string' ? meta.extras['goal'] : meta.slug;
+const owner = typeof meta.extras['owner'] === 'string' ? meta.extras['owner'] : null;
+
+// Parse the raw body for the canonical checklist markers. Lines like
+// `- [ ] step` (open) and `- [x] step` (done) — case-insensitive on the x.
+const checklistLines = body
+  .split('\n')
+  .map((line) => line.trim())
+  .filter((line) => /^- \[[ xX]\]/.test(line));
+const completed = checklistLines.filter((line) => /^- \[[xX]\]/.test(line)).length;
+const total = checklistLines.length;
+const percent = total === 0 ? 0 : Math.round((completed / total) * 100);
+---
+
+<OutputDetail
+  title={goal}
+  status={meta.status}
+  path={meta.path}
+  updated={meta.updated}
+  divider={false}
+  titleSize="md"
+>
+  {owner && (
+    <Fragment slot="meta-extra">
+      <span class="dot">·</span>
+      <span>owner: {owner}</span>
+    </Fragment>
+  )}
+
+  {total > 0 && (
+    <div class="plan-progress">
+      <div class="progress-meta">
+        <span class="progress-text">{completed} of {total} done</span>
+        <span class="progress-pct">{percent}%</span>
+      </div>
+      <div class="progress-track">
+        <div class="progress-fill" style={`width: ${percent}%`}></div>
+      </div>
+    </div>
+  )}
+
+  <div class="prose" set:html={bodyHtml}></div>
+</OutputDetail>
+
+<style>
+  .plan-progress {
+    margin-bottom: 1.4rem;
+    padding: 0.8rem 1rem;
+    background: var(--surface-mute);
+    border-radius: 3px;
+  }
+  .progress-meta {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--ink-muted);
+    margin-bottom: 0.45rem;
+    letter-spacing: 0.04em;
+  }
+  .progress-pct {
+    font-family: ui-monospace, monospace;
+    color: var(--ink);
+  }
+  .progress-track {
+    height: 4px;
+    background: var(--surface-deep);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    background: var(--ink);
+    transition: width 0.2s ease;
+  }
+  /* The plan body wears the canonical `.prose` class — typography lives in
+     global.css. Plans are markdown checklists (`- [ ]` / `- [x]`), so strip
+     the bullet from the top-level list — the bracket-tokens themselves carry
+     the visual marker. */
+  .prose {
+    max-width: 720px;
+  }
+  .prose :global(ul) {
+    list-style: none;
+    padding-left: 0;
+  }
+  .prose :global(li) {
+    margin: 0.3rem 0;
+  }
+</style>

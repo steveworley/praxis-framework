@@ -1,0 +1,43 @@
+# Workspace-wide ignores
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build output
+dist/
+build/
+.astro/
+
+# Editor / OS
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment / secrets
+.env
+.env.local
+.env.*.local
+secrets/
+
+# Tooling caches
+.cache/
+.turbo/
+.parcel-cache/
+
+# Test coverage
+coverage/
+*.lcov
+
+# Local praxis tooling
+.claude/
+.praxis/
+
+# CLI is TypeScript-only — guard against stray tsc invocations leaking
+# compiled JS into the source tree. Real build output goes to cli/dist/
+# which is already covered by the dist/ rule above.
+cli/src/**/*.js

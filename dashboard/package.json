@@ -13,13 +13,17 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.95.2",
     "@astrojs/node": "^9.0.0",
+    "@praxis/seed": "*",
     "astro": "^5.0.0",
+    "markdown-it": "^14.1.1",
     "simple-git": "^3.27.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.4",
+    "@types/markdown-it": "^14.1.2",
     "@types/node": "^22.10.0",
     "typescript": "^5.6.3",
     "vitest": "^2.1.8"

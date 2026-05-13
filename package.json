@@ -1,0 +1,17 @@
+{
+  "name": "praxis-framework",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Role-based agents that fit your business",
+  "workspaces": [
+    "cli",
+    "dashboard",
+    "packages/*"
+  ],
+  "scripts": {
+    "cli": "npm run dev --workspace=cli",
+    "dashboard": "npm run start --workspace=dashboard",
+    "test": "npm test --workspaces --if-present",
+    "check": "npm run check --workspaces --if-present"
+  }
+}

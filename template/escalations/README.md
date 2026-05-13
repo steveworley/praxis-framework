@@ -2,7 +2,7 @@
 
 Where I raise my hand. One markdown file per escalation, named `{YYYY-MM-DD}-{slug}.md`.
 
-See `agents/escalate.md` for the playbook and the framework's `docs/escalations.md` for the conventions in detail.
+See `verbs/escalate.md` for the playbook and the framework's `docs/escalations.md` for the conventions in detail.
 
 ## When this is the right place
 
@@ -18,7 +18,7 @@ If I learned something but I'm not asking for anything, it goes in `memory/`. If
 
 - **`help`** — stuck *now*, can't continue without input
 - **`improvement`** — process friction noticed, not blocking
-- **`proposed_skill`** — drafted a new agent in `agents/proposed/{slug}.md` for review
+- **`proposed_skill`** — drafted a new verb in `verbs/proposed/{slug}.md` for review
 
 ## Format
 

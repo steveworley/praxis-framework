@@ -1,4 +1,5 @@
 ---
+import EmptyState from '@/components/EmptyState.astro';
 import FullEscalation from '@/components/FullEscalation.astro';
 import RouteHeader from '@/components/RouteHeader.astro';
 import BaseLayout from '@/layouts/BaseLayout.astro';
@@ -60,21 +61,23 @@ const kindFilters: Array<{ key: string; label: string; count: number | null }> =
       updatedAt={updatedAt}
     />
 
-    <div style="margin-top: 2rem;">
+    <div class="page-body">
       <div class="group-head">
-        <span class="group-title">Escalations</span>
         <span class="group-counter">{entries.length} total · {counts.open} open</span>
       </div>
+      <p class="page-lede">
+        Read-only view. To accept, decline, comment, or edit, head to <a href="/triage">/triage</a>.
+      </p>
 
       {escalationError ? (
-        <div class="empty">Failed to load escalations: {escalationError}</div>
+        <EmptyState>Failed to load escalations: {escalationError}</EmptyState>
       ) : entries.length === 0 ? (
-        <div class="empty">
+        <EmptyState>
           No escalations on file. Help requests, process improvements, and proposed skills will surface here.
-        </div>
+        </EmptyState>
       ) : (
         <>
-          <div class="filter-row" data-filter-group="status" style="margin-top: 0.8rem;">
+          <div class="filter-row spaced" data-filter-group="status">
             {statusFilters.map((f) => (
               <span
                 class:list={['filter', f.key === 'all' && 'active']}

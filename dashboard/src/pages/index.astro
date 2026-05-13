@@ -1,11 +1,13 @@
 ---
+import EmptyState from '@/components/EmptyState.astro';
 import IdentityStrip from '@/components/IdentityStrip.astro';
 import RouteHeader from '@/components/RouteHeader.astro';
 import SummaryCard from '@/components/SummaryCard.astro';
 import TriageCard from '@/components/TriageCard.astro';
 import BaseLayout from '@/layouts/BaseLayout.astro';
 import { assembleActivity, type ActivityEntry } from '@/lib/activity-loader';
-import { countLiveAgents } from '@/lib/agents-loader';
+import { personaNameFrom } from '@/lib/chat/persona-name';
+import { countLiveVerbs } from '@/lib/verbs-loader';
 import {
   assembleEscalations,
   type EscalationEntry,
@@ -13,6 +15,9 @@ import {
 } from '@/lib/escalations-loader';
 import { assembleMemory, type MemoryEntry } from '@/lib/memory-loader';
 import { parsePersona, type Persona } from '@/lib/persona-parser';
+import { listOutputs } from '@/lib/output/loader';
+import { OUTPUT_TYPE_ENUM, type OutputSummary, type OutputType } from '@/lib/output/types';
+import { listProposedVerbs } from '@/lib/triage';
 import {
   daysSince,
   isStale,
@@ -36,13 +41,15 @@ const logGlob = getLogGlob();
 
 // Section-by-section error handling: one failed loader shouldn't blank the
 // page. We surface per-section errors below.
-const [personaRes, memoryRes, escalationsRes, activityRes, agentCountRes, recentRoleRes] = await Promise.allSettled([
+const [personaRes, memoryRes, escalationsRes, activityRes, verbCountRes, recentRoleRes, proposedVerbsRes, outputsRes] = await Promise.allSettled([
   parsePersona(roleHome),
   assembleMemory(roleHome),
   assembleEscalations(roleHome),
   assembleActivity(roleHome, logGlob, 200),
-  countLiveAgents(roleHome),
+  countLiveVerbs(roleHome),
   collectRoleEdits(roleHome),
+  listProposedVerbs(roleHome),
+  listOutputs(roleHome),
 ]);
 
 const persona: Persona | null = personaRes.status === 'fulfilled' ? personaRes.value : null;
@@ -50,12 +57,25 @@ const memoryEntries: MemoryEntry[] = memoryRes.status === 'fulfilled' ? memoryRe
 const escalations: EscalationsResult | null =
   escalationsRes.status === 'fulfilled' ? escalationsRes.value : null;
 const activity: ActivityEntry[] = activityRes.status === 'fulfilled' ? activityRes.value : [];
-const agentCount: number = agentCountRes.status === 'fulfilled' ? agentCountRes.value : 0;
+const verbCount: number = verbCountRes.status === 'fulfilled' ? verbCountRes.value : 0;
 const recentRoleEdits: RoleEditsSummary =
   recentRoleRes.status === 'fulfilled' ? recentRoleRes.value : { count: 0, lastFile: null, lastDays: null };
+const proposedVerbCount: number =
+  proposedVerbsRes.status === 'fulfilled' ? proposedVerbsRes.value.length : 0;
+const outputs: OutputSummary[] =
+  outputsRes.status === 'fulfilled' ? outputsRes.value : [];
+const outputCountsByType: Record<OutputType, number> = {
+  document: 0,
+  draft: 0,
+  record: 0,
+  plan: 0,
+  reference: 0,
+};
+for (const o of outputs) outputCountsByType[o.type] += 1;
+const outputTotal = outputs.length;
 
 const updatedAt = nowIso();
-const fullName = persona?.identity['full_name'] ?? persona?.identity['name'] ?? '';
+const personaName = personaNameFrom(persona);
 
 const now = Date.now();
 const openEscalations: EscalationEntry[] = (escalations?.entries ?? []).filter(
@@ -103,7 +123,7 @@ interface RoleEditsSummary {
 }
 
 /**
- * Count git commits touching `agents/` over the last 7 days. Uses simple-git
+ * Count git commits touching `verbs/` over the last 7 days. Uses simple-git
  * which is already a dep. If the role home isn't a git repo, returns zero.
  */
 async function collectRoleEdits(home: string): Promise<RoleEditsSummary> {
@@ -114,7 +134,7 @@ async function collectRoleEdits(home: string): Promise<RoleEditsSummary> {
     const log = await git.log({
       '--since': '7 days ago',
       '--name-only': null,
-      file: 'agents',
+      file: 'verbs',
       maxCount: 50,
     });
     const all = log.all ?? [];
@@ -122,10 +142,10 @@ async function collectRoleEdits(home: string): Promise<RoleEditsSummary> {
     const head = all[0];
     const lastDays = head?.date ? daysSince(head.date) : null;
     // simple-git returns each commit's diff in `diff` only when configured;
-    // pulling first changed agent file out of the body would require a
-    // second pass. Surface the agents/ marker filename instead so the user
+    // pulling first changed verb file out of the body would require a
+    // second pass. Surface the verbs/ marker filename instead so the user
     // gets a hint without us walking diffs.
-    const lastFile = 'agents/';
+    const lastFile = 'verbs/';
     return { count: all.length, lastFile, lastDays };
   } catch {
     return { count: 0, lastFile: null, lastDays: null };
@@ -133,16 +153,30 @@ async function collectRoleEdits(home: string): Promise<RoleEditsSummary> {
 }
 ---
 
-<BaseLayout title={fullName ? `Praxis · ${fullName}` : 'Praxis'}>
+<BaseLayout title={persona ? `Praxis · ${personaName.full}` : 'Praxis'}>
   <main class="container">
     <RouteHeader
       current="home"
-      personaName={fullName}
+      personaName={persona ? personaName.full : ''}
       escalationOpenCount={openCount}
+      triageCount={openCount + proposedVerbCount}
       updatedAt={updatedAt}
     />
 
-    <div class="group" style="margin-top: 2rem;">
+    {(openCount + proposedVerbCount > 0) && (
+      <a class="triage-strip" href="/triage">
+        <span class="triage-strip-icon">→</span>
+        <span class="triage-strip-text">
+          <strong>{openCount + proposedVerbCount}</strong> {openCount + proposedVerbCount === 1 ? 'item' : 'items'} in triage:
+          {openCount > 0 && ` ${openCount} ${openCount === 1 ? 'escalation' : 'escalations'} open`}
+          {openCount > 0 && proposedVerbCount > 0 && ' · '}
+          {proposedVerbCount > 0 && ` ${proposedVerbCount} proposed ${proposedVerbCount === 1 ? 'verb' : 'verbs'}`}
+        </span>
+        <span class="triage-strip-action">review →</span>
+      </a>
+    )}
+
+    <div class="group page-body">
       <div class="group-head">
         <span class="group-title">Waiting on you</span>
         <span class="group-counter">
@@ -152,7 +186,7 @@ async function collectRoleEdits(home: string): Promise<RoleEditsSummary> {
         </span>
       </div>
       {openEscalations.length === 0 ? (
-        <div class="empty">Nothing waiting. Open escalations will surface here.</div>
+        <EmptyState>Nothing waiting. Open escalations will surface here.</EmptyState>
       ) : (
         openEscalations.map((e) => (
           <TriageCard
@@ -169,9 +203,21 @@ async function collectRoleEdits(home: string): Promise<RoleEditsSummary> {
       <IdentityStrip
         persona={persona}
         showCounts={true}
-        agentCount={agentCount}
+        verbCount={verbCount}
         link={{ href: '/role', label: 'view role →' }}
       />
+    )}
+
+    {persona && (
+      <div class="chat-cta">
+        <div class="chat-cta-body">
+          <div class="chat-cta-title">Talk to {personaName.full}</div>
+          <div class="chat-cta-meta">
+            A conversational lens on {personaName.short}'s interior. Conversations persist as markdown under <code>memory/conversations/</code>.
+          </div>
+        </div>
+        <a class="chat-cta-link" href="/chat">open chat →</a>
+      </div>
     )}
 
     <div class="group">
@@ -186,6 +232,19 @@ async function collectRoleEdits(home: string): Promise<RoleEditsSummary> {
           breakdownLines={memoryBreakdownLines()}
           deepLinkHref="/notebook"
           deepLinkLabel="all entries →"
+        />
+        <SummaryCard
+          heading="Output"
+          num={String(outputTotal)}
+          breakdownLines={
+            outputTotal === 0
+              ? ['no output yet']
+              : OUTPUT_TYPE_ENUM.filter((t) => outputCountsByType[t] > 0).map(
+                  (t) => `${outputCountsByType[t]} ${t}`,
+                )
+          }
+          deepLinkHref="/output"
+          deepLinkLabel="view output →"
         />
         <SummaryCard
           heading="Activity (today)"

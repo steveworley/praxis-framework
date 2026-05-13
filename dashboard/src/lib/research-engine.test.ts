@@ -53,7 +53,7 @@ describe('HandoffEngine', () => {
     expect(briefBody).toContain('IRAP-assessed Australian sovereign hosting.');
     expect(briefBody).toContain('Owns sales-side outreach for Quant.');
     expect(briefBody).toContain('## Required output format');
-    expect(briefBody).toContain('## Initial agents');
+    expect(briefBody).toContain('## Initial verbs');
   });
 
   it('creates the .praxis directory if it does not exist', async () => {

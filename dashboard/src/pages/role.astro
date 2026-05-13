@@ -1,10 +1,11 @@
 ---
-import AgentRow from '@/components/AgentRow.astro';
+import EmptyState from '@/components/EmptyState.astro';
+import VerbRow from '@/components/VerbRow.astro';
 import IdentityStrip from '@/components/IdentityStrip.astro';
 import PersonaPane from '@/components/PersonaPane.astro';
 import RouteHeader from '@/components/RouteHeader.astro';
 import BaseLayout from '@/layouts/BaseLayout.astro';
-import { type AgentsResult, listLibFiles, loadAgents } from '@/lib/agents-loader';
+import { type VerbsResult, listLibFiles, loadVerbs } from '@/lib/verbs-loader';
 import {
   type AutonomousEdit,
   type AutonomyConfig,
@@ -14,6 +15,8 @@ import {
 import { assembleEscalations } from '@/lib/escalations-loader';
 import { parsePersona, type Persona } from '@/lib/persona-parser';
 import { detectMode, getRoleHome, nowIso } from '@/lib/role-home';
+import { formatIsoDate } from '@/lib/ui/time';
+import { firstLine } from '@/lib/ui/text';
 
 export const prerender = false;
 
@@ -23,9 +26,9 @@ if (mode === 'seed') {
   return Astro.redirect('/setup');
 }
 
-const [personaRes, agentsRes, libRes, escalationsRes, autonomyRes] = await Promise.allSettled([
+const [personaRes, verbsRes, libRes, escalationsRes, autonomyRes] = await Promise.allSettled([
   parsePersona(roleHome),
-  loadAgents(roleHome),
+  loadVerbs(roleHome),
   listLibFiles(roleHome),
   assembleEscalations(roleHome),
   loadAutonomy(roleHome),
@@ -33,7 +36,7 @@ const [personaRes, agentsRes, libRes, escalationsRes, autonomyRes] = await Promi
 
 const persona: Persona | null = personaRes.status === 'fulfilled' ? personaRes.value : null;
 const personaError = personaRes.status === 'rejected' ? String(personaRes.reason) : null;
-const agents: AgentsResult = agentsRes.status === 'fulfilled' ? agentsRes.value : { live: [], proposed: [] };
+const verbs: VerbsResult = verbsRes.status === 'fulfilled' ? verbsRes.value : { live: [], proposed: [] };
 const libFiles: string[] = libRes.status === 'fulfilled' ? libRes.value : [];
 const openCount =
   escalationsRes.status === 'fulfilled' ? escalationsRes.value.countsByStatus.open : 0;
@@ -71,17 +74,6 @@ const autonomySummary = autonomy && autonomy.surfaces.length > 0
   ? `${autonomy.surfaces.length} ${autonomy.surfaces.length === 1 ? 'surface' : 'surfaces'} opened — ${autonomy.surfaces.map(summariseSurface).join(', ')}`
   : '';
 
-function formatDate(iso: string): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso.slice(0, 10);
-  return d.toISOString().slice(0, 10);
-}
-
-function firstLine(message: string): string {
-  const idx = message.indexOf('\n');
-  return idx >= 0 ? message.slice(0, idx) : message;
-}
 ---
 
 <BaseLayout title={fullName ? `Role · ${fullName}` : 'Role · Praxis'}>
@@ -93,52 +85,52 @@ function firstLine(message: string): string {
       updatedAt={updatedAt}
     />
 
-    <div style="margin-top: 2rem;">
+    <div class="page-body">
       {persona ? (
         <IdentityStrip persona={persona} showEmail={true} />
       ) : (
-        <div class="empty">
-          Failed to parse persona: {personaError ?? 'no agents/persona.md found'}
-        </div>
+        <EmptyState>
+          Failed to parse persona: {personaError ?? 'no persona.md found'}
+        </EmptyState>
       )}
 
       <div class="group">
         <div class="group-head">
           <span class="group-title">Constitution</span>
-          <span class="group-counter">authored · agents/persona.md</span>
+          <span class="group-counter">authored · persona.md</span>
         </div>
         <div class="persona-block">
           <PersonaPane
             variant="voice"
             heading="Voice"
             source={`${persona?.voice.length ?? 0} ${(persona?.voice.length ?? 0) === 1 ? 'rule' : 'rules'}`}
-            empty='Add a "## Voice & Personality" section to agents/persona.md with bulleted "- **Label** -- detail" entries.'
+            empty='Add a "## Voice & Personality" section to persona.md with bulleted "- **trait** -- qualifier" entries (or nested sub-bullets for multi-qualifier traits).'
             items={persona?.voice ?? []}
           />
           <PersonaPane
             variant="constitution"
             heading="Hard inhibitions"
             source={`${persona?.inhibitions.length ?? 0} ${(persona?.inhibitions.length ?? 0) === 1 ? 'rule' : 'rules'}`}
-            empty='Add a "## Hard inhibitions" section to agents/persona.md.'
+            empty='Add a "## Hard inhibitions" section to persona.md.'
             items={persona?.inhibitions ?? []}
           />
         </div>
       </div>
 
-      <div class="group">
+      <div class="group" id="verbs">
         <div class="group-head">
-          <span class="group-title">Agents</span>
+          <span class="group-title">Verbs</span>
           <span class="group-counter">
-            {agents.live.length} live
-            {agents.proposed.length > 0 && ` · ${agents.proposed.length} pending review`}
+            {verbs.live.length} live
+            {verbs.proposed.length > 0 && ` · ${verbs.proposed.length} pending review`}
           </span>
         </div>
-        {agents.live.length === 0 && agents.proposed.length === 0 ? (
-          <div class="empty">No agents authored yet. Add `.md` files under `agents/`.</div>
+        {verbs.live.length === 0 && verbs.proposed.length === 0 ? (
+          <EmptyState>No verbs authored yet. Add `.md` files under `verbs/`.</EmptyState>
         ) : (
-          <div class="agents-list">
-            {agents.live.map((a) => <AgentRow agent={a} />)}
-            {agents.proposed.map((a) => <AgentRow agent={a} proposed={true} />)}
+          <div class="verbs-list">
+            {verbs.live.map((v) => <VerbRow verb={v} />)}
+            {verbs.proposed.map((v) => <VerbRow verb={v} proposed={true} />)}
           </div>
         )}
       </div>
@@ -151,9 +143,9 @@ function firstLine(message: string): string {
           </span>
         </div>
         {!autonomy || edits.length === 0 ? (
-          <div class="empty">
+          <EmptyState>
             No autonomous edits yet. The role's grown surfaces are listed in lib/autonomy.yaml.
-          </div>
+          </EmptyState>
         ) : (
           <>
             {autonomySummary && (
@@ -163,7 +155,7 @@ function firstLine(message: string): string {
               {edits.map((e) => (
                 <div class="edit-row">
                   <span class="sha">{e.short_sha}</span>
-                  <span class="date">{formatDate(e.date)}</span>
+                  <span class="date">{formatIsoDate(e.date)}</span>
                   <div class="what">
                     {firstLine(e.message)}
                     {e.files.length > 0 && (
@@ -184,7 +176,7 @@ function firstLine(message: string): string {
           <span class="group-counter">authored · lib/</span>
         </div>
         {libFiles.length === 0 ? (
-          <div class="empty">No reference data. Add YAML files to `lib/` to anchor the role's facts.</div>
+          <EmptyState>No reference data. Add YAML files to `lib/` to anchor the role's facts.</EmptyState>
         ) : (
           <div class="lib-list">
             {libFiles.map((f) => <code>{f}</code>)}

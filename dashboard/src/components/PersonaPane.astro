@@ -2,9 +2,9 @@
 import type { VoiceTrait } from '@/lib/persona-parser';
 
 /** A pane on /role's "Constitution" group. Two shapes share this component:
- * voice traits (label + detail) and hard inhibitions (single-line each). The
- * `constitution` variant flips the visual treatment to red-rule + tinted bg
- * with an ⊘ prefix on each item — used for inhibitions. */
+ * voice traits (canonical trait + zero-or-more qualifiers) and hard inhibitions
+ * (single-line each). The `constitution` variant flips the visual treatment to
+ * red-rule + tinted bg with an ⊘ prefix on each item — used for inhibitions. */
 type VoiceVariant = { variant: 'voice'; items: VoiceTrait[] };
 type InhibitionsVariant = { variant: 'constitution'; items: string[] };
 
@@ -26,8 +26,8 @@ const { heading, source, empty, variant, items } = props;
     ) : variant === 'voice' ? (
       (items as VoiceTrait[]).map((v) => (
         <li>
-          <strong>{v.label}</strong>
-          <em>{v.detail}</em>
+          <strong>{v.trait}</strong>
+          {v.qualifiers.length > 0 ? <em>{v.qualifiers.join('; ')}</em> : null}
         </li>
       ))
     ) : (

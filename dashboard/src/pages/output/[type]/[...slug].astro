@@ -1,0 +1,99 @@
+---
+import Breadcrumb from '@/components/Breadcrumb.astro';
+import EmptyState from '@/components/EmptyState.astro';
+import DocumentView from '@/components/output/DocumentView.astro';
+import DraftView from '@/components/output/DraftView.astro';
+import PlanView from '@/components/output/PlanView.astro';
+import RecordView from '@/components/output/RecordView.astro';
+import ReferenceView from '@/components/output/ReferenceView.astro';
+import RouteHeader from '@/components/RouteHeader.astro';
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import { personaNameFrom } from '@/lib/chat/persona-name';
+import { renderMarkdown } from '@/lib/markdown';
+import {
+  OutputNotFoundError,
+  OutputValidationError,
+  loadOutput,
+} from '@/lib/output/loader';
+import { OUTPUT_TYPE_ENUM, type OutputType } from '@/lib/output/types';
+import { parsePersona, type Persona } from '@/lib/persona-parser';
+import { detectMode, getRoleHome, nowIso } from '@/lib/role-home';
+
+/**
+ * /output/[type]/[...slug] — single-output detail. Loads the file via the
+ * loader, dispatches to the per-type renderer based on `meta.type`. For
+ * records, the rest-param slug carries the `<entity_type>/<entity_id>/
+ * <slug>` path; for other types it's just the slug.
+ */
+
+export const prerender = false;
+
+const typeParam = String(Astro.params['type'] ?? '');
+if (!(OUTPUT_TYPE_ENUM as readonly string[]).includes(typeParam)) {
+  return new Response('Unknown output type', { status: 404 });
+}
+const type = typeParam as OutputType;
+const slugParam = String(Astro.params['slug'] ?? '');
+
+const roleHome = getRoleHome();
+const mode = detectMode(roleHome);
+if (mode === 'seed') {
+  return Astro.redirect('/setup');
+}
+
+let detail;
+let error: string | null = null;
+let notFound = false;
+try {
+  detail = await loadOutput(roleHome, type, slugParam);
+} catch (e: unknown) {
+  if (e instanceof OutputNotFoundError) {
+    notFound = true;
+  } else if (e instanceof OutputValidationError) {
+    error = e.message;
+  } else {
+    error = e instanceof Error ? e.message : String(e);
+  }
+}
+
+const personaRes = await parsePersona(roleHome).catch(() => null);
+const persona: Persona | null = personaRes ?? null;
+const personaName = personaNameFrom(persona);
+const updatedAt = nowIso();
+
+const bodyHtml = detail ? renderMarkdown(detail.body) : '';
+
+const pageTitle = detail ? `${detail.meta.title} · Output` : `Output · Praxis`;
+---
+
+<BaseLayout title={pageTitle}>
+  <main class="container">
+    <RouteHeader
+      current="output"
+      personaName={persona ? personaName.full : ''}
+      updatedAt={updatedAt}
+    />
+
+    <Breadcrumb
+      crumbs={[
+        { label: 'output', href: '/output' },
+        { label: type, href: `/output/${type}` },
+        { label: slugParam },
+      ]}
+    />
+
+    {notFound && <EmptyState>Output not found at this path.</EmptyState>}
+    {error && <EmptyState>Could not load output: {error}</EmptyState>}
+
+    {detail && type === 'document' && <DocumentView meta={detail.meta} bodyHtml={bodyHtml} />}
+    {detail && type === 'draft' && <DraftView meta={detail.meta} bodyHtml={bodyHtml} />}
+    {detail && type === 'record' && <RecordView meta={detail.meta} bodyHtml={bodyHtml} />}
+    {detail && type === 'plan' && (
+      <PlanView meta={detail.meta} body={detail.body} bodyHtml={bodyHtml} />
+    )}
+    {detail && type === 'reference' && (
+      <ReferenceView meta={detail.meta} bodyHtml={bodyHtml} />
+    )}
+  </main>
+
+</BaseLayout>

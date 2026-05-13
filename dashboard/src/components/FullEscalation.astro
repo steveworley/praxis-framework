@@ -3,8 +3,8 @@ import type { EscalationEntry } from '@/lib/escalations-loader';
 import { renderMarkdown } from '@/lib/markdown';
 
 /** Expanded escalation card for /escalations. Renders full body + meta +
- * (for proposed_skill) the inlined draft. Resolution actions are placeholder
- * anchors in v1 — write logic ships separately. The data-status / data-kind
+ * (for proposed_skill) the inlined draft. Read-only: write actions (accept,
+ * decline, resolve, edit) live on /triage. The data-status / data-kind
  * attributes drive the multi-axis filter on the page. */
 interface Props {
   escalation: EscalationEntry;
@@ -14,7 +14,21 @@ const { escalation: e } = Astro.props;
 
 const isProposed = e.kind === 'proposed_skill';
 const isResolved = e.status === 'resolved' || e.status === 'declined' || e.status === 'accepted';
-const bodyHtml = renderMarkdown(e.body);
+
+// Role-written escalation bodies frequently lead with `# <title>` as an H1.
+// We render the title as an <h3> above the prose, so the H1 duplicates it.
+// Strip a leading H1 from the body when it matches the title (case-insensitive,
+// whitespace-tolerant) before rendering markdown.
+function stripDuplicateTitleH1(body: string, title: string): string {
+  const titleNorm = title.trim().toLowerCase();
+  if (!titleNorm) return body;
+  const match = /^\s*#\s+(.+?)\s*$/m.exec(body);
+  if (match && match[1].trim().toLowerCase() === titleNorm) {
+    return body.replace(match[0], '').replace(/^\s*\n/, '');
+  }
+  return body;
+}
+const bodyHtml = renderMarkdown(stripDuplicateTitleH1(e.body, e.title));
 
 const metaBits: string[] = [];
 if (e.created) metaBits.push(e.created);
@@ -39,29 +53,20 @@ const draftLineCount = e.proposed_skill_body ? e.proposed_skill_body.split('\n')
     </div>
   </div>
   <h3>{e.title}</h3>
-  <div class="body" set:html={bodyHtml}></div>
+  <div class="prose" set:html={bodyHtml}></div>
   {isProposed && e.proposed_skill_body && (
     <div class="draft-block">
       <div class="draft-meta">
         draft · {e.proposed_skill_path} · {draftLineCount} {draftLineCount === 1 ? 'line' : 'lines'}
       </div>{e.proposed_skill_body}
-      <div class="draft-actions">
-        <a class="verb" href="#">accept (move + commit)</a>
-        <a class="verb danger" href="#">decline</a>
-        <a class="verb" href="#">open in editor</a>
-      </div>
     </div>
   )}
   {isProposed && !e.proposed_skill_body && e.proposed_skill_path && (
-    <div class="draft-block">
-      <div class="draft-meta">draft missing at <code>{e.proposed_skill_path}</code></div>
-    </div>
+    <p class="draft-missing">draft missing at <code>{e.proposed_skill_path}</code></p>
   )}
   {!isResolved && (
-    <div class="resolution-actions">
-      <a href="#" class="verb">mark resolved</a>
-      <a href="#" class="verb">edit file (in editor)</a>
-      <span class="resolution-hint">resolution will append a note to the file + commit</span>
+    <div class="actions-pointer">
+      Actions → <a href="/triage">triage on /triage</a>
     </div>
   )}
 </article>

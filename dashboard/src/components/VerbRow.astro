@@ -1,0 +1,36 @@
+---
+import type { VerbSummary } from '@/lib/verbs-loader';
+
+/** A single row in /role's verbs list. Live verbs render as an anchor to
+ * /verbs/<slug> so operators can click through to read the definition.
+ * Proposed verbs keep the tinted background + the inline "open →" link to
+ * /escalations where they're actually reviewed — wrapping the whole row in
+ * an anchor would nest links, so the proposed variant stays a plain div. */
+interface Props {
+  verb: VerbSummary;
+  proposed?: boolean;
+}
+
+const { verb, proposed = false } = Astro.props;
+
+function slugFromFile(file: string): string {
+  const base = file.replace(/^.*[\\/]/, '');
+  return base.replace(/\.md$/i, '');
+}
+
+const slug = !proposed ? slugFromFile(verb.file) : '';
+---
+
+{proposed ? (
+  <div class="verb-row proposed">
+    <span class="file">{verb.file}</span>
+    <span class="label">{verb.label}</span>
+    <span class="verb-tag">awaiting review · <a href="/escalations">open →</a></span>
+  </div>
+) : (
+  <a class="verb-row" href={`/verbs/${slug}`}>
+    <span class="file">{verb.file}</span>
+    <span class="label">{verb.label}</span>
+    <span class="verb-tag">{verb.tag}</span>
+  </a>
+)}

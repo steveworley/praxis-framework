@@ -1,0 +1,55 @@
+---
+import OutputDetail from './OutputDetail.astro';
+import type { OutputSummary } from '@/lib/output/types';
+
+/**
+ * Reference view. Topic stands in for the title; tags surface as inline
+ * pills under the head. Body renders as prose — references are reusable
+ * knowledge, so the body is typically a small piece of structured prose.
+ */
+interface Props {
+  meta: OutputSummary;
+  bodyHtml: string;
+}
+
+const { meta, bodyHtml } = Astro.props;
+const topic = typeof meta.extras['topic'] === 'string' ? meta.extras['topic'] : meta.slug;
+const tags = Array.isArray(meta.extras['tags']) ? meta.extras['tags'] : [];
+---
+
+<OutputDetail
+  title={topic}
+  status={meta.status}
+  path={meta.path}
+  updated={meta.updated}
+  titleSize="md"
+>
+  {tags.length > 0 && (
+    <div slot="head-tail" class="ref-tags">
+      {tags.map((t) => <span class="tag">{t}</span>)}
+    </div>
+  )}
+  <div class="prose" set:html={bodyHtml}></div>
+</OutputDetail>
+
+<style>
+  .ref-tags {
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    margin-top: 0.7rem;
+  }
+  .tag {
+    font-size: 11.5px;
+    padding: 1px 7px;
+    background: var(--surface-mute);
+    color: var(--ink-soft);
+    border-radius: 10px;
+    letter-spacing: 0.02em;
+  }
+  /* The rendered body wears the canonical `.prose` class — typography lives
+     in global.css. Constrain measure to a readable column on this surface. */
+  .prose {
+    max-width: 720px;
+  }
+</style>

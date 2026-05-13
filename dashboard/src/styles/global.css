@@ -128,6 +128,13 @@ button {
   font-weight: 600;
 }
 
+/* Standard top margin for the first block of content under a RouteHeader.
+   Pages used to set this with inline `style="margin-top: 2rem;"`; this
+   class lets every page reach for the same hook. */
+.page-body {
+  margin-top: 2rem;
+}
+
 /* Group titles inside a page */
 .group {
   margin-bottom: 2.5rem;
@@ -155,6 +162,25 @@ button {
 }
 .group-action {
   font-size: 12px;
+}
+/* Introductory paragraph below a group head or page header. The default
+   ("compact") shape lives directly under a group-head — small, no
+   max-width. The `large` variant is for top-of-page introductions on /chat,
+   /triage, /output: 13.5px, generous line-height, capped at a readable
+   measure. */
+.page-lede {
+  margin: 0.6rem 0 0;
+  font-size: 12.5px;
+  color: var(--ink-muted);
+}
+.page-lede.large {
+  max-width: 680px;
+  font-size: 13.5px;
+  line-height: 1.6;
+  margin: 1.2rem 0 1.8rem;
+}
+.page-lede a {
+  color: var(--link);
 }
 
 /* Triage card (used on /home) */
@@ -255,9 +281,6 @@ button {
 .triage-card .actions .verb {
   color: var(--link);
 }
-.triage-card .actions .verb.danger {
-  color: var(--danger);
-}
 .triage-card .actions .stale-flag {
   font-size: 11px;
   color: var(--warn);
@@ -289,6 +312,41 @@ button {
 }
 .id-strip a {
   font-size: 12px;
+}
+
+/* Home-page triage strip — surfaces "N items waiting" when the role has
+   raised its hand. Quiet by default, accent on hover. */
+.triage-strip {
+  display: flex;
+  gap: 0.7rem;
+  align-items: center;
+  padding: 0.8rem 1.1rem;
+  margin-top: 1.5rem;
+  background: var(--surface-mute);
+  border-left: 3px solid var(--info);
+  border-radius: 0 3px 3px 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+.triage-strip:hover {
+  text-decoration: none;
+  background: var(--surface-deep);
+  color: var(--ink);
+}
+.triage-strip .triage-strip-icon {
+  color: var(--info);
+  font-family: ui-monospace, monospace;
+}
+.triage-strip .triage-strip-text {
+  flex: 1;
+}
+.triage-strip .triage-strip-text strong {
+  color: var(--ink);
+}
+.triage-strip .triage-strip-action {
+  color: var(--link);
+  font-size: 12px;
+  font-family: ui-monospace, monospace;
 }
 
 /* Summary cards (home "Recently") */
@@ -358,27 +416,6 @@ button {
   font-weight: 600;
   margin-bottom: 0.8rem;
 }
-.full-esc .body p {
-  margin-bottom: 0.5rem;
-  color: var(--ink-soft);
-}
-.full-esc .body h3,
-.full-esc .body h5 {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--ink-muted);
-  margin: 1rem 0 0.25rem;
-  font-weight: 600;
-}
-.full-esc .body ul {
-  padding-left: 1.2rem;
-  margin: 0.4rem 0;
-  color: var(--ink-soft);
-}
-.full-esc .body li {
-  padding: 0.1rem 0;
-}
 .full-esc .draft-block {
   margin-top: 1rem;
   padding: 1rem;
@@ -398,30 +435,24 @@ button {
   font-family: -apple-system, system-ui, sans-serif;
   font-style: italic;
 }
-.full-esc .draft-block .draft-actions {
-  margin-top: 0.8rem;
-  display: flex;
-  gap: 0.8rem;
-  font-family: -apple-system, system-ui, sans-serif;
-  font-style: normal;
+.full-esc .draft-missing {
+  margin-top: 1rem;
+  color: var(--ink-muted);
   font-size: 12px;
-  flex-wrap: wrap;
+  font-style: italic;
 }
-.full-esc .resolution-actions {
+.full-esc .draft-missing code {
+  font-style: normal;
+}
+.full-esc .actions-pointer {
   margin-top: 1rem;
   padding-top: 0.7rem;
   border-top: 1px dashed var(--rule);
-  display: flex;
-  gap: 1rem;
-  font-size: 12px;
-  flex-wrap: wrap;
-  align-items: baseline;
-}
-.full-esc .resolution-hint {
-  margin-left: auto;
   color: var(--ink-faint);
   font-size: 11.5px;
-  font-style: italic;
+}
+.full-esc .actions-pointer a {
+  color: var(--link);
 }
 .full-esc .resolution-note {
   font-style: italic;
@@ -434,12 +465,17 @@ button {
   opacity: 0.7;
 }
 
-/* Filter row (used multiple places) */
+/* Filter row (used multiple places). When the row is the first thing under
+   a group-head, callers add `class="filter-row spaced"` to lift it off the
+   rule by `--filter-row-spaced` — saves the inline margin override. */
 .filter-row {
   display: flex;
   gap: 0.5rem;
   flex-wrap: wrap;
   margin-bottom: 1.4rem;
+}
+.filter-row.spaced {
+  margin-top: 0.8rem;
 }
 .filter {
   padding: 0.3rem 0.8rem;
@@ -496,27 +532,178 @@ button {
   font-weight: 600;
   margin-bottom: 0.4rem;
 }
-.memo .body p {
-  font-size: 13px;
-  color: var(--ink-soft);
-  margin-bottom: 0.4rem;
+
+/* ---- Canonical markdown-prose surface --------------------------------
+ *
+ * Every dashboard surface that injects rendered markdown (chat turns,
+ * full escalations, notebook memos, output documents/drafts/records/plans/
+ * references) wraps the HTML in `<div class="prose">` so the typography
+ * stays consistent. The scale was set on /chat (commit fbbe99b) and
+ * generalised here.
+ *
+ * Per-surface positioning (max-width, padding, surrounding chrome) stays
+ * on the surrounding container — `.prose` only describes the prose itself.
+ * Surface overrides (e.g. PlanView strips list bullets for its checklist)
+ * sit alongside the surface-specific styles.
+ * ----------------------------------------------------------------- */
+.prose {
+  font-size: 15px;
+  color: var(--ink);
+  line-height: 1.7;
 }
-.memo .body p:last-child {
+.prose p {
+  margin: 0.4rem 0;
+}
+.prose > :first-child {
+  margin-top: 0;
+}
+.prose > :last-child {
   margin-bottom: 0;
 }
-.memo .body h3 {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--ink-muted);
-  margin: 0.8rem 0 0.2rem;
+.prose ul,
+.prose ol {
+  margin: 0.5rem 0;
+  padding-left: 1.5rem;
 }
-.memo .body ul {
+.prose li {
+  margin: 0.2rem 0;
+}
+.prose li > ul,
+.prose li > ol {
+  margin: 0.2rem 0;
   padding-left: 1.2rem;
-  margin: 0.3rem 0;
-  font-size: 13px;
+}
+/* Headings render as inline section markers, not page headings — scaled
+   just slightly above body text so a passage reads as one piece, not a
+   printed document. */
+.prose h1,
+.prose h2,
+.prose h3,
+.prose h4,
+.prose h5,
+.prose h6 {
+  font-weight: 600;
+  margin-top: 1.3rem;
+  margin-bottom: 0.45rem;
+  color: var(--ink);
+  line-height: 1.35;
+}
+.prose h1 {
+  font-size: 1.15rem;
+}
+.prose h2 {
+  font-size: 1.05rem;
+}
+.prose h3 {
+  font-size: 0.98rem;
+}
+.prose h4,
+.prose h5,
+.prose h6 {
+  font-size: 0.94rem;
+}
+.prose hr {
+  border: none;
+  border-top: 1px dashed var(--rule);
+  margin: 1.5rem 0;
+}
+/* If an <hr> is immediately followed by a heading the dashed rule + new
+   section marker would double-gap. Collapse the heading's top margin so
+   the pairing reads as one intentional break. */
+.prose hr + h1,
+.prose hr + h2,
+.prose hr + h3,
+.prose hr + h4,
+.prose hr + h5,
+.prose hr + h6 {
+  margin-top: 0.2rem;
+}
+.prose strong {
+  font-weight: 600;
+  color: var(--ink);
+}
+.prose em {
+  font-style: italic;
+}
+.prose blockquote {
+  margin: 0.7rem 0;
+  padding: 0.2rem 0 0.2rem 1rem;
+  border-left: 3px solid var(--rule-strong);
   color: var(--ink-soft);
+  font-size: 14.5px;
+}
+.prose blockquote p {
+  margin: 0.3rem 0;
+}
+.prose blockquote p:first-child {
+  margin-top: 0;
+}
+.prose blockquote p:last-child {
+  margin-bottom: 0;
+}
+.prose blockquote blockquote {
+  margin-top: 0.4rem;
+  color: var(--ink-muted);
+}
+.prose table {
+  border-collapse: collapse;
+  margin: 0.7rem 0 0.9rem;
+  font-size: 13.5px;
+  width: 100%;
+  border: 1px solid var(--rule);
+}
+.prose thead {
+  background: var(--surface-mute);
+  border-bottom: 1px solid var(--rule-strong);
+}
+.prose th,
+.prose td {
+  text-align: left;
+  padding: 0.5rem 0.85rem;
+  vertical-align: top;
+  border-right: 1px solid var(--rule);
+}
+.prose th:last-child,
+.prose td:last-child {
+  border-right: none;
+}
+.prose th {
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--surface-mute);
+}
+.prose tbody tr {
+  border-top: 1px solid var(--rule);
+}
+.prose pre {
+  margin: 0.7rem 0 0.9rem;
+  padding: 0.85rem 1rem;
+  background: var(--surface-mute);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  overflow-x: auto;
+  max-width: 100%;
+  box-sizing: border-box;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+.prose pre code {
+  background: none;
+  padding: 0;
+  font-size: inherit;
+  color: var(--ink);
+}
+.prose code {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 0.92em;
+  background: var(--surface-mute);
+  padding: 1px 5px;
+  border-radius: 3px;
+  color: var(--ink-soft);
+}
+.prose del,
+.prose s {
+  color: var(--ink-muted);
 }
 
 /* Activity row */
@@ -758,12 +945,12 @@ button {
   font-family: ui-monospace, monospace;
 }
 
-.agents-list {
+.verbs-list {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0.4rem 0.8rem;
 }
-.agent-row {
+.verb-row {
   display: grid;
   grid-template-columns: 160px 1fr auto;
   gap: 1rem;
@@ -773,27 +960,37 @@ button {
   border-radius: 3px;
   font-size: 12.5px;
   align-items: baseline;
+  /* Anchor variant for live verbs — neutralise the default link colour /
+     underline so the row reads the same as the proposed (div) variant. */
+  color: var(--ink);
+  text-decoration: none;
+  transition: background-color 80ms ease, border-color 80ms ease;
 }
-.agent-row.proposed {
+a.verb-row:hover {
+  background: var(--surface-mute);
+  border-color: var(--rule-strong);
+  text-decoration: none;
+}
+.verb-row.proposed {
   background: #f3eef9;
   border-color: #dccfe6;
   grid-column: 1 / -1;
 }
-.agent-row .file {
+.verb-row .file {
   font-family: ui-monospace, monospace;
   color: var(--ink-muted);
 }
-.agent-row .verb {
+.verb-row .label {
   color: var(--ink);
 }
-.agent-row .verb-tag {
+.verb-row .verb-tag {
   font-family: ui-monospace, monospace;
   font-size: 10.5px;
   color: var(--ink-faint);
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
-.agent-row.proposed .verb-tag {
+.verb-row.proposed .verb-tag {
   color: var(--info);
 }
 
@@ -1096,6 +1293,33 @@ button {
 }
 .welcome-checklist li { padding-left: 0.2rem; }
 
+/* Home → chat call-to-action */
+.chat-cta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin: 1.5rem 0 2rem;
+  padding: 0.9rem 1.1rem;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--surface);
+}
+.chat-cta-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 0.2rem;
+}
+.chat-cta-meta {
+  font-size: 12px;
+  color: var(--ink-muted);
+}
+.chat-cta-link {
+  font-size: 13px;
+  white-space: nowrap;
+}
+
 /* Mobile collapse — ported verbatim from wireframe */
 @media (max-width: 900px) {
   .summary {
@@ -1111,10 +1335,10 @@ button {
   .persona-block {
     grid-template-columns: 1fr;
   }
-  .agents-list {
+  .verbs-list {
     grid-template-columns: 1fr;
   }
-  .agent-row {
+  .verb-row {
     grid-template-columns: 1fr;
     gap: 0.2rem;
   }

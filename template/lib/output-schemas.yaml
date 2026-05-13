@@ -1,0 +1,88 @@
+# Output taxonomy — framework-shipped reference.
+#
+# This file documents the five output primitives the framework writes to
+# `output/`. It is reference material — the dashboard and the chat tools
+# read the authoritative TypeScript registry at
+# `dashboard/src/lib/output/types.ts`, NOT this file. Editing this YAML
+# does not change runtime behaviour. The file exists so an operator can
+# read the schema without leaving their role home.
+#
+# Lifecycle (closed enum, applies framework-wide):
+#   draft → review → ready → sent → done → archived
+#
+# Path safety: every slug and entity_id segment must match
+#   /^[a-z0-9][a-z0-9-]*$/ — lowercase alphanumerics and hyphens, starting
+#   alphanumeric.
+
+status_enum:
+  - draft       # in progress; not yet ready for review
+  - review      # operator eyes wanted
+  - ready       # complete; waiting for action (e.g. operator to send)
+  - sent        # shipped to its recipient
+  - done        # work is complete (no further action expected)
+  - archived    # superseded or stale; kept for history
+
+types:
+
+  document:
+    # Long-form prose: a brief, a note, an analysis. Standalone — no
+    # entity tie, no recipient.
+    path_template: output/document/{slug}.md
+    required:
+      title:    Human-readable title (renders as the file's H1 in the dashboard)
+    optional:
+      audience: Who this is written for (free-text)
+
+  draft:
+    # Outgoing communication: an email body, a Slack DM, a letter. The
+    # framework does NOT send anything — drafts live on disk until the
+    # operator (or a future role-defined send tool) actually transmits.
+    # Status flow is typically: draft → review → ready → sent.
+    path_template: output/draft/{slug}.md
+    required: {}
+    optional:
+      recipient: Who the message is addressed to (free-text; email, Slack handle, mailing address)
+      channel:   How it will be sent — closed enum
+      subject:   Subject line / Slack first-message text
+    channel_enum:
+      - email
+      - slack
+      - dm
+      - letter
+      - call
+      - other
+
+  record:
+    # Observation tied to an entity. The entity_type / entity_id segments
+    # become path segments, so every record about the same entity sits in
+    # the same directory: `output/record/<entity_type>/<entity_id>/`.
+    # Use this for account reads, call notes, meeting logs — anything
+    # whose value is in being correlatable to a thing.
+    path_template: output/record/{entity_type}/{entity_id}/{slug}.md
+    required:
+      entity_type: The kind of entity (e.g. account, contact, project) — slug-shaped
+      entity_id:   The specific entity (e.g. acme, mary-chen, q1-launch) — slug-shaped
+      observed_at: ISO date or datetime for when the observation was made
+    optional: {}
+
+  plan:
+    # Multi-step intent the role committed to. The body is a checklist
+    # using GitHub-flavoured markdown: `- [ ]` for open, `- [x]` for done.
+    # The dashboard parses these to compute progress; the role updates the
+    # body to mark steps complete.
+    path_template: output/plan/{slug}.md
+    required:
+      goal:  One-line statement of the plan's objective
+    optional:
+      owner: Who is responsible for executing (defaults to the role itself)
+
+  reference:
+    # Reusable knowledge worth keeping: a heuristic, a recipe, a playbook
+    # excerpt, a calibration. Distinct from `memory/` — references are
+    # work-product the role might cite later; memory entries are personal
+    # observations.
+    path_template: output/reference/{slug}.md
+    required:
+      topic: One-line topic the reference addresses
+    optional:
+      tags:  Array of short tags for filtering (max 20)

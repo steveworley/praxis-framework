@@ -2,13 +2,26 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 export interface VoiceTrait {
-  label: string;
-  detail: string;
+  /** Canonical name from the trait library (lowercase token like `direct`). */
+  trait: string;
+  /**
+   * Free-text descriptors qualifying *how* the trait should manifest. The
+   * persona renderer lays each one out either inline (single qualifier
+   * follows ` -- `) or as nested bullets under the trait (multi-qualifier),
+   * and the parser collapses both back into this array.
+   */
+  qualifiers: string[];
 }
 
-export interface PersonaInitialAgent {
+export interface PersonaInitialVerb {
   slug: string;
-  purpose: string;
+  /**
+   * Bullet-shaped body content for the verb. The renderer emits each entry
+   * either inline (single bullet follows ` -- `) or as nested sub-bullets
+   * under the slug (multi-bullet), and the parser collapses both back into
+   * this array. Empty array means the slug has no authored body content.
+   */
+  description: string[];
 }
 
 export interface Persona {
@@ -17,19 +30,19 @@ export interface Persona {
   capabilities: string[];
   inhibitions: string[];
   /**
-   * Stub agents — only emitted by the research-engine handoff draft, not the
-   * standard `agents/persona.md`. Empty array for normal seeded roles.
+   * Stub verbs — only emitted by the research-engine handoff draft, not the
+   * standard `persona.md`. Empty array for normal seeded roles.
    */
-  initial_agents: PersonaInitialAgent[];
+  initial_verbs: PersonaInitialVerb[];
 }
 
 /**
- * Parse agents/persona.md into the structured shape the dashboard renders.
+ * Parse persona.md into the structured shape the dashboard renders.
  * Mirrors the Python `_parse_persona` regexes exactly so the wizard-emitted
  * persona round-trips identically.
  */
 export async function parsePersona(roleHome: string): Promise<Persona> {
-  const personaPath = path.join(roleHome, 'agents', 'persona.md');
+  const personaPath = path.join(roleHome, 'persona.md');
   let text: string;
   try {
     text = await fs.readFile(personaPath, 'utf-8');
@@ -42,7 +55,7 @@ export async function parsePersona(roleHome: string): Promise<Persona> {
 /**
  * Parse persona-shaped markdown directly. Used by the research-engine draft
  * loader so it can reuse the same parser without staging the draft on disk
- * under `agents/persona.md`.
+ * under `persona.md`.
  */
 export function parsePersonaText(text: string): Persona {
   const out = emptyPersona();
@@ -61,13 +74,41 @@ export function parsePersonaText(text: string): Persona {
 
   const voiceSection = extractSection(text, 'Voice & Personality');
   if (voiceSection) {
-    for (const rawLine of voiceSection.split('\n')) {
-      const line = rawLine.trim();
-      const m = /^-\s+\*\*([^*]+)\*\*\s*--\s*(.+)$/.exec(line);
-      if (m) {
-        out.voice.push({ label: (m[1] ?? '').trim(), detail: (m[2] ?? '').trim() });
+    // Two emitted shapes from the seeder:
+    //   - **direct** -- short sentences, no hedging        (inline single qualifier)
+    //   - **direct**                                       (multi-qualifier — followed by indented sub-bullets)
+    //       - short sentences, no hedging
+    //       - calls out tradeoffs upfront
+    // The bare-trait form (no qualifiers, library description fallback)
+    // looks identical to the inline-single-qualifier form; round-tripping
+    // it as a single qualifier is lossy but acceptable for the wizard.
+    const lines = voiceSection.split('\n');
+    let current: { trait: string; qualifiers: string[] } | null = null;
+    for (const rawLine of lines) {
+      const inline = /^-\s+\*\*([^*]+)\*\*\s*--\s*(.+)$/.exec(rawLine.trim());
+      if (inline) {
+        if (current) out.voice.push(current);
+        current = {
+          trait: (inline[1] ?? '').trim(),
+          qualifiers: [(inline[2] ?? '').trim()].filter((q) => q.length > 0),
+        };
+        continue;
+      }
+      const headerOnly = /^-\s+\*\*([^*]+)\*\*\s*$/.exec(rawLine.trim());
+      if (headerOnly) {
+        if (current) out.voice.push(current);
+        current = { trait: (headerOnly[1] ?? '').trim(), qualifiers: [] };
+        continue;
+      }
+      // Indented sub-bullet — a qualifier under the current trait.
+      const sub = /^\s+-\s+(.+)$/.exec(rawLine);
+      if (sub && current) {
+        const text = (sub[1] ?? '').trim();
+        if (text.length > 0) current.qualifiers.push(text);
+        continue;
       }
     }
+    if (current) out.voice.push(current);
   }
 
   const capabilitiesSection = extractSection(text, 'Capabilities');
@@ -84,25 +125,50 @@ export function parsePersonaText(text: string): Persona {
     }
   }
 
-  // Optional draft-only section: `## Initial agents` with `- **slug** -- purpose`.
-  const agentsSection = extractSection(text, 'Initial agents');
-  if (agentsSection) {
-    for (const rawLine of agentsSection.split('\n')) {
-      const line = rawLine.trim();
-      const m = /^-\s+\*\*([^*]+)\*\*\s*--\s*(.+)$/.exec(line);
-      if (m) {
-        const slug = (m[1] ?? '').trim();
-        const purpose = (m[2] ?? '').trim();
-        if (slug && purpose) out.initial_agents.push({ slug, purpose });
+  // Optional draft-only section: `## Initial verbs`. Mirrors the voice
+  // section's two emitted shapes:
+  //   - **slug** -- single bullet                    (inline, single-bullet)
+  //   - **slug**                                     (multi-bullet — sub-bullets follow)
+  //       - bullet one
+  //       - bullet two
+  //   - **slug**                                     (no bullets — empty description)
+  const verbsSection = extractSection(text, 'Initial verbs');
+  if (verbsSection) {
+    const lines = verbsSection.split('\n');
+    let current: { slug: string; description: string[] } | null = null;
+    for (const rawLine of lines) {
+      const inline = /^-\s+\*\*([^*]+)\*\*\s*--\s*(.+)$/.exec(rawLine.trim());
+      if (inline) {
+        if (current) out.initial_verbs.push(current);
+        current = {
+          slug: (inline[1] ?? '').trim(),
+          description: [(inline[2] ?? '').trim()].filter((d) => d.length > 0),
+        };
+        continue;
+      }
+      const headerOnly = /^-\s+\*\*([^*]+)\*\*\s*$/.exec(rawLine.trim());
+      if (headerOnly) {
+        if (current) out.initial_verbs.push(current);
+        current = { slug: (headerOnly[1] ?? '').trim(), description: [] };
+        continue;
+      }
+      const sub = /^\s+-\s+(.+)$/.exec(rawLine);
+      if (sub && current) {
+        const bullet = (sub[1] ?? '').trim();
+        if (bullet.length > 0) current.description.push(bullet);
+        continue;
       }
     }
+    if (current) out.initial_verbs.push(current);
+    // Drop any malformed entry that ended up without a slug.
+    out.initial_verbs = out.initial_verbs.filter((v) => v.slug.length > 0);
   }
 
   return out;
 }
 
 function emptyPersona(): Persona {
-  return { identity: {}, voice: [], capabilities: [], inhibitions: [], initial_agents: [] };
+  return { identity: {}, voice: [], capabilities: [], inhibitions: [], initial_verbs: [] };
 }
 
 function extractSection(text: string, heading: string): string | null {

@@ -31,12 +31,12 @@ export const GET: APIRoute = async () => {
       persona.voice.length === 0 &&
       persona.capabilities.length === 0 &&
       persona.inhibitions.length === 0 &&
-      persona.initial_agents.length === 0
+      persona.initial_verbs.length === 0
     ) {
       return json(200, {
         kind: 'error',
         message:
-          'persona-draft.md exists but has no voice/capabilities/inhibitions/agents. Check the section headings match the brief.',
+          'persona-draft.md exists but has no voice/capabilities/inhibitions/verbs. Check the section headings match the brief.',
       });
     }
     return json(200, { kind: 'ready', persona });

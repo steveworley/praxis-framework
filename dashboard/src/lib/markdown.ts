@@ -1,65 +1,40 @@
 /**
- * Tiny markdown renderer — paragraph/list/heading + bold + inline code.
- * Mirrors the inline renderer in the legacy interior.html so memory and
- * escalation bodies render the same way in the Astro dashboard.
+ * Shared markdown renderer for the dashboard.
+ *
+ * Backed by `markdown-it` so we get the full CommonMark + GFM grammar
+ * (headings, paragraphs, blockquotes, fenced code, tables, ordered/unordered
+ * lists, nested lists, horizontal rules, links, strikethrough, etc.) rather
+ * than the hand-rolled subset the legacy interior shipped with.
+ *
+ * Used exclusively on the server:
+ *   - Astro components (MemoEntry, FullEscalation) call it directly,
+ *   - the `/api/chat/*` routes call it via `serializeTurn` so chat turns are
+ *     sent to the Alpine client pre-rendered as HTML (the chat page ships no
+ *     markdown renderer to the browser).
+ *
+ * Safety: `html: false` disables raw HTML inside the source markdown, which
+ * is the only path through which model/user content could otherwise inject
+ * script tags. We never call `set:html` on anything that hasn't been
+ * processed by this renderer, so no DOMPurify pass is required.
  */
 
-export function renderMarkdown(md: string): string {
-  if (!md) return '';
-  const lines = md.split('\n');
-  const out: string[] = [];
-  let paragraph: string[] = [];
-  let inList = false;
+import MarkdownIt from 'markdown-it';
 
-  function inline(s: string): string {
-    return escapeHtml(s)
-      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-      .replace(/`([^`]+)`/g, '<code>$1</code>');
-  }
-  function flushParagraph(): void {
-    if (paragraph.length > 0) {
-      out.push('<p>' + paragraph.map(inline).join(' ') + '</p>');
-      paragraph = [];
-    }
-  }
-  function closeList(): void {
-    if (inList) {
-      out.push('</ul>');
-      inList = false;
-    }
-  }
+const md: MarkdownIt = new MarkdownIt({
+  html: false, // never allow raw HTML in user/model content (XSS protection)
+  linkify: true, // auto-detect bare URLs and turn them into <a> tags
+  breaks: true, // a single newline becomes <br> — matches chat-style markdown
+  typographer: false, // no smart quotes / dashes; we render code-heavy content
+});
 
-  for (const raw of lines) {
-    const line = raw.trim();
-    if (line.length === 0) {
-      flushParagraph();
-      closeList();
-      continue;
-    }
-    const heading = /^(#{1,6})\s+(.+)$/.exec(line);
-    if (heading) {
-      flushParagraph();
-      closeList();
-      out.push('<h3>' + inline(heading[2] ?? '') + '</h3>');
-      continue;
-    }
-    if (line.startsWith('- ') || line.startsWith('* ')) {
-      flushParagraph();
-      if (!inList) {
-        out.push('<ul>');
-        inList = true;
-      }
-      out.push('<li>' + inline(line.slice(2)) + '</li>');
-      continue;
-    }
-    closeList();
-    paragraph.push(line);
-  }
-  flushParagraph();
-  closeList();
-  return out.join('');
+export function renderMarkdown(text: string): string {
+  if (!text) return '';
+  return md.render(text);
 }
 
+/** Escape a raw string for safe interpolation into HTML attribute / text
+ * contexts. Kept here (rather than re-introducing in callers) because the
+ * legacy renderer exported it and a couple of callers may still import it. */
 export function escapeHtml(s: string): string {
   return s
     .replace(/&/g, '&amp;')

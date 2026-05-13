@@ -3,19 +3,19 @@ import type { Persona } from '@/lib/persona-parser';
 
 /** Identity bar shown at the top of /home and /role. Pulls from the parsed
  * persona.md identity section; supports an optional counts row (3 voice
- * rules · 3 inhibitions · 18 agents) used on /home but not /role. */
+ * rules · 3 inhibitions · 18 verbs) used on /home but not /role. */
 interface Props {
   persona: Persona | null;
-  /** When truthy, render the voice/inhibition/agents counts row. */
+  /** When truthy, render the voice/inhibition/verb counts row. */
   showCounts?: boolean;
-  agentCount?: number;
+  verbCount?: number;
   /** Anchor target — `/role` from /home, blank/edit-link from /role. */
   link?: { href: string; label: string };
   /** When false, omit the email field — useful on /home where the strip is brief. */
   showEmail?: boolean;
 }
 
-const { persona, showCounts = false, agentCount = 0, link, showEmail = false } = Astro.props;
+const { persona, showCounts = false, verbCount = 0, link, showEmail = false } = Astro.props;
 const ident = persona?.identity ?? {};
 const fullName = ident['full_name'] ?? ident['name'] ?? 'Unnamed role';
 const role = ident['role'] ?? '';
@@ -40,7 +40,7 @@ const inhibitionCount = persona?.inhibitions.length ?? 0;
   <div class="meta">
     {metaBits.map((b) => <span>{b}</span>)}
     {showCounts && (
-      <span>{voiceCount} voice {voiceCount === 1 ? 'rule' : 'rules'} · {inhibitionCount} {inhibitionCount === 1 ? 'inhibition' : 'inhibitions'} · {agentCount} agents</span>
+      <span>{voiceCount} voice {voiceCount === 1 ? 'rule' : 'rules'} · {inhibitionCount} {inhibitionCount === 1 ? 'inhibition' : 'inhibitions'} · {verbCount} verbs</span>
     )}
   </div>
   <div>

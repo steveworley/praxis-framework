@@ -1,0 +1,70 @@
+---
+import OutputDetail from './OutputDetail.astro';
+import type { OutputSummary } from '@/lib/output/types';
+
+/**
+ * Observation-tied-to-entity view. Records sit under
+ * `output/record/<entity_type>/<entity_id>/`, so we surface the entity
+ * identity prominently — that's the read's anchor — and follow with the
+ * observation date and body.
+ */
+interface Props {
+  meta: OutputSummary;
+  bodyHtml: string;
+}
+
+const { meta, bodyHtml } = Astro.props;
+const entityType = typeof meta.extras['entity_type'] === 'string' ? meta.extras['entity_type'] : '';
+const entityId = typeof meta.extras['entity_id'] === 'string' ? meta.extras['entity_id'] : '';
+const observedAt = typeof meta.extras['observed_at'] === 'string' ? meta.extras['observed_at'] : '';
+---
+
+<OutputDetail
+  title={meta.slug}
+  status={meta.status}
+  path={meta.path}
+  updated={meta.updated}
+  titleSize="sm"
+>
+  <div slot="head-extra" class="out-entity">
+    <span class="entity-type">{entityType}</span>
+    <span class="entity-sep">·</span>
+    <span class="entity-id">{entityId}</span>
+  </div>
+  <Fragment slot="meta-extra">
+    <span class="dot">·</span>
+    <span>observed {observedAt}</span>
+  </Fragment>
+  <div class="prose" set:html={bodyHtml}></div>
+</OutputDetail>
+
+<style>
+  .out-entity {
+    font-family: ui-monospace, monospace;
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    color: var(--ink-muted);
+    margin-bottom: 0.5rem;
+    text-transform: lowercase;
+  }
+  .entity-type {
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--ink-muted);
+    font-weight: 600;
+    font-size: 11px;
+  }
+  .entity-sep {
+    color: var(--ink-faint);
+    margin: 0 0.3rem;
+  }
+  .entity-id {
+    color: var(--ink);
+    font-weight: 500;
+  }
+  /* The rendered body wears the canonical `.prose` class — typography lives
+     in global.css. Constrain measure to a readable column on this surface. */
+  .prose {
+    max-width: 720px;
+  }
+</style>

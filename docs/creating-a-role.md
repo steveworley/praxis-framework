@@ -21,7 +21,7 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:4321/`. Since `agents/persona.md` doesn't exist at the role root yet, the dashboard redirects to **`/setup`** — the wizard.
+Open `http://localhost:4321/`. Since `persona.md` doesn't exist at the role root yet, the dashboard redirects to **`/setup`** — the wizard.
 
 ## 3. Walk through the wizard
 
@@ -31,11 +31,11 @@ The wizard is the role-planning UX. It collects:
 - **Voice & personality** — repeating trait label + concrete description ("drops articles in casual writing" beats "friendly")
 - **Capabilities** — first-person statements of what the role can do
 - **Hard inhibitions** — first-person never-statements (these become the role's constitution)
-- **Initial agents (optional)** — slug + one-line purpose for any starter agent files you want stubbed out
+- **Initial verbs (optional)** — slug + one-line purpose for any starter verb files you want stubbed out
 
 On submit the wizard writes two visible git commits to the role's repo:
 
-1. **`feat: seed role from praxis-framework template`** — populates `CLAUDE.md`, `agents/persona.md`, `agents/escalate.md`, `memory/`, `escalations/`, `lib/`, `.gitignore`
+1. **`feat: seed role from praxis-framework template`** — populates `CLAUDE.md`, `persona.md`, `verbs/escalate.md`, `memory/`, `escalations/`, `lib/`, `.gitignore`
 2. **`chore: tidy framework-only files post-seed`** — removes `template/`, `examples/`, `scripts/new-role.sh`, replaces `README.md` with a role-shaped one
 
 After seeding, `/` redirects to `/interior`. The wizard refuses to run again on a populated role.
@@ -46,11 +46,11 @@ You now have:
 my-role/
 ├── CLAUDE.md
 ├── README.md            # role-shaped, replaced from the framework's
-├── agents/
-│   ├── persona.md       # populated from your wizard inputs
+├── persona.md           # populated from your wizard inputs (role identity)
+├── verbs/
 │   ├── escalate.md
 │   ├── proposed/README.md
-│   └── {slug}.md        # any starter agents you stubbed
+│   └── {slug}.md        # any starter verbs you stubbed
 ├── lib/
 ├── memory/
 │   ├── README.md
@@ -62,7 +62,7 @@ my-role/
 └── .gitignore
 ```
 
-## 4. Refine the persona (`agents/persona.md`)
+## 4. Refine the persona (`persona.md`)
 
 The wizard captures the basics. Now go deeper. The persona file should answer:
 
@@ -79,24 +79,24 @@ The dashboard parses the **Identity** and **Voice & Personality** sections (look
 
 The wizard populates `CLAUDE.md` from the template with `{ROLE_NAME}` and your description substituted. Go through it and:
 
-- Confirm the agents table reflects what you actually have (the template lists `Persona` and `Escalate`; add any starter agents you stubbed and any new ones you author)
+- Confirm the verbs table reflects what you actually have (the template lists `Persona` and `Escalate`; add any starter verbs you stubbed and any new ones you author)
 - Fill in or remove the "My pipeline" section depending on whether your role has a fixed flow or runs on-demand
-- Mirror your hard inhibitions from `agents/persona.md` into the "Hard rules I never break" list (don't invent new rules — keep `persona.md` the single source of truth)
+- Mirror your hard inhibitions from `persona.md` into the "Hard rules I never break" list (don't invent new rules — keep `persona.md` the single source of truth)
 - Decide what your role anchors on (which `lib/*.yaml` files, which docs)
 
 CLAUDE.md is the operating manual the runtime reads on session start. Keep it short — single-screen if possible.
 
-## 6. Author the first agents (`agents/{name}.md`)
+## 6. Author the first verbs (`verbs/{name}.md`)
 
 Start with one or two beyond the wizard's stubs. Don't author the whole pipeline up front — let the role tell you what's missing as it operates.
 
-Recommended starting agents for most roles:
+Recommended starting verbs for most roles:
 
-- `agents/persona.md` (already populated by the wizard)
-- `agents/escalate.md` (already there — the raise-your-hand playbook)
-- `agents/intake.md` — how new work arrives (only if the role has a recurring intake shape)
+- `persona.md` (already populated by the wizard — at the role root)
+- `verbs/escalate.md` (already there — the raise-your-hand playbook)
+- `verbs/intake.md` — how new work arrives (only if the role has a recurring intake shape)
 
-Add more as the role's work shape becomes clear. New agents drafted by the role itself land in `agents/proposed/` and get reviewed via the escalation queue.
+Add more as the role's work shape becomes clear. New verbs drafted by the role itself land in `verbs/proposed/` and get reviewed via the escalation queue.
 
 ## 7. Populate `lib/` with reference data
 
@@ -114,10 +114,10 @@ Claude Code reads `CLAUDE.md`, picks up the agents table, and is ready to operat
 
 ## 9. As the role grows
 
-- **Memory entries** appear when the agent reflects at end-of-run or on surprise
-- **Escalations** appear when the agent files a `help`, `improvement`, or `proposed_skill`
-- **Drafts in `agents/proposed/`** appear when the agent proposes a new skill
-- The supervisor (you) reads escalations, edits CLAUDE.md / lib/ / agents/ as needed, and accepts or declines proposals
+- **Memory entries** appear when the role reflects at end-of-run or on surprise
+- **Escalations** appear when the role files a `help`, `improvement`, or `proposed_skill`
+- **Drafts in `verbs/proposed/`** appear when the role proposes a new skill
+- The supervisor (you) reads escalations, edits CLAUDE.md / lib/ / verbs/ as needed, and accepts or declines proposals
 
 The role grows visibly, gated by you.
 
@@ -125,6 +125,6 @@ The role grows visibly, gated by you.
 
 - The persona file is concrete enough that a stranger could read it and pretend to be the role for an afternoon
 - CLAUDE.md is short — single-screen if possible
-- `lib/` files are the source of truth for *facts* (don't duplicate them in agent prompts)
-- Agents are scoped to one repeatable behavior — if an agent has more than three responsibilities, split it
+- `lib/` files are the source of truth for *facts* (don't duplicate them in verb prompts)
+- Verbs are scoped to one repeatable behavior — if a verb has more than three responsibilities, split it
 - Hard rules appear in exactly one place (persona.md), referenced from CLAUDE.md

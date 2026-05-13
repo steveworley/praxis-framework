@@ -1,4 +1,5 @@
 ---
+import EmptyState from '@/components/EmptyState.astro';
 import RouteHeader from '@/components/RouteHeader.astro';
 import BaseLayout from '@/layouts/BaseLayout.astro';
 import { assembleActivity, type ActivityEntry } from '@/lib/activity-loader';
@@ -7,6 +8,7 @@ import { assembleEscalations } from '@/lib/escalations-loader';
 import { parsePersona, type Persona } from '@/lib/persona-parser';
 import { bucketByDay, recentActivityCount } from '@/lib/recent-stats';
 import { detectMode, getLogGlob, getRoleHome, nowIso } from '@/lib/role-home';
+import { formatIsoTime } from '@/lib/ui/time';
 
 export const prerender = false;
 
@@ -53,13 +55,6 @@ const filters: Array<{ key: string; label: string; count: number }> = [
 const buckets = bucketByDay(activity);
 const todayCount = recentActivityCount(activity, 1);
 
-function isoTime(ts: string | undefined): string {
-  if (!ts) return '';
-  const d = new Date(ts);
-  if (Number.isNaN(d.getTime())) return ts.slice(11, 16);
-  return d.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false });
-}
-
 function buildHeadline(e: ActivityEntry): string {
   const headline = typeof e.headline === 'string' ? e.headline : '';
   if (headline.length > 0) return headline;
@@ -89,19 +84,18 @@ function metaLine(e: ActivityEntry): string {
       updatedAt={updatedAt}
     />
 
-    <div style="margin-top: 2rem;">
+    <div class="page-body">
       <div class="group-head">
-        <span class="group-title">Activity</span>
         <span class="group-counter">last {activity.length} entries · {todayCount} today</span>
       </div>
 
       {activityError ? (
-        <div class="empty">Failed to load activity: {activityError}</div>
+        <EmptyState>Failed to load activity: {activityError}</EmptyState>
       ) : activity.length === 0 ? (
-        <div class="empty">No activity logged yet.</div>
+        <EmptyState>No activity logged yet.</EmptyState>
       ) : (
         <>
-          <div class="filter-row" data-filter-group="action" style="margin-top: 0.8rem;">
+          <div class="filter-row spaced" data-filter-group="action">
             {filters.map((f) => (
               <span
                 class:list={['filter', f.key === 'all' && 'active']}
@@ -120,7 +114,7 @@ function metaLine(e: ActivityEntry): string {
                 </div>
                 {bucket.items.map((e) => {
                   const action = typeof e.action === 'string' && e.action.length > 0 ? e.action : 'other';
-                  const time = isoTime(typeof e.timestamp === 'string' ? e.timestamp : undefined);
+                  const time = formatIsoTime(typeof e.timestamp === 'string' ? e.timestamp : undefined);
                   const headline = buildHeadline(e);
                   const meta = metaLine(e);
                   if (isDecisionEntry(e)) {

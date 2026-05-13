@@ -1,0 +1,95 @@
+---
+import StatusPill from './StatusPill.astro';
+import FilePath from '@/components/FilePath.astro';
+import type { OutputStatus } from '@/lib/output/types';
+
+/** Shared chrome for every `/output/<type>/<slug>` detail page. Holds the
+ * title row (h1 + status pill), the meta row (path · updated · type-specific
+ * extras), and an optional pre-head slot for entity ribbons / tags. The body
+ * slot is whatever the per-type renderer wants to render below the chrome
+ * (prose, envelope, plan progress, etc.). */
+interface Props {
+  title: string;
+  status: OutputStatus;
+  path: string;
+  updated: string;
+  /** Whether to draw the head's bottom rule. Default true (records, docs,
+   * references). Drafts and plans render extra chrome under the head so
+   * they suppress the rule to keep the visual rhythm tight. */
+  divider?: boolean;
+  /** Optional inline override for the h1 font-size — RecordView, DraftView,
+   * PlanView, and ReferenceView each tune the title scale based on what's
+   * acting as the title (slug vs subject vs goal vs topic). */
+  titleSize?: 'lg' | 'md' | 'sm';
+}
+
+const { title, status, path, updated, divider = true, titleSize = 'lg' } = Astro.props;
+---
+
+<article class="out-detail">
+  <header class:list={['out-head', divider && 'with-divider']}>
+    {Astro.slots.has('head-extra') && (
+      <div class="out-head-extra"><slot name="head-extra" /></div>
+    )}
+    <div class="out-title-row">
+      <h1 class:list={[`size-${titleSize}`]}>{title}</h1>
+      <StatusPill status={status} />
+    </div>
+    <div class="out-meta">
+      <FilePath path={path} />
+      <span class="dot">·</span>
+      <span>updated {updated}</span>
+      <slot name="meta-extra" />
+    </div>
+    {Astro.slots.has('head-tail') && <slot name="head-tail" />}
+  </header>
+  <slot />
+</article>
+
+<style>
+  .out-detail {
+    margin-top: 1.4rem;
+  }
+  .out-head {
+    margin-bottom: 1.2rem;
+  }
+  .out-head.with-divider {
+    margin-bottom: 1.6rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--rule);
+  }
+  .out-title-row {
+    display: flex;
+    align-items: baseline;
+    gap: 0.8rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.4rem;
+  }
+  .out-title-row h1 {
+    font-weight: 600;
+    color: var(--ink);
+    margin: 0;
+    line-height: 1.3;
+  }
+  .out-title-row h1.size-lg {
+    font-size: 22px;
+  }
+  .out-title-row h1.size-md {
+    font-size: 20px;
+  }
+  .out-title-row h1.size-sm {
+    font-size: 19px;
+  }
+  .out-meta {
+    font-family: ui-monospace, monospace;
+    font-size: 11.5px;
+    color: var(--ink-muted);
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    align-items: baseline;
+  }
+  .out-meta :global(.dot) {
+    color: var(--ink-faint);
+  }
+</style>

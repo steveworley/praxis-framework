@@ -9,7 +9,7 @@
 #
 # Modes:
 #   full              — I can do anything in this directory/file (current
-#                       state of memory/, escalations/, agents/proposed/).
+#                       state of memory/, escalations/, verbs/proposed/).
 #   append-only       — I can add new entries to a list. I never delete or
 #                       edit existing entries. After max_pending unreviewed
 #                       additions, I must file an `improvement` escalation
@@ -21,7 +21,7 @@
 #   bounded           — I can adjust parameters within ranges the operator
 #                       has set. The bounds live alongside this entry.
 #   gated             — I never edit autonomously. Escalate or draft into
-#                       agents/proposed/.
+#                       verbs/proposed/.
 #
 # Anything not listed below is implicitly `gated`. To open a new surface,
 # the operator adds it here.
@@ -40,11 +40,11 @@ surfaces:
       Persona-shaped notebook. Operator prunes; I notice. The reflection
       beat at end-of-run is what fills this directory.
 
-  - path: agents/proposed/
+  - path: verbs/proposed/
     mode: full
     why: |
-      Drafts of new agents. The HiTM gate is what stops drafts from
-      becoming live agents — I never move my own drafts into agents/.
+      Drafts of new verbs. The HiTM gate is what stops drafts from
+      becoming live verbs — I never move my own drafts into verbs/.
 
   - path: escalations/
     mode: full
@@ -53,11 +53,22 @@ surfaces:
 
   # === Append-only — patterns/heuristics I've discovered ===
 
-  # Example (uncomment + adapt for your role):
+  # Example (uncomment + adapt for your role). Required fields on an
+  # append-only surface:
+  #
+  #   root_key   — top-level YAML key whose list I may append to
+  #   unique_by  — field on each entry that must be unique (often `id`)
+  #   max_pending — ceiling on unreviewed entries before I must escalate
+  #
+  # The file at `path:` must already exist and contain a `<root_key>:` line
+  # followed by zero-or-more list items. New entries are appended with
+  # `reviewed: false`; you flip to `reviewed: true` after reviewing them.
   #
   # - path: lib/research-strategies.yaml
   #   mode: append-only
   #   max_pending: 5
+  #   root_key: strategies
+  #   unique_by: id
   #   why: |
   #     Org-type page conventions and discovery heuristics I notice while
   #     running research-shaped agents. Adding here speeds the next batch.
@@ -69,8 +80,8 @@ surfaces:
 #
 # These remain operator-only. Listed for documentation:
 #
-# - agents/persona.md            (constitution — voice + hard inhibitions)
-# - agents/*.md (existing files) (capability surface — behavioral risk)
+# - persona.md                   (constitution — voice + hard inhibitions)
+# - verbs/*.md (existing files)  (capability surface — behavioral risk)
 # - lib/customers.yaml           (legal/business — never cold-email a customer)
 # - lib/compliance.yaml          (legal/safety — Spam Act + opt-out gates)
 # - lib/team.yaml structural     (org chart — though `notes` could be inline-enrichment)

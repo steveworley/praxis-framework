@@ -15,10 +15,10 @@ Without a deliberation log, when one of these turns out wrong (a bounce, a flat 
 
 ## The primitive
 
-A decision is a `bin/log` entry with `action=decision` and a small set of conventional extras. No new tooling, no new file storage — it rides the existing JSONL log infrastructure.
+A decision is a `praxis log` entry with `action=decision` and a small set of conventional extras. No new tooling, no new file storage — it rides the existing JSONL log infrastructure.
 
 ```bash
-bin/log --campaign={id} --agent={agent} --action=decision \
+praxis log --campaign={id} --agent={agent} --action=decision \
         --prospect={if applicable} \
         decision_type='contact_selection' \
         chosen='Karl Hartmann (CTO / Head of Central Services)' \
@@ -37,7 +37,7 @@ bin/log --campaign={id} --agent={agent} --action=decision \
 | `rationale` | yes | free text | the *why*; if you'd write "obvious", don't log it |
 | `confidence` | no | `low` / `medium` / `high` | calibration signal — operators can review high-confidence calls that turned out wrong |
 
-The fields ride `bin/log`'s `key=value` extras mechanism, so no script changes needed. Agents adopt the schema by following their playbook.
+The fields ride `praxis log`'s `key=value` extras mechanism, so no script changes needed. Agents adopt the schema by following their playbook.
 
 ### Conventional `decision_type` values
 
@@ -63,7 +63,7 @@ Each agent's playbook should include a "before this transition, log a decision" 
 > Before setting `stage = contact_found`, log the contact selection:
 >
 > ```bash
-> bin/log --campaign={id} --agent=find-contacts --action=decision --prospect={slug} \
+> praxis log --campaign={id} --agent=find-contacts --action=decision --prospect={slug} \
 >         decision_type=contact_selection chosen='...' considered='...' rationale='...' confidence=...
 > ```
 

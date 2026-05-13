@@ -1,0 +1,273 @@
+---
+import EmptyState from '@/components/EmptyState.astro';
+import RouteHeader from '@/components/RouteHeader.astro';
+import StatusPill from '@/components/output/StatusPill.astro';
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import { personaNameFrom } from '@/lib/chat/persona-name';
+import { listOutputs } from '@/lib/output/loader';
+import { OUTPUT_TYPE_ENUM, type OutputSummary, type OutputType } from '@/lib/output/types';
+import { parsePersona, type Persona } from '@/lib/persona-parser';
+import { detectMode, getRoleHome, nowIso } from '@/lib/role-home';
+
+/**
+ * /output — top-level overview of the role's work product. Five type
+ * cards showing recent activity + counts, with a feed of the most recent
+ * entries underneath. Per-type listings live at `/output/<type>`.
+ */
+
+export const prerender = false;
+
+const roleHome = getRoleHome();
+const mode = detectMode(roleHome);
+if (mode === 'seed') {
+  return Astro.redirect('/setup');
+}
+
+const [personaRes, outputsRes] = await Promise.allSettled([
+  parsePersona(roleHome),
+  listOutputs(roleHome),
+]);
+
+const persona: Persona | null = personaRes.status === 'fulfilled' ? personaRes.value : null;
+const personaName = personaNameFrom(persona);
+const outputs: OutputSummary[] = outputsRes.status === 'fulfilled' ? outputsRes.value : [];
+const loadError = outputsRes.status === 'rejected' ? String(outputsRes.reason) : null;
+
+interface TypeStat {
+  type: OutputType;
+  count: number;
+  recent: OutputSummary | null;
+}
+const stats: TypeStat[] = OUTPUT_TYPE_ENUM.map((type) => {
+  const matching = outputs.filter((o) => o.type === type);
+  return { type, count: matching.length, recent: matching[0] ?? null };
+});
+
+const totalCount = outputs.length;
+const recentFeed = outputs.slice(0, 10);
+
+const updatedAt = nowIso();
+
+const TYPE_BLURBS: Record<OutputType, string> = {
+  document: 'long-form prose: briefs, notes, analyses',
+  draft: 'outgoing communication waiting to be sent',
+  record: 'entity-tied observations: reads, calls, meetings',
+  plan: 'multi-step intent with a checklist',
+  reference: 'reusable knowledge: heuristics, recipes, calibrations',
+};
+
+function detailHref(o: OutputSummary): string {
+  if (o.type === 'record') {
+    const et = o.extras['entity_type'];
+    const eid = o.extras['entity_id'];
+    return `/output/record/${et}/${eid}/${o.slug}`;
+  }
+  return `/output/${o.type}/${o.slug}`;
+}
+---
+
+<BaseLayout title={persona ? `Output · ${personaName.full}` : 'Output · Praxis'}>
+  <main class="container">
+    <RouteHeader
+      current="output"
+      personaName={persona ? personaName.full : ''}
+      updatedAt={updatedAt}
+    />
+
+    <div class="out-overview">
+      <p class="page-lede large">
+        {personaName.short || 'The role'}'s work product. Five primitives — pick by the shape of what was produced.
+      </p>
+
+      {loadError && (
+        <EmptyState>Failed to load output: {loadError}</EmptyState>
+      )}
+
+      <div class="type-grid">
+        {stats.map((stat) => (
+          <a class="type-card" href={`/output/${stat.type}`}>
+            <div class="type-card-head">
+              <h3>{stat.type}</h3>
+              <span class="type-card-count">{stat.count}</span>
+            </div>
+            <p class="type-card-blurb">{TYPE_BLURBS[stat.type]}</p>
+            {stat.recent ? (
+              <div class="type-card-recent">
+                <span class="recent-label">most recent</span>
+                <span class="recent-title">{stat.recent.title}</span>
+                <span class="recent-date">{stat.recent.updated}</span>
+              </div>
+            ) : (
+              <div class="type-card-empty">none yet</div>
+            )}
+          </a>
+        ))}
+      </div>
+
+      {totalCount > 0 && (
+        <div class="group">
+          <div class="group-head">
+            <span class="group-title">Recent activity</span>
+            <span class="group-counter">last {Math.min(10, totalCount)} of {totalCount}</span>
+          </div>
+          <ul class="feed">
+            {recentFeed.map((o) => (
+              <li class="feed-row">
+                <a href={detailHref(o)} class="feed-link">
+                  <span class="feed-type">{o.type}</span>
+                  <span class="feed-title">{o.title}</span>
+                  <span class="feed-meta">
+                    <StatusPill status={o.status} />
+                    <span class="feed-date">{o.updated}</span>
+                  </span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {totalCount === 0 && !loadError && (
+        <EmptyState>
+          No output yet. As {personaName.short || 'the role'} produces work — drafts, reads, plans — entries will surface here.
+        </EmptyState>
+      )}
+    </div>
+  </main>
+
+  <style>
+    .out-overview {
+      margin-top: 1.2rem;
+    }
+    .type-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2.4rem;
+    }
+    .type-card {
+      display: flex;
+      flex-direction: column;
+      padding: 1rem 1.1rem 0.9rem;
+      background: var(--surface);
+      border: 1px solid var(--rule);
+      border-radius: 4px;
+      text-decoration: none;
+      color: inherit;
+      transition: border-color 0.15s ease, transform 0.1s ease;
+    }
+    .type-card:hover {
+      border-color: var(--rule-strong);
+      transform: translateY(-1px);
+    }
+    .type-card-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 0.3rem;
+    }
+    .type-card-head h3 {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--ink);
+      text-transform: capitalize;
+      margin: 0;
+    }
+    .type-card-count {
+      font-family: ui-monospace, monospace;
+      font-size: 13px;
+      color: var(--ink-soft);
+    }
+    .type-card-blurb {
+      font-size: 12.5px;
+      color: var(--ink-muted);
+      line-height: 1.5;
+      margin: 0 0 0.8rem;
+    }
+    .type-card-recent {
+      margin-top: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 0.15rem;
+      padding-top: 0.55rem;
+      border-top: 1px solid var(--rule);
+    }
+    .recent-label {
+      font-family: ui-monospace, monospace;
+      font-size: 10.5px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--ink-faint);
+    }
+    .recent-title {
+      font-size: 12.5px;
+      color: var(--ink);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .recent-date {
+      font-family: ui-monospace, monospace;
+      font-size: 11px;
+      color: var(--ink-faint);
+    }
+    .type-card-empty {
+      margin-top: auto;
+      padding-top: 0.55rem;
+      border-top: 1px solid var(--rule);
+      font-size: 12px;
+      color: var(--ink-faint);
+      font-style: italic;
+    }
+
+    .feed {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    .feed-row {
+      border-top: 1px solid var(--rule);
+    }
+    .feed-row:last-child {
+      border-bottom: 1px solid var(--rule);
+    }
+    .feed-link {
+      display: grid;
+      grid-template-columns: 80px 1fr auto;
+      gap: 1rem;
+      align-items: baseline;
+      padding: 0.7rem 0;
+      text-decoration: none;
+      color: inherit;
+    }
+    .feed-link:hover {
+      background: var(--surface-mute);
+      padding-left: 0.5rem;
+      padding-right: 0.5rem;
+    }
+    .feed-type {
+      font-family: ui-monospace, monospace;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--ink-muted);
+    }
+    .feed-title {
+      font-size: 14px;
+      color: var(--ink);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .feed-meta {
+      display: flex;
+      gap: 0.6rem;
+      align-items: baseline;
+    }
+    .feed-date {
+      font-family: ui-monospace, monospace;
+      font-size: 11px;
+      color: var(--ink-faint);
+    }
+  </style>
+</BaseLayout>

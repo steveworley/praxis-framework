@@ -10,7 +10,7 @@ Sam's repo is [`quantcdn/sam`](https://github.com/quantcdn/sam) (private). What 
 
 | Convention | What Sam does |
 |---|---|
-| `agents/` | 18+ playbook files: discover, research, find-contacts, draft-emails, review, send-emails, monitor, respond, follow-up, post-meeting, bounce-handler, tender-watch, intake-leads, account-read, monitor-channels, slack-triage, summary-campaign, summary-daily, escalate |
+| `verbs/` | 18+ playbook files: discover, research, find-contacts, draft-emails, review, send-emails, monitor, respond, follow-up, post-meeting, bounce-handler, tender-watch, intake-leads, account-read, monitor-channels, slack-triage, summary-campaign, summary-daily, escalate |
 | `lib/` | `customers.yaml`, `team.yaml`, `compliance.yaml`, `quant-capabilities.yaml`, `research-strategies.yaml`, `intake-channels.yaml` |
 | `memory/` | People (Stu, Con, Steve), accounts (per-customer narrative), notes (voice calibrations, observed patterns) |
 | `escalations/` | Help / improvement / proposed_skill — gated review by Steve |
@@ -19,10 +19,10 @@ Sam's repo is [`quantcdn/sam`](https://github.com/quantcdn/sam) (private). What 
 ### What Praxis kept and what it didn't
 
 **Kept (universal):**
-- The four-directory shape (`agents/`, `lib/`, `memory/`, `escalations/`)
+- `persona.md` at the role root plus the four-directory shape (`verbs/`, `lib/`, `memory/`, `escalations/`)
 - The persona file convention with parseable Identity / Voice / Capabilities / Inhibitions sections
 - The escalation kinds (`help`, `improvement`, `proposed_skill`)
-- The skill-loop acceptance gate (operator owns moves from `proposed/` to `agents/`)
+- The skill-loop acceptance gate (operator owns moves from `proposed/` to `verbs/`)
 - Memory rules (don't shadow structured files, timestamp everything)
 - The end-of-run / on-surprise reflection triggers
 
@@ -47,7 +47,7 @@ Not implemented — illustrative.
 Each one would:
 1. Author a `persona.md` for the role
 2. Author a `CLAUDE.md` operating manual
-3. Add domain-specific agents under `agents/`
+3. Add domain-specific verbs under `verbs/`
 4. Populate `lib/` with reference data
 5. Pick a work-product directory name that fits
 

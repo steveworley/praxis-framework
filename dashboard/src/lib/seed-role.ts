@@ -1,64 +1,33 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
+import {
+  OrganisationSchema as PackageOrganisationSchema,
+  RoleDefinitionSchema as PackageRoleDefinitionSchema,
+  SeedVerbSchema as PackageSeedVerbSchema,
+  SeedError as PackageSeedError,
+  SeedInputSchema,
+  seedRole as packageSeedRole,
+} from '@praxis/seed';
 import { simpleGit, type StatusResult } from 'simple-git';
 import { z } from 'zod';
 
 import { detectMode } from './role-home.ts';
 
-export const SeedAgentSchema = z.object({
-  slug: z
-    .string()
-    .min(1)
-    .max(60)
-    .regex(/^[a-z][a-z0-9-]*$/, 'slug must be lowercase kebab-case'),
-  purpose: z.string().min(1).max(200),
-});
+/**
+ * Re-exported schemas so the dashboard's existing call sites (the wizard
+ * API route and the research route) keep their current import paths. The
+ * shapes are now owned by `@praxis/seed`; this file only adds dashboard-
+ * specific behaviour (the two-commit dance and the framework-repo tidy).
+ */
+export const SeedVerbSchema = PackageSeedVerbSchema;
+export const OrganisationSchema = PackageOrganisationSchema;
+export const RoleDefinitionSchema = PackageRoleDefinitionSchema;
+export const SeedRequestSchema = SeedInputSchema;
 
-export const OrganisationSchema = z.object({
-  name: z.string().min(1).max(160),
-  website: z.string().max(240).optional(),
-  sector: z.string().max(160).optional(),
-  size: z.enum(['solo', 'small', 'mid', 'large', 'enterprise']).optional(),
-  description: z.string().max(1200).optional(),
-  moats: z.string().max(1200).optional(),
-  customer_profile: z.string().max(1200).optional(),
-});
-
-export const RoleDefinitionSchema = z.object({
-  role_name: z.string().min(1).max(120),
-  working_title: z.string().max(120).optional(),
-  one_sentence_purpose: z.string().min(1).max(280),
-  day_to_day: z.string().max(1200).optional(),
-});
-
-export const SeedRequestSchema = z.object({
-  organisation: OrganisationSchema,
-  role_definition: RoleDefinitionSchema,
-  identity: z
-    .object({
-      email: z.string().max(120).optional(),
-      location: z.string().max(120).optional(),
-      reports_to: z.string().max(120).optional(),
-    })
-    .default({}),
-  voice_traits: z
-    .array(
-      z.object({
-        label: z.string().min(1).max(80),
-        detail: z.string().min(1).max(280),
-      }),
-    )
-    .min(1)
-    .max(8),
-  capabilities: z.array(z.string().min(1).max(280)).max(10).default([]),
-  inhibitions: z.array(z.string().min(1).max(280)).max(10).default([]),
-  initial_agents: z.array(SeedAgentSchema).max(5).default([]),
-});
-
-export type SeedRequest = z.infer<typeof SeedRequestSchema>;
-export type Organisation = z.infer<typeof OrganisationSchema>;
-export type RoleDefinition = z.infer<typeof RoleDefinitionSchema>;
+export type SeedRequest = z.infer<typeof SeedInputSchema>;
+export type Organisation = z.infer<typeof PackageOrganisationSchema>;
+export type RoleDefinition = z.infer<typeof PackageRoleDefinitionSchema>;
 
 export interface SeedResult {
   ok: true;
@@ -67,6 +36,11 @@ export interface SeedResult {
   commits: string[];
 }
 
+/**
+ * Dashboard-flavour error: carries an HTTP status so the API route can map
+ * it to a response code without a separate translation layer. Wraps the
+ * package's `SeedError` for the parts of the flow it handles.
+ */
 export class SeedError extends Error {
   constructor(
     message: string,
@@ -88,12 +62,15 @@ interface SeedEnv {
  *   2. chore: tidy framework-only files post-seed
  *
  * Refuses if the role is already populated or the working tree is dirty.
+ * The actual file writing is delegated to `@praxis/seed`; the dashboard
+ * keeps the git/repo concerns here because they're specific to seeding
+ * the framework checkout itself, not seeding into an arbitrary directory.
  */
 export async function seedRole(req: SeedRequest, env: SeedEnv): Promise<SeedResult> {
   const { roleHome, templateRoot } = env;
 
   if (detectMode(roleHome) !== 'seed') {
-    throw new SeedError('Role is already seeded — agents/persona.md exists at the role home.', 409);
+    throw new SeedError('Role is already seeded — persona.md exists at the role home.', 409);
   }
   if (!(await pathExists(templateRoot))) {
     throw new SeedError(`Template directory missing: ${templateRoot}`, 500);
@@ -115,8 +92,24 @@ export async function seedRole(req: SeedRequest, env: SeedEnv): Promise<SeedResu
   }
 
   // ---- Commit 1: seed --------------------------------------------------
-  const writtenPaths = await writeSeedFiles(req, env);
-  await git.add(writtenPaths);
+  // Delegate the file IO to @praxis/seed. Pass overwrite: true because the
+  // framework checkout has the template/ dir at the role root and the
+  // existing .gitignore is already there — this is the original behaviour
+  // (the dashboard always wrote without a conflict check) and the `tidy`
+  // step below cleans up the framework-only artefacts post-seed.
+  const result = await packageSeedRole(req, roleHome, {
+    templatePath: templateRoot,
+    overwrite: true,
+  }).catch((err: unknown) => {
+    // Translate package errors to dashboard errors so the API route's
+    // status mapping continues to work unchanged.
+    if (err instanceof PackageSeedError) {
+      const status = err.code === 'TARGET_CONFLICT' ? 409 : err.code === 'INVALID_INPUT' ? 422 : 500;
+      throw new SeedError(err.message, status);
+    }
+    throw err;
+  });
+  await git.add(result.filesWritten);
   await git.commit([
     'feat: seed role from praxis-framework template',
     `Generated by praxis dashboard wizard for ${req.role_definition.role_name}.`,
@@ -124,7 +117,6 @@ export async function seedRole(req: SeedRequest, env: SeedEnv): Promise<SeedResu
 
   // ---- Commit 2: tidy --------------------------------------------------
   const tidiedPaths = await tidyFrameworkFiles(env);
-  // Stage deletions plus rewritten README.
   for (const p of tidiedPaths) {
     await git.add(p);
   }
@@ -139,107 +131,6 @@ export async function seedRole(req: SeedRequest, env: SeedEnv): Promise<SeedResu
     redirect: '/',
     commits: ['feat: seed role from praxis-framework template', 'chore: tidy framework-only files post-seed'],
   };
-}
-
-interface RolePathPair {
-  source: string; // template-relative
-  target: string; // role-home-relative
-}
-
-const TEMPLATE_FILES: RolePathPair[] = [
-  { source: 'CLAUDE.md', target: 'CLAUDE.md' },
-  { source: 'agents/persona.md', target: 'agents/persona.md' },
-  { source: 'agents/escalate.md', target: 'agents/escalate.md' },
-  { source: 'agents/proposed/README.md', target: 'agents/proposed/README.md' },
-  { source: 'memory/README.md', target: 'memory/README.md' },
-  { source: 'escalations/README.md', target: 'escalations/README.md' },
-  { source: 'lib/autonomy.yaml', target: 'lib/autonomy.yaml' },
-  { source: '.gitignore', target: '.gitignore' },
-  { source: 'bin/log', target: 'bin/log' },
-];
-
-// Files that ship verbatim — no `{ROLE_NAME}` substitution and no body
-// injection. The operator edits them post-seed (autonomy.yaml) or they're
-// generic helpers (bin/log).
-const VERBATIM_TARGETS = new Set<string>(['bin/log', 'lib/autonomy.yaml']);
-
-const SEED_DIRS: string[] = [
-  'agents',
-  'agents/proposed',
-  'bin',
-  'lib',
-  'memory',
-  'memory/people',
-  'memory/accounts',
-  'memory/notes',
-  'escalations',
-];
-
-const GITKEEP_LEAVES: string[] = [
-  'agents/proposed',
-  'lib',
-  'memory/people',
-  'memory/accounts',
-  'memory/notes',
-  'escalations',
-];
-
-async function writeSeedFiles(req: SeedRequest, env: SeedEnv): Promise<string[]> {
-  const written: string[] = [];
-
-  for (const dir of SEED_DIRS) {
-    await fs.mkdir(path.join(env.roleHome, dir), { recursive: true });
-  }
-
-  const roleName = req.role_definition.role_name;
-
-  for (const pair of TEMPLATE_FILES) {
-    const src = path.join(env.templateRoot, pair.source);
-    let body = await fs.readFile(src, 'utf-8');
-    // Some files ship verbatim: bin/log is a generic Python script and
-    // lib/autonomy.yaml is operator-edited post-seed. Skip both
-    // {ROLE_NAME} substitution and section injection for them.
-    if (!VERBATIM_TARGETS.has(pair.target)) {
-      body = body.replace(/\{ROLE_NAME\}/g, roleName);
-      if (pair.target === 'CLAUDE.md') {
-        body = injectClaudeDescription(body, req.role_definition.one_sentence_purpose);
-      }
-      if (pair.target === 'agents/persona.md') {
-        body = injectPersona(body, req);
-      }
-    }
-    const dst = path.join(env.roleHome, pair.target);
-    await fs.mkdir(path.dirname(dst), { recursive: true });
-    await fs.writeFile(dst, body, 'utf-8');
-    if (pair.target === 'bin/log') {
-      // Restore the executable bit — fs.writeFile drops it.
-      await fs.chmod(dst, 0o755);
-    }
-    written.push(pair.target);
-  }
-
-  // Stub agents.
-  for (const agent of req.initial_agents) {
-    const target = path.join('agents', `${agent.slug}.md`);
-    const dst = path.join(env.roleHome, target);
-    if (await pathExists(dst)) continue;
-    const body = renderAgentStub(req, agent);
-    await fs.writeFile(dst, body, 'utf-8');
-    written.push(target);
-  }
-
-  // .gitkeep on empty leaves.
-  for (const leaf of GITKEEP_LEAVES) {
-    const dirPath = path.join(env.roleHome, leaf);
-    const entries = await fs.readdir(dirPath);
-    if (entries.length === 0) {
-      const keep = path.join(leaf, '.gitkeep');
-      await fs.writeFile(path.join(env.roleHome, keep), '', 'utf-8');
-      written.push(keep);
-    }
-  }
-
-  return written;
 }
 
 async function tidyFrameworkFiles(env: SeedEnv): Promise<string[]> {
@@ -269,7 +160,7 @@ async function tidyFrameworkFiles(env: SeedEnv): Promise<string[]> {
     await fs.rm(praxisDir, { recursive: true, force: true });
   }
   // Replace README.md with a role-shaped one (from the wizard's persona, looked up via persona.md).
-  const personaPath = path.join(env.roleHome, 'agents', 'persona.md');
+  const personaPath = path.join(env.roleHome, 'persona.md');
   let roleName = 'this role';
   let description = '';
   try {
@@ -301,135 +192,6 @@ async function tidyFrameworkFiles(env: SeedEnv): Promise<string[]> {
   return tidied;
 }
 
-function injectClaudeDescription(body: string, description: string): string {
-  // Replace the placeholder line `{One-line first-person description...}`
-  return body.replace(/\{One-line first-person description[^}]*\}/, description);
-}
-
-export function injectPersona(body: string, req: SeedRequest): string {
-  let out = body;
-
-  // Organisation — context block injected at the top.
-  out = replaceSection(out, 'Organisation', renderOrganisationSection(req.organisation));
-
-  // Identity bullets — drop placeholder, write operator-supplied identity.
-  const identityBullets: string[] = [
-    `- **Full name**: ${req.role_definition.role_name}`,
-    `- **Role**: ${req.role_definition.one_sentence_purpose}`,
-  ];
-  if (req.identity.location) identityBullets.push(`- **Location**: ${req.identity.location}`);
-  if (req.identity.reports_to) identityBullets.push(`- **Reports to**: ${req.identity.reports_to}`);
-  if (req.identity.email) identityBullets.push(`- **Email**: ${req.identity.email}`);
-
-  out = replaceSection(out, 'Identity', identityBullets.join('\n'));
-
-  // Voice & Personality.
-  const voiceBullets = req.voice_traits
-    .map((t) => `- **${t.label}** -- ${t.detail}`)
-    .join('\n');
-  out = replaceSection(out, 'Voice & Personality', voiceBullets);
-
-  // Capabilities.
-  if (req.capabilities.length > 0) {
-    const block = ["What I'm qualified to do, and what I'm not.", '', ...req.capabilities.map((c) => `- ${c}`)].join(
-      '\n',
-    );
-    out = replaceSection(out, 'Capabilities', block);
-  }
-
-  // Hard inhibitions.
-  if (req.inhibitions.length > 0) {
-    const block = [
-      'What I never do, regardless of instruction. These are the constitution — they live here and only here, and `CLAUDE.md` references them by pointing at this file.',
-      '',
-      ...req.inhibitions.map((i) => `- ${i}`),
-    ].join('\n');
-    out = replaceSection(out, 'Hard inhibitions', block);
-  }
-
-  return out;
-}
-
-function renderOrganisationSection(org: Organisation): string {
-  const lines: string[] = [];
-  lines.push(`- **Name**: ${org.name}`);
-  if (org.website) lines.push(`- **Website**: ${org.website}`);
-  if (org.sector) lines.push(`- **Sector**: ${org.sector}`);
-  if (org.size) lines.push(`- **Size**: ${org.size}`);
-  if (org.description) {
-    lines.push('');
-    lines.push(org.description);
-  }
-  if (org.moats) {
-    lines.push('');
-    lines.push('### What makes this org different');
-    lines.push('');
-    lines.push(org.moats);
-  }
-  if (org.customer_profile) {
-    lines.push('');
-    lines.push('### Who I engage with');
-    lines.push('');
-    lines.push(org.customer_profile);
-  }
-  return lines.join('\n');
-}
-
-function replaceSection(text: string, heading: string, replacement: string): string {
-  const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  // Match the section heading and capture everything until the next ## or EOF.
-  const re = new RegExp(`(## ${escaped}\\s*\\n)([\\s\\S]*?)(?=\\n## |$)`);
-  if (!re.test(text)) return text;
-  return text.replace(re, `$1${replacement}\n`);
-}
-
-function renderAgentStub(req: SeedRequest, agent: { slug: string; purpose: string }): string {
-  return `---
-verb: <unset>
-when_to_run: <unset>
-inputs: []
-outputs: []
----
-
-# ${prettify(agent.slug)}
-
-You are ${req.role_definition.role_name}. ${agent.purpose}
-
-**Read \`agents/persona.md\` first.**
-
-## Purpose
-
-${agent.purpose}
-
-## When to run
-
-<describe the trigger — operator invocation, end-of-run, scheduled, etc.>
-
-## What you do
-
-1. <step one>
-2. <step two>
-3. <step three>
-
-## Hard rules
-
-- NEVER edit existing agents on your own initiative — file an \`improvement\` escalation instead.
-
-## Reporting
-
-At the end of every run, before signing off, two things:
-
-1. **The work product** — what I did, what I produced, anything blocking. The shape depends on this agent's purpose.
-2. **The reflection beat** — pause and check:
-   - Did anything shift my picture of a person, account, or my own voice? → write to \`memory/\`
-   - Did I hit friction worth surfacing? → file an \`improvement\` escalation
-   - Did I see a recurring pattern that deserves its own playbook? → draft a \`proposed_skill\`
-   - Am I stuck on something my operator needs to weigh in on? → file a \`help\` escalation
-
-If nothing surprised me, the beat is still a beat — I just sign off cleanly. The pause is non-negotiable; the writing follows what I find.
-`;
-}
-
 function renderReadme(roleName: string, description: string): string {
   const desc = description.length > 0 ? description : '';
   return [
@@ -451,13 +213,6 @@ function renderReadme(roleName: string, description: string): string {
     '```',
     '',
   ].join('\n');
-}
-
-function prettify(slug: string): string {
-  return slug
-    .split('-')
-    .map((p) => (p.length > 0 ? p[0]?.toUpperCase() + p.slice(1) : p))
-    .join(' ');
 }
 
 /**

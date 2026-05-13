@@ -1,0 +1,159 @@
+---
+import OutputDetail from './OutputDetail.astro';
+import type { OutputSummary } from '@/lib/output/types';
+
+/**
+ * Email-envelope view for a `draft` output. Renders the To / Channel /
+ * Subject header rows above the body, with a "Mark as sent" action when
+ * the status is still draft / review / ready. The action POSTs to
+ * /api/output/[type]/[...slug] with {status: 'sent'} — the framework does
+ * NOT send anything; the operator handles delivery, this just records that
+ * delivery happened.
+ */
+interface Props {
+  meta: OutputSummary;
+  bodyHtml: string;
+}
+
+const { meta, bodyHtml } = Astro.props;
+const recipient = typeof meta.extras['recipient'] === 'string' ? meta.extras['recipient'] : null;
+const channel = typeof meta.extras['channel'] === 'string' ? meta.extras['channel'] : null;
+const subject = typeof meta.extras['subject'] === 'string' ? meta.extras['subject'] : null;
+
+const canMarkSent = meta.status !== 'sent' && meta.status !== 'archived';
+const updateUrl = `/api/output/${meta.type}/${meta.slug}`;
+---
+
+<div data-update-url={updateUrl} class="draft-wrap">
+  <OutputDetail
+    title={subject ?? meta.slug}
+    status={meta.status}
+    path={meta.path}
+    updated={meta.updated}
+    divider={false}
+    titleSize="md"
+  >
+    <dl class="envelope">
+      {recipient && (
+        <>
+          <dt>To</dt>
+          <dd>{recipient}</dd>
+        </>
+      )}
+      {channel && (
+        <>
+          <dt>Via</dt>
+          <dd>{channel}</dd>
+        </>
+      )}
+      {subject && (
+        <>
+          <dt>Subject</dt>
+          <dd>{subject}</dd>
+        </>
+      )}
+    </dl>
+
+    <div class="prose" set:html={bodyHtml}></div>
+
+    {canMarkSent && (
+      <div class="out-actions">
+        <button type="button" class="action-btn" data-action="mark-sent">
+          Mark as sent
+        </button>
+        <span class="action-hint" data-status-msg></span>
+      </div>
+    )}
+  </OutputDetail>
+</div>
+
+<script is:inline>
+  (function () {
+    const wrap = document.currentScript?.previousElementSibling;
+    if (!wrap || !(wrap instanceof HTMLElement)) return;
+    const button = wrap.querySelector('[data-action="mark-sent"]');
+    if (!(button instanceof HTMLElement)) return;
+    const msg = wrap.querySelector('[data-status-msg]');
+    const url = wrap.dataset['updateUrl'];
+    if (!url) return;
+    button.addEventListener('click', async () => {
+      if (msg) msg.textContent = 'updating…';
+      button.setAttribute('disabled', 'disabled');
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'sent' }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || `Update failed (${res.status})`);
+        }
+        window.location.reload();
+      } catch (e) {
+        if (msg) msg.textContent = e instanceof Error ? e.message : String(e);
+        button.removeAttribute('disabled');
+      }
+    });
+  })();
+</script>
+
+<style>
+  .envelope {
+    display: grid;
+    grid-template-columns: 70px 1fr;
+    gap: 0.35rem 1rem;
+    margin: 0 0 1.4rem;
+    padding: 0.9rem 1.1rem;
+    background: var(--surface-mute);
+    border-radius: 3px;
+    font-size: 13.5px;
+  }
+  .envelope dt {
+    color: var(--ink-muted);
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin: 0;
+  }
+  .envelope dd {
+    margin: 0;
+    color: var(--ink);
+  }
+  /* The draft body wears the canonical `.prose` class — typography lives in
+     global.css. The envelope-letter feel comes from the rule-bar on the left
+     and a slightly tighter column. */
+  .prose {
+    max-width: 680px;
+    padding: 0.2rem 0 0.2rem 0.4rem;
+    border-left: 2px solid var(--rule);
+  }
+  .out-actions {
+    margin-top: 1.6rem;
+    display: flex;
+    gap: 0.6rem;
+    align-items: baseline;
+  }
+  .action-btn {
+    background: var(--surface);
+    border: 1px solid var(--rule-strong);
+    border-radius: 3px;
+    padding: 0.4rem 0.95rem;
+    font-family: inherit;
+    font-size: 13px;
+    color: var(--ink);
+    cursor: pointer;
+  }
+  .action-btn:hover:not(:disabled) {
+    background: var(--ink);
+    color: var(--surface);
+  }
+  .action-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .action-hint {
+    font-size: 12px;
+    color: var(--ink-muted);
+  }
+</style>

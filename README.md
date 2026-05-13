@@ -2,12 +2,12 @@
 
 A framework for **role-based agents that grow into a defined role** — not self-improving agents that drift on their own. You author the role; the agent grows within its bounds, surfaces what it learns, and asks for help when it can't decide.
 
-Built around four conventions:
+Built around `persona.md` at the role root (the role's identity) plus four directory conventions:
 
-- **`agents/`** — modular markdown playbooks the agent runs. One per repeatable behavior.
-- **`lib/`** — declarative reference data (the world the agent operates in). The role-author owns this.
-- **`memory/`** — observational notebook the agent writes itself. Persona-shaped, longitudinal, visible.
-- **`escalations/`** — raise-your-hand surface. The agent files structured asks (help / improvement / proposed_skill); the operator triages from the dashboard.
+- **`verbs/`** — modular markdown playbooks the role runs. One file per repeatable behavior.
+- **`lib/`** — declarative reference data (the world the role operates in). The role-author owns this.
+- **`memory/`** — observational notebook the role writes itself. Persona-shaped, longitudinal, visible.
+- **`escalations/`** — raise-your-hand surface. The role files structured asks (help / improvement / proposed_skill); the operator triages from the dashboard.
 
 Plus a read-only **Interior** dashboard for the operator — surfaces the agent's persona, memory, escalations, and activity.
 
@@ -28,9 +28,9 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:4321/` — `/` redirects to `/setup` because `agents/persona.md` doesn't exist at the role root yet. Walk through the wizard (identity, voice, capabilities, inhibitions, optional starter agents). On submit, the wizard writes two visible git commits:
+Open `http://localhost:4321/` — `/` redirects to `/setup` because `persona.md` doesn't exist at the role root yet. Walk through the wizard (identity, voice, capabilities, inhibitions, optional starter verbs). On submit, the wizard writes two visible git commits:
 
-1. `feat: seed role from praxis-framework template` — populates `CLAUDE.md`, `agents/`, `lib/`, `memory/`, `escalations/` with your inputs
+1. `feat: seed role from praxis-framework template` — populates `CLAUDE.md`, `persona.md`, `verbs/`, `lib/`, `memory/`, `escalations/` with your inputs
 2. `chore: tidy framework-only files post-seed` — removes `template/`, `examples/`, `scripts/`, replaces `README.md`
 
 After seeding, `/` redirects to `/interior` — the read-only supervisor surface that watches the role grow over time.
@@ -61,7 +61,7 @@ See [`docs/architecture.md`](docs/architecture.md) for the directory shape, [`do
 | 0 | Conventions + template + read-only dashboard + docs | in progress |
 | 1 | Dockerize the dashboard; `PRAXIS_ROLE_HOME` as a volume mount | next |
 | 3 | Role planning UX — guided persona builder on the dashboard | planned |
-| 4 | Verb taxonomy — agents declare verbs in frontmatter, dashboard groups by verb | planned |
+| 4 | Verb-tag taxonomy — verbs declare a category in frontmatter, dashboard groups by tag | planned |
 | 2 | Hosted chat UI — replaces Claude Code with an in-dashboard runtime | last |
 
 Phase 2 is deliberately the last milestone. Until it ships, Claude Code on the host is the runtime; the dashboard is the operator's read-only window into the agent's interior.
