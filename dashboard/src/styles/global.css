@@ -545,6 +545,15 @@ button {
   text-transform: uppercase;
   color: var(--ink-muted);
 }
+/* Memo slug — the chat `archive_memory` tool addresses entries by slug, so we
+   surface it as a system identifier (muted, monospace, no tinted background
+   like a regular <code> token). Mirrors the FilePath pattern. */
+.memo .meta .slug {
+  background: none;
+  padding: 0;
+  font-size: 11px;
+  color: var(--ink-faint);
+}
 /* Archived entries — dimmed when the operator chooses to reveal them via
    /notebook's visibility filter. Matches the `.full-esc.dim` pattern. */
 .memo[data-archived='true'] {
