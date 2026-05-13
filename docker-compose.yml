@@ -34,10 +34,14 @@
 
 services:
   dashboard:
+    # docker-compose targets the dev-mode image so framework contributors get
+    # HMR + source bind-mount. The production multi-stage build lives at
+    # dashboard/Dockerfile and is published to GHCR by the dashboard-image
+    # workflow; consumers should pull that image instead of building locally.
     build:
       context: .
-      dockerfile: dashboard/Dockerfile
-    image: praxis-dashboard:latest
+      dockerfile: dashboard/Dockerfile.dev
+    image: praxis-dashboard:dev
     container_name: praxis-dashboard
     ports:
       - "127.0.0.1:4321:4321"
