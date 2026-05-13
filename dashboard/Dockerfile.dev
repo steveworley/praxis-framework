@@ -1,0 +1,34 @@
+# Dev-mode dashboard image for framework contributors.
+#
+# Runs the Astro dev server against a host-mounted clone of the framework/role
+# repo so HMR + edits flow through to the running container. For published /
+# distribution-grade images see dashboard/Dockerfile (multi-stage production
+# build) instead.
+#
+# Build:
+#   docker build -t praxis-dashboard-dev -f dashboard/Dockerfile.dev .
+#
+# Run (mount your praxis-framework checkout, or an already-seeded role, as /role):
+#   docker run --rm -p 4321:4321 \
+#     -v $(pwd):/role \
+#     praxis-dashboard-dev
+#
+# Or via docker-compose (see docker-compose.yml in the repo root).
+
+FROM node:20-alpine
+
+# git is required by the wizard's seed flow (simple-git).
+RUN apk add --no-cache git
+
+# Bind the dev/preview server to all interfaces inside the container.
+ENV HOST=0.0.0.0
+ENV PORT=4321
+
+EXPOSE 4321
+
+WORKDIR /role/dashboard
+
+# Default command runs the Astro dev server. On first start the container
+# installs dependencies into the dashboard/node_modules volume; subsequent
+# starts skip the install.
+CMD ["sh", "-c", "[ ! -d node_modules ] && npm install; npm run start"]
