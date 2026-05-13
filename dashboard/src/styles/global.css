@@ -435,6 +435,15 @@ button {
   font-family: -apple-system, system-ui, sans-serif;
   font-style: italic;
 }
+.full-esc .draft-missing {
+  margin-top: 1rem;
+  color: var(--ink-muted);
+  font-size: 12px;
+  font-style: italic;
+}
+.full-esc .draft-missing code {
+  font-style: normal;
+}
 .full-esc .actions-pointer {
   margin-top: 1rem;
   padding-top: 0.7rem;
