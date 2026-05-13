@@ -21,6 +21,8 @@ The skill loop stays gated by design. Autonomous proposal, human-in-the-loop acc
 
 Beyond those three, a fourth place: **autonomous edits to operator-opened surfaces**. The model is differentiated, not graduated — different surfaces have different risk profiles, and `lib/autonomy.yaml` names which surfaces the role can edit directly and how (`append-only`, `inline-enrichment`, `bounded`). Constitutional surfaces (`persona.md`, `verbs/*.md`, `lib/customers.yaml`, `lib/compliance.yaml`, `CLAUDE.md`) stay gated forever — that's the line. See [autonomy.md](./autonomy.md) for the full model.
 
+And a fifth: **operator-driven co-authoring of constitutional changes**. The chat tools can't touch persona / live verbs / `CLAUDE.md` / `lib/*` — but when an `improvement` escalation lands on a constitutional surface, the operator can open `/triage/draft/<id>`, direct the model to draft the specific edit, review the diff, and apply it. The commit is attributed to the operator with a `Co-Authored-By: Praxis Role` trailer. This isn't graduation of autonomy — the role still can't edit its constitution on its own. It's a faster operator workflow for the asks the role surfaces. See [autonomy.md § Co-authoring constitutional changes](./autonomy.md#co-authoring-constitutional-changes).
+
 ## Visible growth
 
 Everything the agent learns is a file. Memory is markdown. Escalations are markdown. Drafts are markdown. A dashboard surfaces them.

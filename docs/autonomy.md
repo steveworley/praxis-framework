@@ -154,6 +154,50 @@ Whatever surfaces are open, three things hold:
 
 3. **Lock toggle** — `lib/autonomy.yaml` is operator-authored. Any surface can be downgraded to `gated` with a one-line edit. If the role starts making changes the operator keeps reverting, the operator pulls the lever.
 
+## Co-authoring constitutional changes
+
+`gated` doesn't mean "edit by hand in your IDE." The constitutional surfaces (`persona.md`, live `verbs/*.md`, `CLAUDE.md`, `lib/*`) stay off-limits to the role's autonomous tool calls, but the dashboard ships an *operator-driven* path for applying changes that the role asked for via an `improvement` escalation. The flow is:
+
+1. The role files an `improvement` escalation (e.g. *"my voice is too formal for engineering contacts; can we add a more concise mode?"*).
+2. The operator accepts the escalation on `/triage`.
+3. The operator clicks **Draft constitutional change →** on the same card, which opens `/triage/draft/<escalation_id>`.
+4. The operator picks a target — `persona.md`, `CLAUDE.md`, a live verb by slug, or a `lib/<filename>` — and writes a directive ("Add a concise mode for engineering contacts; keep the existing voice traits intact").
+5. The model returns a complete new file. The dashboard renders the unified diff. The operator can edit the proposed content inline, re-draft against a refined directive, or discard the proposal.
+6. Clicking **Apply** writes the file atomically and commits as the operator with a `Co-Authored-By: Praxis Role` trailer.
+
+The model is a drafting assistant; the operator is the actor. The chat tools' autonomy gate is *not* bypassed — chat tools still can't touch the constitution. Co-authoring is a separate surface, accessed only through `/triage/draft/<id>`, and gated by:
+
+- **An escalation must exist.** Every draft and every apply is anchored to a `loadEscalation(id)` call. Co-authoring without an escalation isn't reachable.
+- **Targets are a closed enum.** `persona`, `claude-md`, `verb` (slug-validated), `lib` (basename-validated, allowlisted extensions). Path traversal is refused at both the resolver and the apply boundary.
+- **Frontmatter preservation.** If the original file has a `---` frontmatter block and the model drops it, the apply is refused with a clear error. The operator re-drafts.
+
+### Commit shape
+
+Co-authored applies use the operator's git identity as author + committer (same fallback chain as triage actions), with a conventional-commit subject scoped to the target surface:
+
+```
+operator(persona): co-author Voice too formal for engineering contacts (#2026-05-08-tone)
+
+Applied co-authored change to persona.md.
+
+Escalation: 2026-05-08-tone (improvement)
+Title: Voice too formal for engineering contacts
+
+Co-Authored-By: Praxis Role <role@praxis.local>
+```
+
+`git log --author=Praxis` finds every autonomous role-side commit; `git log --grep='Co-Authored-By: Praxis Role'` finds every co-authored apply. Two cleanly separated audit lenses on the same history.
+
+### Why this isn't a graduation of autonomy
+
+The role doesn't earn the ability to edit its constitution. The operator does it *for* the role, with the model's drafting help. Three reads of the same boundary:
+
+- The role's autonomous toolset (`write_memory`, `create_escalation`, `propose_verb`, `append_entry`, `enrich_entry`, `adjust_param`) is unchanged. The constitution is still gated.
+- The operator's existing options (open an editor, commit directly) are unchanged. The wizard-style flow is an additional path, not a replacement.
+- The model's role in co-authoring is bounded by the prompt: produce the new file body, no tool use, no multi-turn conversation. It can't reach outside the file it was asked to draft.
+
+If the surface is the wrong abstraction for a given role's needs, the operator skips it and edits by hand. Co-authoring is a convenience, not a contract.
+
 ## The starter shape
 
 For most roles, open this minimal surface first:
