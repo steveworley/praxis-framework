@@ -17,6 +17,7 @@
     "@astrojs/node": "^9.0.0",
     "@praxis/seed": "*",
     "astro": "^5.0.0",
+    "diff": "^8.0.4",
     "markdown-it": "^14.1.1",
     "simple-git": "^3.27.0",
     "zod": "^3.23.8"
