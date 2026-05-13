@@ -13,6 +13,8 @@ import { isWriteAllowed } from './autonomy-gate.js';
 import { executeCompleteVerb } from './complete-verb.js';
 import { executeConsolidateMemory } from './consolidate-memory.js';
 import { executeEnrichEntry } from './enrich-entry.js';
+import { getMcpCatalog } from './mcp-catalog.js';
+import { executeMcpCall } from './mcp-call.js';
 import {
   executeUpdateOutputStatus,
   executeWriteOutput,
@@ -419,6 +421,31 @@ export async function executeTool(
   input: unknown,
   roleHome: string,
 ): Promise<ToolResult> {
+  // MCP tool dispatch — tool names take the shape `<server>__<method>`. The
+  // catalog tells us whether the prefix matches a configured server; if so,
+  // we route through `executeMcpCall` (which carries its own autonomy gate
+  // + transport timeout). If the prefix isn't a known server, fall through
+  // to the static `KNOWN_TOOLS` check below so the model gets a clean
+  // "unknown tool" rather than an unhelpful "server not configured" error.
+  if (name.includes('__')) {
+    const separator = name.indexOf('__');
+    const serverName = name.slice(0, separator);
+    const methodName = name.slice(separator + 2);
+    if (serverName.length > 0 && methodName.length > 0) {
+      const catalog = await getMcpCatalog();
+      const knownServer = catalog.servers.some((s) => s.name === serverName);
+      if (knownServer) {
+        let result: ToolResult;
+        try {
+          result = await executeMcpCall(roleHome, serverName, methodName, input);
+        } catch (e: unknown) {
+          return fail(`Tool ${name} threw: ${errorMessage(e)}`);
+        }
+        return emitActivityForResult(name, result, roleHome);
+      }
+    }
+  }
+
   if (!KNOWN_TOOLS.has(name)) {
     return fail(`Unknown tool: ${name}`);
   }
@@ -429,10 +456,21 @@ export async function executeTool(
     return fail(`Tool ${name} threw: ${errorMessage(e)}`);
   }
 
-  // Auto-emit activity for every successful tool — except those that
-  // self-log (see `SELF_LOGGING_TOOLS`). Self-logging tools write their own
-  // action-typed entry to the same JSONL file; auto-emitting would
-  // double-log and pollute the activity feed.
+  return emitActivityForResult(name, result, roleHome);
+}
+
+/**
+ * Shared activity-emit step used by both the static-tool dispatcher and the
+ * MCP prefix-match branch. Skips self-logging tools (which write their own
+ * action-typed entry) and emits a generic `tool_call` JSONL line otherwise.
+ * Emit failures are degraded to a `data.activity_warning` rather than
+ * demoting the tool result — the underlying artifact already landed.
+ */
+async function emitActivityForResult(
+  name: string,
+  result: ToolResult,
+  roleHome: string,
+): Promise<ToolResult> {
   if (result.ok && !SELF_LOGGING_TOOLS.has(name)) {
     const payload: Record<string, unknown> = { ...result.data };
     const shortSha = result.data['commit_short_sha'];

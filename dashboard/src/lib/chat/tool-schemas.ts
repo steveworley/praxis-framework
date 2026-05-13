@@ -1,5 +1,8 @@
 import type Anthropic from '@anthropic-ai/sdk';
 
+import { isMcpAllowed } from './autonomy-gate.js';
+import { getMcpCatalog } from './mcp-catalog.js';
+
 /**
  * The model's growth toolset for the chat surface. Four tools, each writing
  * into one of the role's growth surfaces:
@@ -609,3 +612,48 @@ export const CHAT_TOOLS: readonly Anthropic.Tool[] = [
   UPDATE_OUTPUT_STATUS_TOOL,
   LOG_DECISION_TOOL,
 ];
+
+/**
+ * Per-request tool list. Returns the static in-house toolset concatenated
+ * with the dynamically-discovered MCP methods (one tool per method) that
+ * pass the autonomy gate for this role.
+ *
+ * Autonomy gating happens at catalog-time (not call-time): a denied MCP
+ * server's methods never appear in the model's tool list, so the LLM
+ * doesn't see tools it can't use. This is cleaner than letting the model
+ * call and get refused — and the static toolset is unaffected.
+ *
+ * Unreachable servers contribute zero tools; their status is surfaced to
+ * the operator via the `/chat` warning banner and (later) `/capabilities`.
+ *
+ * Costs: this call fetches `tools/list` for any unconfigured-yet servers
+ * exactly once (catalog is module-cached), so steady-state cost is one
+ * autonomy.yaml read + one map filter per chat message.
+ */
+export async function getChatTools(roleHome: string): Promise<Anthropic.Tool[]> {
+  const catalog = await getMcpCatalog();
+
+  // Resolve allow/deny per server in parallel — one autonomy.yaml read per
+  // server isn't free at scale, but `loadAutonomy` is cheap and stays warm
+  // via OS-level file cache; we don't memoise here to keep the gate honest.
+  const allowed = new Set<string>();
+  await Promise.all(
+    catalog.servers.map(async (server) => {
+      const gate = await isMcpAllowed(roleHome, server.name);
+      if (gate.allowed) allowed.add(server.name);
+    }),
+  );
+
+  const mcpTools: Anthropic.Tool[] = catalog.tools
+    .filter((t) => allowed.has(t.serverName))
+    .map((t) => ({
+      name: t.toolName,
+      description: t.description,
+      // The MCP server's `inputSchema` is passed through verbatim — Anthropic
+      // validates the shape upstream of us, so a malformed schema surfaces
+      // there rather than silently.
+      input_schema: t.inputSchema as Anthropic.Tool['input_schema'],
+    }));
+
+  return [...CHAT_TOOLS, ...mcpTools];
+}

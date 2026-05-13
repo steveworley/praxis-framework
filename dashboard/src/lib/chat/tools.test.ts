@@ -3,8 +3,9 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { simpleGit } from 'simple-git';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { _resetMcpCatalog } from './mcp-catalog.ts';
 import {
   executeCreateEscalation,
   executeLogDecision,
@@ -692,4 +693,135 @@ describe('auto-emit activity for tool calls', () => {
     expect(subjects[0]).toBe('role(activity): log tool_call write_memory');
     expect(subjects[1]).toBe('role(memory): note mary-chen');
   });
+});
+
+describe('executeTool — MCP dispatch', () => {
+  const originalFetch = globalThis.fetch;
+
+  beforeEach(() => {
+    _resetMcpCatalog();
+    delete process.env['PRAXIS_MCPS'];
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    _resetMcpCatalog();
+    delete process.env['PRAXIS_MCPS'];
+  });
+
+  async function writeAutonomy(text: string): Promise<void> {
+    await fs.mkdir(path.join(tempDir, 'lib'), { recursive: true });
+    await fs.writeFile(path.join(tempDir, 'lib', 'autonomy.yaml'), text, 'utf-8');
+  }
+
+  function mockMcp(callBody: Record<string, unknown>, status = 200): ReturnType<typeof vi.fn> {
+    const mock = vi.fn(async (url: string | URL | Request) => {
+      const u = String(url);
+      if (u.endsWith('/tools/list')) {
+        return new Response(
+          JSON.stringify({
+            tools: [
+              {
+                name: 'post_message',
+                description: 'Post a Slack message',
+                inputSchema: { type: 'object', properties: {} },
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      if (u.endsWith('/tools/call')) {
+        return new Response(JSON.stringify(callBody), { status });
+      }
+      throw new Error(`Unexpected URL: ${u}`);
+    });
+    globalThis.fetch = mock as unknown as typeof fetch;
+    return mock;
+  }
+
+  it('routes <server>__<method> through executeMcpCall when the server is in the catalog', async () => {
+    process.env['PRAXIS_MCPS'] = 'slack=http://mcp-slack:8080';
+    await writeAutonomy('mcps:\n  slack: allow\n');
+    mockMcp({ content: [{ type: 'text', text: 'ok' }] });
+
+    const result = await executeTool(
+      'slack__post_message',
+      { channel: '#general', text: 'hi' },
+      tempDir,
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.summary).toBe('slack__post_message');
+    expect(result.data['mcp_server']).toBe('slack');
+    expect(result.data['mcp_method']).toBe('post_message');
+  });
+
+  it('emits a tool_call activity entry with the mcp: <server>.<method> headline', async () => {
+    process.env['PRAXIS_MCPS'] = 'slack=http://mcp-slack:8080';
+    await writeAutonomy('mcps:\n  slack: allow\n');
+    mockMcp({ content: [{ type: 'text', text: 'ok' }] });
+
+    const result = await executeTool('slack__post_message', { x: 1 }, tempDir);
+    expect(result.ok).toBe(true);
+
+    const today = todayLocalDate();
+    const file = path.join(tempDir, 'logs', `${today}.jsonl`);
+    const text = await fs.readFile(file, 'utf-8');
+    const lines = text
+      .trim()
+      .split('\n')
+      .filter((l) => l.length > 0)
+      .map((l) => JSON.parse(l) as Record<string, unknown>);
+    const entry = lines[lines.length - 1];
+    expect(entry).toBeDefined();
+    expect(entry!['action']).toBe('tool_call');
+    expect(entry!['tool']).toBe('slack__post_message');
+    expect(entry!['headline']).toBe('mcp: slack.post_message');
+  });
+
+  it('does not route <prefix>__<suffix> through MCP when the prefix is not a configured server', async () => {
+    // No PRAXIS_MCPS configured — `slack__post_message` is not a known tool
+    // either, so the dispatcher should fall through to the KNOWN_TOOLS check
+    // and reject with the standard "Unknown tool" message.
+    process.env['PRAXIS_MCPS'] = '';
+    globalThis.fetch = vi.fn() as unknown as typeof fetch;
+
+    const result = await executeTool('slack__post_message', {}, tempDir);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toMatch(/Unknown tool/);
+  });
+
+  it('static tool names without `__` are routed normally', async () => {
+    process.env['PRAXIS_MCPS'] = 'slack=http://mcp-slack:8080';
+    await writeAutonomy('mcps:\n  slack: allow\n');
+    mockMcp({});
+
+    const r = await executeTool(
+      'write_memory',
+      { category: 'notes', title: 'untouched', body: 'body' },
+      tempDir,
+    );
+    expect(r.ok).toBe(true);
+  });
+
+  it('returns the autonomy refusal when the MCP server is denied', async () => {
+    process.env['PRAXIS_MCPS'] = 'slack=http://mcp-slack:8080';
+    await writeAutonomy('mcps:\n  slack: deny\n');
+    mockMcp({ content: [] });
+
+    const result = await executeTool('slack__post_message', {}, tempDir);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toMatch(/denied/);
+  });
+
+  function todayLocalDate(): string {
+    const d = new Date();
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  }
 });

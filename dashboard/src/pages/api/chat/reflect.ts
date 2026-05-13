@@ -15,7 +15,7 @@ import {
   type PersistedToolCall,
 } from '@/lib/chat/conversation.js';
 import { buildSystemPrompt } from '@/lib/chat/system-prompt.js';
-import { CHAT_TOOLS } from '@/lib/chat/tool-schemas.js';
+import { getChatTools } from '@/lib/chat/tool-schemas.js';
 import { executeTool } from '@/lib/chat/tools.js';
 import { getRoleHome } from '@/lib/role-home.js';
 
@@ -101,6 +101,8 @@ export const POST: APIRoute = async ({ request }) => {
     return { ok: false, contentText: result.error };
   };
 
+  const chatTools = await getChatTools(roleHome);
+
   let summaryText: string;
   let toolCalls: PersistedToolCall[];
   let truncated = false;
@@ -109,7 +111,7 @@ export const POST: APIRoute = async ({ request }) => {
       systemPrompt,
       thread.turns,
       REFLECTION_PROMPT,
-      CHAT_TOOLS,
+      chatTools,
       toolExecutor,
     );
     summaryText = result.text;

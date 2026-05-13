@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   loadAutonomy,
   parseAutonomyYaml,
+  parseMcpsBlock,
   recentAutonomousEdits,
 } from './autonomy-loader.ts';
 
@@ -280,6 +281,79 @@ describe('loadAutonomy', () => {
     const cfg = await loadAutonomy(tempDir);
     expect(cfg).not.toBeNull();
     expect(cfg?.surfaces).toEqual([{ path: 'memory/', mode: 'full' }]);
+  });
+
+  it('round-trips a yaml file with mcps: block', async () => {
+    await fs.mkdir(path.join(tempDir, 'lib'), { recursive: true });
+    await fs.writeFile(
+      path.join(tempDir, 'lib', 'autonomy.yaml'),
+      [
+        'surfaces:',
+        '  - path: memory/',
+        '    mode: full',
+        '',
+        'mcps:',
+        '  slack: allow',
+        '  gmail: allow',
+        '  playwright: deny',
+      ].join('\n'),
+      'utf-8',
+    );
+    const cfg = await loadAutonomy(tempDir);
+    expect(cfg).not.toBeNull();
+    expect(cfg?.surfaces).toEqual([{ path: 'memory/', mode: 'full' }]);
+    expect(cfg?.mcps).toEqual({
+      slack: 'allow',
+      gmail: 'allow',
+      playwright: 'deny',
+    });
+  });
+});
+
+describe('parseMcpsBlock', () => {
+  it('returns null when the block is absent', () => {
+    expect(parseMcpsBlock('surfaces:\n  - path: memory/\n    mode: full\n')).toBeNull();
+  });
+
+  it('parses allow + deny entries', () => {
+    const text = ['mcps:', '  slack: allow', '  gmail: deny'].join('\n');
+    expect(parseMcpsBlock(text)).toEqual({ slack: 'allow', gmail: 'deny' });
+  });
+
+  it('drops entries with values outside allow/deny', () => {
+    const text = ['mcps:', '  slack: allow', '  bad: maybe'].join('\n');
+    expect(parseMcpsBlock(text)).toEqual({ slack: 'allow' });
+  });
+
+  it('strips quoted values', () => {
+    const text = ['mcps:', '  slack: "allow"', "  gmail: 'deny'"].join('\n');
+    expect(parseMcpsBlock(text)).toEqual({ slack: 'allow', gmail: 'deny' });
+  });
+
+  it('returns null when the block is empty', () => {
+    expect(parseMcpsBlock('mcps:\n# nothing\n')).toBeNull();
+  });
+
+  it('stops at the next top-level key', () => {
+    const text = [
+      'mcps:',
+      '  slack: allow',
+      'surfaces:',
+      '  - path: memory/',
+      '    mode: full',
+    ].join('\n');
+    expect(parseMcpsBlock(text)).toEqual({ slack: 'allow' });
+  });
+
+  it('coexists with a preceding surfaces: block', () => {
+    const text = [
+      'surfaces:',
+      '  - path: memory/',
+      '    mode: full',
+      'mcps:',
+      '  slack: allow',
+    ].join('\n');
+    expect(parseMcpsBlock(text)).toEqual({ slack: 'allow' });
   });
 });
 

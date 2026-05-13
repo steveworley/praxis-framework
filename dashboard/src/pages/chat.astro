@@ -1,11 +1,15 @@
 ---
+import fs from 'node:fs/promises';
+import path from 'node:path';
+
 import EmptyState from '@/components/EmptyState.astro';
 import RouteHeader from '@/components/RouteHeader.astro';
 import BaseLayout from '@/layouts/BaseLayout.astro';
 import { hasApiKey } from '@/lib/chat/anthropic.js';
 import { listThreads, type ThreadSummary } from '@/lib/chat/conversation.js';
+import { findMissingMcpDeclarations, getMcpCatalog } from '@/lib/chat/mcp-catalog.js';
 import { personaNameFrom } from '@/lib/chat/persona-name.js';
-import { buildSystemPrompt } from '@/lib/chat/system-prompt.js';
+import { buildSystemPrompt, parseToolsYaml } from '@/lib/chat/system-prompt.js';
 import { estimateTokens } from '@/lib/chat/tokens.js';
 import { assembleEscalations } from '@/lib/escalations-loader.js';
 import { parsePersona } from '@/lib/persona-parser.js';
@@ -19,17 +23,23 @@ if (mode === 'seed') {
   return Astro.redirect('/setup');
 }
 
-const [personaRes, threadsRes, escalationsRes, systemPromptRes] = await Promise.allSettled([
-  parsePersona(roleHome),
-  listThreads(roleHome),
-  assembleEscalations(roleHome),
-  buildSystemPrompt(roleHome),
-]);
+const [personaRes, threadsRes, escalationsRes, systemPromptRes, mcpWarningsRes] =
+  await Promise.allSettled([
+    parsePersona(roleHome),
+    listThreads(roleHome),
+    assembleEscalations(roleHome),
+    buildSystemPrompt(roleHome),
+    assembleMcpWarnings(roleHome),
+  ]);
 
 const persona = personaRes.status === 'fulfilled' ? personaRes.value : null;
 const threads: ThreadSummary[] = threadsRes.status === 'fulfilled' ? threadsRes.value : [];
 const openCount =
   escalationsRes.status === 'fulfilled' ? escalationsRes.value.countsByStatus.open : 0;
+const mcpWarnings: McpWarnings =
+  mcpWarningsRes.status === 'fulfilled'
+    ? mcpWarningsRes.value
+    : { missingDeclared: [], unreachable: [] };
 
 // Per-thread token budget. We measure the system prompt once server-side and
 // ship the estimate down to the Alpine island; the client adds each turn's
@@ -56,6 +66,36 @@ const bootstrap = {
   contextWindowTokens: 200_000,
   banner50kThreshold: 50_000,
 };
+
+interface McpWarnings {
+  /** Servers declared as `mcp:<name>` in lib/tools.yaml but missing from PRAXIS_MCPS. */
+  missingDeclared: string[];
+  /** Servers configured in PRAXIS_MCPS but currently unreachable / errored. */
+  unreachable: { name: string; status: string; message?: string }[];
+}
+
+async function assembleMcpWarnings(home: string): Promise<McpWarnings> {
+  let declaredCapabilities: string[] = [];
+  try {
+    const toolsYaml = await fs.readFile(
+      path.join(home, 'lib', 'tools.yaml'),
+      'utf-8',
+    );
+    declaredCapabilities = parseToolsYaml(toolsYaml).map((t) => t.name);
+  } catch {
+    // No tools.yaml — no declared capabilities to compare against.
+  }
+  const missingDeclared = findMissingMcpDeclarations(declaredCapabilities);
+  const catalog = await getMcpCatalog();
+  const unreachable = catalog.servers
+    .filter((s) => s.status !== 'connected')
+    .map((s) => ({
+      name: s.name,
+      status: s.status,
+      ...(s.errorMessage ? { message: s.errorMessage } : {}),
+    }));
+  return { missingDeclared, unreachable };
+}
 ---
 
 <BaseLayout title={persona ? `Chat · ${personaName.full}` : 'Chat · Praxis'}>
@@ -66,6 +106,27 @@ const bootstrap = {
       escalationOpenCount={openCount}
       updatedAt={updatedAt}
     />
+
+    {(mcpWarnings.missingDeclared.length > 0 || mcpWarnings.unreachable.length > 0) && (
+      <div class="mcp-warning-banner" role="status">
+        <strong>MCP configuration issues:</strong>
+        <ul>
+          {mcpWarnings.missingDeclared.map((name) => (
+            <li>
+              <code>mcp:{name}</code> declared in <code>lib/tools.yaml</code> but not in
+              <code>PRAXIS_MCPS</code>. Add a service to <code>docker-compose.yml</code>
+              or remove the declaration.
+            </li>
+          ))}
+          {mcpWarnings.unreachable.map((server) => (
+            <li>
+              <code>{server.name}</code> is {server.status}
+              {server.message ? <span> — {server.message}</span> : null}.
+            </li>
+          ))}
+        </ul>
+      </div>
+    )}
 
     {!apiKeyConfigured ? (
       <div class="chat-shell-missing">
@@ -278,6 +339,31 @@ const bootstrap = {
     }
     .chat-shell-missing {
       margin-top: 2rem;
+    }
+
+    .mcp-warning-banner {
+      margin-top: 1rem;
+      padding: 0.7rem 1rem;
+      background: var(--surface-mute);
+      border-left: 3px solid var(--warn, var(--danger));
+      border-radius: 0 3px 3px 0;
+      font-size: 12.5px;
+      color: var(--ink-soft);
+      line-height: 1.5;
+    }
+    .mcp-warning-banner ul {
+      margin: 0.35rem 0 0;
+      padding-left: 1.1rem;
+    }
+    .mcp-warning-banner li + li {
+      margin-top: 0.25rem;
+    }
+    .mcp-warning-banner code {
+      font-family: ui-monospace, monospace;
+      font-size: 12px;
+      background: var(--surface);
+      padding: 0 0.25rem;
+      border-radius: 2px;
     }
 
     /* ---- sidebar -------------------------------------------------------- */

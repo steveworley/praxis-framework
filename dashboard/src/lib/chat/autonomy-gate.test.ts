@@ -4,7 +4,7 @@ import path from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { isWriteAllowed } from './autonomy-gate.ts';
+import { isMcpAllowed, isWriteAllowed } from './autonomy-gate.ts';
 
 let tempDir: string;
 
@@ -196,6 +196,51 @@ describe('isWriteAllowed — autonomy.yaml lookup', () => {
       ['surfaces:', '  - path: lib/research-strategies.yaml', '    mode: gated'].join('\n'),
     );
     const d = await isWriteAllowed(tempDir, 'lib/research-strategies.yaml');
+    expect(d.allowed).toBe(false);
+  });
+});
+
+describe('isMcpAllowed', () => {
+  it('allows servers explicitly marked allow', async () => {
+    await writeAutonomy(['mcps:', '  slack: allow', '  gmail: allow'].join('\n'));
+    const d = await isMcpAllowed(tempDir, 'slack');
+    expect(d.allowed).toBe(true);
+  });
+
+  it('refuses servers explicitly marked deny with a reason mentioning the server', async () => {
+    await writeAutonomy(['mcps:', '  slack: deny'].join('\n'));
+    const d = await isMcpAllowed(tempDir, 'slack');
+    expect(d.allowed).toBe(false);
+    if (!d.allowed) {
+      expect(d.reason).toContain('slack');
+      expect(d.reason).toMatch(/denied/);
+    }
+  });
+
+  it('refuses unlisted servers (default deny)', async () => {
+    await writeAutonomy(['mcps:', '  slack: allow'].join('\n'));
+    const d = await isMcpAllowed(tempDir, 'playwright');
+    expect(d.allowed).toBe(false);
+    if (!d.allowed) {
+      expect(d.reason).toContain('playwright');
+      expect(d.reason).toMatch(/not declared/);
+    }
+  });
+
+  it('refuses when autonomy.yaml is missing entirely', async () => {
+    const d = await isMcpAllowed(tempDir, 'slack');
+    expect(d.allowed).toBe(false);
+  });
+
+  it('refuses when the mcps: block is empty', async () => {
+    await writeAutonomy(['surfaces:', '  - path: memory/', '    mode: full'].join('\n'));
+    const d = await isMcpAllowed(tempDir, 'slack');
+    expect(d.allowed).toBe(false);
+  });
+
+  it('refuses empty server names', async () => {
+    await writeAutonomy(['mcps:', '  slack: allow'].join('\n'));
+    const d = await isMcpAllowed(tempDir, '');
     expect(d.allowed).toBe(false);
   });
 });
