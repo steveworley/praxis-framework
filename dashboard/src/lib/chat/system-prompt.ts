@@ -78,16 +78,17 @@ export async function buildSystemPrompt(roleHome: string): Promise<string> {
     '- Upload documents for context',
     '- Refine your role over time',
     '',
-    'Respond in your voice. You have seven tools available to you in this conversation:',
+    'Respond in your voice. You have eight tools available to you in this conversation:',
     '- `write_memory` — capture an observation worth remembering into your notebook',
     '- `create_escalation` — file a help / improvement / proposed_skill ask for your operator',
     '- `propose_verb` — draft a new playbook into verbs/proposed/ for operator review',
     '- `append_entry` — append an entry to an operator-opened append-only YAML surface (see above)',
+    '- `enrich_entry` — update declared soft fields within an existing entry on an operator-opened inline-enrichment YAML surface (see above)',
     '- `write_output` — create a new work-product file in `output/` (document / draft / record / plan / reference)',
     '- `update_output_status` — advance an existing output\'s lifecycle (e.g. draft → sent)',
     '- `log_decision` — log a non-trivial decision to your audit trail',
     '',
-    'Use them sparingly and only when the observation, ask, or output is genuinely worth capturing. Default to writing for memory (your operator prunes); be selective for the other tools. If a tool refuses (gated surface, duplicate slug, malformed input, max_pending reached, file already exists), the refusal message tells you why — adjust and try again, or surface the friction to your operator in your reply. For `append_entry`, a max_pending refusal is your signal to file an `improvement` escalation asking for compaction.',
+    'Use them sparingly and only when the observation, ask, or output is genuinely worth capturing. Default to writing for memory (your operator prunes); be selective for the other tools. If a tool refuses (gated surface, duplicate slug, malformed input, max_pending reached, file already exists), the refusal message tells you why — adjust and try again, or surface the friction to your operator in your reply. For `append_entry`, a max_pending refusal is your signal to file an `improvement` escalation asking for compaction. For `enrich_entry`, "no entry with that id" means inline-enrichment can\'t create entries — file a `proposed_skill` escalation if the entry needs to exist.',
   );
 
   return sections.join('\n');
@@ -259,6 +260,31 @@ async function renderAutonomySection(roleHome: string): Promise<string | null> {
       if (s.root_key) meta.push(`root_key: ${s.root_key}`);
       if (s.unique_by) meta.push(`unique_by: ${s.unique_by}`);
       if (s.max_pending !== undefined) meta.push(`max_pending: ${s.max_pending}`);
+      const metaPart = meta.length > 0 ? ` (${meta.join(', ')})` : '';
+      lines.push(`- \`${s.path}\`${metaPart}`);
+      if (s.why) {
+        for (const whyLine of s.why.split('\n')) {
+          if (whyLine.trim().length === 0) continue;
+          lines.push(`  ${whyLine.trim()}`);
+        }
+      }
+    }
+  }
+
+  const inlineEnrichment = openSurfaces.filter((s) => s.mode === 'inline-enrichment');
+  if (inlineEnrichment.length > 0) {
+    lines.push('', '### Operator-opened inline-enrichment surfaces');
+    lines.push(
+      '',
+      'You may update declared soft fields within existing entries — never create new entries or touch hard fields. Use `enrich_entry`:',
+    );
+    for (const s of inlineEnrichment) {
+      const meta: string[] = [];
+      if (s.root_key) meta.push(`root_key: ${s.root_key}`);
+      if (s.unique_by) meta.push(`unique_by: ${s.unique_by}`);
+      if (s.soft_fields && s.soft_fields.length > 0) {
+        meta.push(`soft_fields: ${s.soft_fields.join(', ')}`);
+      }
       const metaPart = meta.length > 0 ? ` (${meta.join(', ')})` : '';
       lines.push(`- \`${s.path}\`${metaPart}`);
       if (s.why) {

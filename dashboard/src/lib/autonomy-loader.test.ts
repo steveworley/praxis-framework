@@ -83,6 +83,53 @@ describe('parseAutonomyYaml', () => {
     });
   });
 
+  it('parses soft_fields as a block sequence on inline-enrichment surfaces', () => {
+    const text = [
+      'surfaces:',
+      '  - path: lib/team.yaml',
+      '    mode: inline-enrichment',
+      '    root_key: members',
+      '    unique_by: id',
+      '    soft_fields:',
+      '      - notes',
+      '      - last_observed_at',
+    ].join('\n');
+    const surfaces = parseAutonomyYaml(text);
+    expect(surfaces[0]).toEqual({
+      path: 'lib/team.yaml',
+      mode: 'inline-enrichment',
+      root_key: 'members',
+      unique_by: 'id',
+      soft_fields: ['notes', 'last_observed_at'],
+    });
+  });
+
+  it('parses soft_fields as an inline flow sequence', () => {
+    const text = [
+      'surfaces:',
+      '  - path: lib/team.yaml',
+      '    mode: inline-enrichment',
+      '    root_key: members',
+      '    unique_by: id',
+      '    soft_fields: [notes, last_observed_at]',
+    ].join('\n');
+    const surfaces = parseAutonomyYaml(text);
+    expect(surfaces[0]?.soft_fields).toEqual(['notes', 'last_observed_at']);
+  });
+
+  it('omits soft_fields when the list is empty', () => {
+    const text = [
+      'surfaces:',
+      '  - path: lib/team.yaml',
+      '    mode: inline-enrichment',
+      '    root_key: members',
+      '    unique_by: id',
+      '    soft_fields: []',
+    ].join('\n');
+    const surfaces = parseAutonomyYaml(text);
+    expect(surfaces[0]?.soft_fields).toBeUndefined();
+  });
+
   it('preserves multi-line block scalars exactly', () => {
     const text = [
       'surfaces:',

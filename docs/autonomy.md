@@ -72,6 +72,39 @@ The role can update soft fields (notes, calibration text, enrichment strings) wi
 
 Use for: reference data where structure is operator-owned but the soft texture per-entry is the role's lived experience.
 
+**The chat tool**: from `/chat`, the model uses `enrich_entry({path, entry_id, soft_fields})`. The framework reads the surface's autonomy.yaml entry to find the YAML list key (`root_key`), the entry-identifier field (`unique_by`), and the whitelist of fields the role may touch (`soft_fields`). The full shape:
+
+```yaml
+# lib/autonomy.yaml
+surfaces:
+  - path: lib/team.yaml
+    mode: inline-enrichment
+    root_key: members
+    unique_by: id
+    soft_fields:
+      - notes
+      - last_observed_at
+    why: |
+      Structured team data is operator-owned (name, role, email), but the
+      role keeps the notes column current with what it observes in
+      day-to-day interactions.
+```
+
+And a matching file the role enriches:
+
+```yaml
+# lib/team.yaml
+members:
+  - id: steve
+    name: Steve Worley         # operator-owned (hard)
+    role: Operator             # operator-owned (hard)
+    email: sj.worley88@gmail.com  # operator-owned (hard)
+    notes: morning person; pings via Slack for anything urgent.  # soft
+    last_observed_at: 2026-05-08                                  # soft
+```
+
+**Refusals the role sees**: missing `soft_fields` / `unique_by` declaration in autonomy.yaml; surface in a different mode; no entry with the given `entry_id` (inline-enrichment can't create entries — file a `proposed_skill` escalation if a new entry shape is needed); a supplied key isn't in the whitelist (the refusal lists the declared soft fields so the role can self-correct).
+
 ### `bounded`
 The role can adjust parameters within ranges the operator has set. The bounds live alongside the entry in `lib/autonomy.yaml`.
 

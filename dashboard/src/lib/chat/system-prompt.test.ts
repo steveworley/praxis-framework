@@ -190,6 +190,41 @@ describe('buildSystemPrompt', () => {
     const prompt = await buildSystemPrompt(tempDir);
     expect(prompt).not.toContain('Operator-opened append-only surfaces');
   });
+
+  it('lists operator-opened inline-enrichment surfaces with their config', async () => {
+    await seedPersona();
+    await fs.mkdir(path.join(tempDir, 'lib'), { recursive: true });
+    await fs.writeFile(
+      path.join(tempDir, 'lib', 'autonomy.yaml'),
+      [
+        'surfaces:',
+        '  - path: lib/team.yaml',
+        '    mode: inline-enrichment',
+        '    root_key: members',
+        '    unique_by: id',
+        '    soft_fields:',
+        '      - notes',
+        '      - last_observed_at',
+        '    why: |',
+        '      Structured team data is operator-owned; I keep notes current.',
+      ].join('\n'),
+      'utf-8',
+    );
+    const prompt = await buildSystemPrompt(tempDir);
+    expect(prompt).toContain('Operator-opened inline-enrichment surfaces');
+    expect(prompt).toContain('`lib/team.yaml`');
+    expect(prompt).toContain('root_key: members');
+    expect(prompt).toContain('unique_by: id');
+    expect(prompt).toContain('soft_fields: notes, last_observed_at');
+    expect(prompt).toContain('Structured team data is operator-owned');
+  });
+
+  it('lists enrich_entry in the operator-greeting tool block', async () => {
+    await seedPersona();
+    const prompt = await buildSystemPrompt(tempDir);
+    expect(prompt).toContain('`enrich_entry`');
+    expect(prompt).toContain('eight tools available');
+  });
 });
 
 describe('parseToolsYaml', () => {

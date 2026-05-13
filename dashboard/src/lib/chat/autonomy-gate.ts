@@ -15,7 +15,6 @@ const CONSTITUTIONAL_PATHS: readonly string[] = [
   'CLAUDE.md',
   'lib/customers.yaml',
   'lib/compliance.yaml',
-  'lib/team.yaml',
   'lib/autonomy.yaml',
   'lib/tools.yaml',
 ];
@@ -76,11 +75,10 @@ export type WriteDecision = WriteAllowed | WriteRefused;
  *   3. Implicit autonomous prefixes — allow with mode `full`, no yaml lookup
  *      needed (memory/, escalations/, verbs/proposed/, logs/, and
  *      per-campaign logs).
- *   4. autonomy.yaml lookup — match by prefix or exact path. Modes `full`
- *      and `append-only` are allowed (the surface is returned so the caller
- *      can enforce per-mode rules). `gated`, `inline-enrichment`, and
- *      `bounded` are refused — the latter two have no per-mode enforcement
- *      yet.
+ *   4. autonomy.yaml lookup — match by prefix or exact path. Modes `full`,
+ *      `append-only`, and `inline-enrichment` are allowed (the surface is
+ *      returned so the caller can enforce per-mode rules). `gated` is
+ *      refused outright; `bounded` is refused (no per-mode enforcement yet).
  *   5. Default deny — anything not explicitly opened is gated.
  */
 export async function isWriteAllowed(
@@ -124,15 +122,22 @@ export async function isWriteAllowed(
     // says "this surface is open for appends; here's its config".
     return { allowed: true, mode: 'append-only', surface };
   }
+  if (surface.mode === 'inline-enrichment') {
+    // The caller (the `enrich_entry` tool) enforces the per-mode rules —
+    // soft_fields whitelist, entry lookup by unique_by, no entry creation.
+    // The gate just says "this surface is open for soft-field updates;
+    // here's its config".
+    return { allowed: true, mode: 'inline-enrichment', surface };
+  }
   if (surface.mode === 'gated') {
     return {
       allowed: false,
       reason: `Refusing to write ${normalized}: surface is gated. File an escalation instead.`,
     };
   }
-  // inline-enrichment / bounded — declared in the autonomy model but not yet
-  // wired through the chat tool surface. Refuse with a clear message until
-  // each earns dedicated enforcement.
+  // bounded — declared in the autonomy model but not yet wired through the
+  // chat tool surface. Refuse with a clear message until it earns dedicated
+  // enforcement.
   return {
     allowed: false,
     reason: `Refusing to write ${normalized}: surface is in mode '${surface.mode}', which is not yet supported via the chat tool surface. File an escalation instead.`,

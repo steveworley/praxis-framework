@@ -138,20 +138,27 @@ describe('isWriteAllowed — autonomy.yaml lookup', () => {
     }
   });
 
-  it('refuses surfaces in mode: inline-enrichment (not yet wired)', async () => {
-    // lib/team.yaml is constitutional, so we use a non-constitutional path
-    // to verify the inline-enrichment branch fires (and is not pre-empted
-    // by the constitutional hard refuse).
+  it('allows surfaces in mode: inline-enrichment and returns the surface config', async () => {
     await writeAutonomy(
       [
         'surfaces:',
-        '  - path: lib/something-else.yaml',
+        '  - path: lib/team.yaml',
         '    mode: inline-enrichment',
+        '    root_key: members',
+        '    unique_by: id',
+        '    soft_fields:',
+        '      - notes',
+        '      - last_observed_at',
       ].join('\n'),
     );
-    const d = await isWriteAllowed(tempDir, 'lib/something-else.yaml');
-    expect(d.allowed).toBe(false);
-    if (!d.allowed) expect(d.reason).toMatch(/inline-enrichment/);
+    const d = await isWriteAllowed(tempDir, 'lib/team.yaml');
+    expect(d.allowed).toBe(true);
+    if (d.allowed) {
+      expect(d.mode).toBe('inline-enrichment');
+      expect(d.surface?.root_key).toBe('members');
+      expect(d.surface?.unique_by).toBe('id');
+      expect(d.surface?.soft_fields).toEqual(['notes', 'last_observed_at']);
+    }
   });
 
   it('refuses surfaces in mode: bounded (not yet wired)', async () => {

@@ -31,8 +31,17 @@ export interface AutonomySurface {
   /**
    * For `append-only` surfaces: the field on each entry whose value must be
    * unique across the list. Used to detect duplicate appends.
+   *
+   * For `inline-enrichment` surfaces: identifies which existing entry the
+   * role wants to update. Required when mode is `inline-enrichment`.
    */
   unique_by?: string;
+  /**
+   * For `inline-enrichment` surfaces: which fields within each entry the role
+   * may update. All other fields are hard. Required when mode is
+   * `inline-enrichment` — the framework refuses the call otherwise.
+   */
+  soft_fields?: string[];
 }
 
 export interface AutonomyConfig {
@@ -179,6 +188,7 @@ function parseEntry(lines: string[]): AutonomySurface | null {
   // basis. The first line's "indent" is whatever was after `- `, which is
   // typically 0; subsequent lines were indented further.
   const fields: Record<string, string> = {};
+  const listFields: Record<string, string[]> = {};
 
   let idx = 0;
   while (idx < lines.length) {
@@ -227,6 +237,55 @@ function parseEntry(lines: string[]): AutonomySurface | null {
       continue;
     }
 
+    if (rest.length === 0) {
+      // Empty value — peek for a block sequence (`- item` lines indented past
+      // the key). If we find one, consume it as a list field; otherwise treat
+      // it as an empty scalar.
+      let probe = idx + 1;
+      let foundList = false;
+      const items: string[] = [];
+      while (probe < lines.length) {
+        const peek = lines[probe] ?? '';
+        const peekTrim = peek.trim();
+        if (peekTrim.length === 0) {
+          probe += 1;
+          continue;
+        }
+        const peekLeading = peek.length - peek.trimStart().length;
+        if (peekLeading <= fieldIndent) break;
+        const dashMatch = /^\s*-\s+(.*)$/.exec(peek);
+        if (!dashMatch) break;
+        foundList = true;
+        const item = stripQuotes((dashMatch[1] ?? '').trim());
+        if (item.length > 0) items.push(item);
+        probe += 1;
+      }
+      if (foundList) {
+        listFields[key] = items;
+        idx = probe;
+        continue;
+      }
+      fields[key] = '';
+      idx += 1;
+      continue;
+    }
+
+    if (rest.startsWith('[') && rest.endsWith(']')) {
+      // Inline flow sequence: `[a, b, c]`. Parse as a list field — easier to
+      // consume from the typed surface than a stringly-typed scalar.
+      const inner = rest.slice(1, -1).trim();
+      const items =
+        inner.length === 0
+          ? []
+          : inner
+              .split(',')
+              .map((s) => stripQuotes(s.trim()))
+              .filter((s) => s.length > 0);
+      listFields[key] = items;
+      idx += 1;
+      continue;
+    }
+
     fields[key] = stripQuotes(rest);
     idx += 1;
   }
@@ -250,6 +309,9 @@ function parseEntry(lines: string[]): AutonomySurface | null {
   }
   if (fields['unique_by'] && fields['unique_by'].length > 0) {
     surface.unique_by = fields['unique_by'];
+  }
+  if (listFields['soft_fields'] && listFields['soft_fields'].length > 0) {
+    surface.soft_fields = listFields['soft_fields'];
   }
   return surface;
 }
