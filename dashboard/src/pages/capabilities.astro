@@ -103,10 +103,62 @@ function outcomeBadge(o: VerbOutcomeCounts): string {
             <div class="group-head">
               <span class="group-title">MCP servers</span>
               <span class="group-counter">
-                {capabilities.mcps.configured ? 'configured' : 'not configured'}
+                {capabilities.mcps.configured
+                  ? `${capabilities.mcps.servers.length} ${capabilities.mcps.servers.length === 1 ? 'server' : 'servers'}`
+                  : 'not configured'}
               </span>
             </div>
-            <EmptyState>{capabilities.mcps.message}</EmptyState>
+            {!capabilities.mcps.configured ? (
+              <EmptyState>{capabilities.mcps.message}</EmptyState>
+            ) : (
+              <div class="cap-list">
+                {capabilities.mcps.servers.map((s) => (
+                  <div class="cap-row mcp-server">
+                    <div class="cap-row-head">
+                      <code class="cap-name">{s.name}</code>
+                      <span class={`mcp-status mcp-status-${s.status}`}>{s.status}</span>
+                      <span class={`mcp-allow ${s.allowed ? 'mcp-allow-yes' : 'mcp-allow-no'}`}>
+                        {s.allowed ? 'allow' : 'deny'}
+                      </span>
+                      <span class="cap-usage">
+                        <span class="mcp-url">{s.url}</span>
+                      </span>
+                    </div>
+                    {s.status !== 'connected' && s.errorMessage && (
+                      <div class="cap-desc mcp-error">{s.errorMessage}</div>
+                    )}
+                    {s.status === 'connected' && s.methods.length === 0 ? (
+                      <div class="cap-desc"><em class="never">no methods exposed</em></div>
+                    ) : null}
+                    {s.methods.length > 0 && (
+                      <div class="mcp-methods">
+                        {s.methods.map((m) => (
+                          <div class="mcp-method">
+                            <div class="cap-row-head">
+                              <code class="cap-name">{m.methodName}</code>
+                              <span class="cap-usage">
+                                {m.callCount30d === 0 ? (
+                                  <em class="never">never invoked (30d)</em>
+                                ) : (
+                                  <>
+                                    <span class="ct">{m.callCount30d}</span>{' '}
+                                    {m.callCount30d === 1 ? 'call' : 'calls'} (30d)
+                                  </>
+                                )}
+                                {m.lastInvoked && (
+                                  <span class="last"> · last {ageLabel(m.lastInvoked)}</span>
+                                )}
+                              </span>
+                            </div>
+                            {m.description && <div class="cap-desc">{m.description}</div>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div class="group">
@@ -235,5 +287,60 @@ function outcomeBadge(o: VerbOutcomeCounts): string {
     font-size: 12px;
     color: var(--ink-soft);
     line-height: 1.45;
+  }
+  .mcp-status {
+    font-family: ui-monospace, monospace;
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 0.05rem 0.4rem;
+    border-radius: 2px;
+    border: 1px solid var(--rule);
+  }
+  .mcp-status-connected {
+    color: var(--ink);
+    border-color: var(--rule);
+  }
+  .mcp-status-unreachable,
+  .mcp-status-error {
+    color: var(--ink-muted);
+    font-style: italic;
+  }
+  .mcp-allow {
+    font-family: ui-monospace, monospace;
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 0.05rem 0.4rem;
+    border-radius: 2px;
+    border: 1px solid var(--rule);
+  }
+  .mcp-allow-yes {
+    color: var(--ink);
+  }
+  .mcp-allow-no {
+    color: var(--ink-faint);
+    font-style: italic;
+  }
+  .mcp-url {
+    font-family: ui-monospace, monospace;
+    color: var(--ink-faint);
+    font-size: 11.5px;
+  }
+  .mcp-error {
+    font-style: italic;
+    color: var(--ink-muted);
+  }
+  .mcp-methods {
+    margin-top: 0.5rem;
+    margin-left: 0.9rem;
+    padding-left: 0.7rem;
+    border-left: 1px solid var(--rule);
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+  .mcp-method {
+    font-size: 12px;
   }
 </style>

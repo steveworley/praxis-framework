@@ -5,9 +5,11 @@ import { simpleGit } from 'simple-git';
 
 import { assembleActivity, type ActivityEntry } from './activity-loader.js';
 import { loadAutonomy, type AutonomyConfig, type AutonomySurface } from './autonomy-loader.js';
+import { isMcpAllowed } from './chat/autonomy-gate.js';
+import { getMcpCatalog, type McpServerStatus, type McpTool } from './chat/mcp-catalog.js';
+import { CHAT_TOOLS } from './chat/tool-schemas.js';
 import { getLogGlob } from './role-home.js';
 import { loadVerbs, type VerbSummary } from './verbs-loader.js';
-import { CHAT_TOOLS } from './chat/tool-schemas.js';
 
 /**
  * The capabilities report renders the role's "what *can* I do" surface. Four
@@ -15,7 +17,10 @@ import { CHAT_TOOLS } from './chat/tool-schemas.js';
  *
  *   - chatTools  — static toolset from {@link CHAT_TOOLS}, joined to 30-day
  *                  usage counts from the activity log
- *   - mcps       — placeholder until issue #25 lands MCP infrastructure
+ *   - mcps       — discriminated union: either `configured: false` (nothing in
+ *                  `PRAXIS_MCPS`) or `configured: true, servers: [...]` with
+ *                  per-server status, allow/deny, and per-method usage stats
+ *                  aggregated from the activity log
  *   - verbs      — live verbs from `verbs/<slug>.md` joined to verb-started /
  *                  verb-completed activity entries
  *   - refData    — `lib/*` files (excluding the constitutional set) joined to
@@ -43,13 +48,44 @@ export interface ChatToolCapability {
   lastInvoked: string | null;
 }
 
-export interface McpPlaceholder {
-  /** Hardcoded for now. Once issue #25 lands, the shape extends with `servers: McpServer[]`. */
+export interface McpReportEmpty {
   configured: false;
+  /** Operator-visible blurb: either "no MCPs configured" or the catalog-fetch error. */
   message: string;
 }
 
-export type McpReport = McpPlaceholder;
+export interface McpMethodCapability {
+  /** Synthesised Anthropic tool name: `<serverName>__<methodName>`. */
+  toolName: string;
+  /** Just the method-name suffix. */
+  methodName: string;
+  description: string;
+  /** Count of matching `action: 'tool_call'` entries in the last 30 days. */
+  callCount30d: number;
+  /** ISO timestamp of the most recent matching entry, or null when never invoked. */
+  lastInvoked: string | null;
+}
+
+export interface McpServerCapability {
+  name: string;
+  url: string;
+  status: 'connected' | 'unreachable' | 'error';
+  /** Populated when `status !== 'connected'`. */
+  errorMessage?: string;
+  /** Number of methods discovered on the server (0 when unreachable). */
+  methodCount: number;
+  /** Per-server allow/deny from `lib/autonomy.yaml` (default deny). */
+  allowed: boolean;
+  /** One entry per discovered method, with 30-day usage stats. Empty for non-connected servers. */
+  methods: McpMethodCapability[];
+}
+
+export interface McpReportConfigured {
+  configured: true;
+  servers: McpServerCapability[];
+}
+
+export type McpReport = McpReportEmpty | McpReportConfigured;
 
 export interface VerbOutcomeCounts {
   success: number;
@@ -150,16 +186,124 @@ export async function loadCapabilities(
   const chatTools = buildChatToolCapabilities(activity, cutoff);
   const verbCapabilities = buildVerbCapabilities(verbs, activity, cutoff);
   const refData = await buildRefDataCapabilities(roleHome, libFiles, autonomy);
+  const mcps = await buildMcpReport(roleHome, activity, cutoff);
 
   return {
     chatTools,
-    mcps: {
-      configured: false,
-      message: 'No MCPs configured. MCP support in issue #25.',
-    },
+    mcps,
     verbs: verbCapabilities,
     refData,
   };
+}
+
+/**
+ * Walk the MCP catalog and assemble the per-server / per-method report.
+ *
+ * - Zero servers configured → `configured: false` with the "add servers"
+ *   placeholder message.
+ * - Catalog fetch throws → `configured: false` with the error message. The
+ *   capabilities page is best-effort per section, so this falls back rather
+ *   than propagating.
+ * - Otherwise → `configured: true` with one entry per server, each carrying:
+ *   - `allowed` from {@link isMcpAllowed} (default deny when missing from
+ *     autonomy.yaml). All `isMcpAllowed` calls fire in parallel.
+ *   - `methods` aggregated from the shared `activity` slice using the
+ *     `<serverName>__<methodName>` tool-name convention.
+ */
+async function buildMcpReport(
+  roleHome: string,
+  activity: ActivityEntry[],
+  cutoff: number,
+): Promise<McpReport> {
+  let catalog: { servers: McpServerStatus[]; tools: McpTool[] };
+  try {
+    catalog = await getMcpCatalog();
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      configured: false,
+      message: `Failed to load MCP catalog: ${message}`,
+    };
+  }
+
+  if (catalog.servers.length === 0) {
+    return {
+      configured: false,
+      message:
+        'No MCPs configured. Add servers to docker-compose.yml and set PRAXIS_MCPS to enable.',
+    };
+  }
+
+  // Resolve every server's allow/deny in parallel — `isMcpAllowed` re-reads
+  // autonomy.yaml, but per-call overhead is cheap and parallelising keeps the
+  // capabilities loader from serialising on N file reads.
+  const allowDecisions = await Promise.all(
+    catalog.servers.map((s) => isMcpAllowed(roleHome, s.name)),
+  );
+
+  const toolsByServer = new Map<string, McpTool[]>();
+  for (const tool of catalog.tools) {
+    const list = toolsByServer.get(tool.serverName) ?? [];
+    list.push(tool);
+    toolsByServer.set(tool.serverName, list);
+  }
+
+  const servers: McpServerCapability[] = catalog.servers.map((status, idx) => {
+    const decision = allowDecisions[idx];
+    const allowed = decision?.allowed ?? false;
+    const serverTools = toolsByServer.get(status.name) ?? [];
+    const methods = buildMcpMethodCapabilities(serverTools, activity, cutoff);
+    const entry: McpServerCapability = {
+      name: status.name,
+      url: status.url,
+      status: status.status,
+      methodCount: status.toolCount,
+      allowed,
+      methods,
+    };
+    if (status.errorMessage !== undefined) {
+      entry.errorMessage = status.errorMessage;
+    }
+    return entry;
+  });
+
+  return { configured: true, servers };
+}
+
+/**
+ * Aggregate 30-day call counts and last-invoked for each MCP method using
+ * the same activity slice the native-tool aggregation walks. Methods land in
+ * the log as `action: 'tool_call' && tool: '<serverName>__<methodName>'` —
+ * the catalog's `toolName` field already matches that convention verbatim.
+ */
+function buildMcpMethodCapabilities(
+  serverTools: McpTool[],
+  activity: ActivityEntry[],
+  cutoff: number,
+): McpMethodCapability[] {
+  const out: McpMethodCapability[] = [];
+  for (const tool of serverTools) {
+    let callCount30d = 0;
+    let lastInvoked: string | null = null;
+    for (const entry of activity) {
+      if (entry.action !== 'tool_call' || entry.tool !== tool.toolName) continue;
+      const ts = entry.timestamp ?? '';
+      const t = Date.parse(ts);
+      if (Number.isNaN(t)) continue;
+      if (t >= cutoff) callCount30d += 1;
+      if (lastInvoked === null || ts.localeCompare(lastInvoked) > 0) {
+        lastInvoked = ts;
+      }
+    }
+    out.push({
+      toolName: tool.toolName,
+      methodName: tool.methodName,
+      description: firstLine(tool.description),
+      callCount30d,
+      lastInvoked,
+    });
+  }
+  return out;
 }
 
 function buildChatToolCapabilities(
