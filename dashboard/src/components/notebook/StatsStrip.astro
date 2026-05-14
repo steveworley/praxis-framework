@@ -1,42 +1,68 @@
 ---
 /**
- * The 4-stat strip in the /notebook hero. Peach offset block-shadow + 2px
- * ink border to match the character-sheet "anchor card" treatment. Each stat
- * is a small column with a Fraunces numeral and an uppercase mono label.
- *
- * The first stat (`thisWeek`) wears the `.accent` class so its numeral is
- * peach — the focal "what's new" headline. Other stats use ink.
+ * Anchor-card stats strip in the journal-shaped page heroes. Offset
+ * block-shadow + 2px ink border to match the character-sheet treatment; the
+ * shadow tint follows the surface colour (peach for /notebook, pink for
+ * /escalations, purple for /output and /activity).
  *
  * Display strings are passed in pre-formatted so this component stays
- * presentational. The page computes them from `assembleMemory()` and the
- * `recentMemoryCount` helper.
+ * presentational. The first stat wears `.accent` when `stats[0].accent` is
+ * true — the focal "what's new" headline (peach/pink/etc. numeral depending
+ * on `colour`). Other stats use ink.
+ *
+ * The generalised props replace the original 4-hardcoded-notebook-fields
+ * shape so /escalations, /output, /activity can share the same component
+ * with different labels. Notebook still passes the same four numbers via a
+ * tiny adapter in `notebook.astro`.
  */
-interface Props {
-  thisWeek: number;
-  total: number;
-  sinceLastLabel: string;
-  archived: number;
+export type StatsColour = 'peach' | 'pink' | 'purple' | 'lavender' | 'teal';
+
+export interface StatItem {
+  label: string;
+  value: string | number;
+  /** Optional sub-line below the value (e.g. small "of N" caption). */
+  sub?: string | undefined;
+  /** When true, the numeral inherits the surface colour. */
+  accent?: boolean | undefined;
 }
 
-const { thisWeek, total, sinceLastLabel, archived } = Astro.props;
-const weekDisplay = thisWeek > 0 ? `+${thisWeek}` : '0';
+interface Props {
+  colour: StatsColour;
+  stats: StatItem[];
+}
+
+const { colour, stats } = Astro.props;
 ---
 
-<div class="stats">
-  <div class="stat accent">
-    <div class="n">{weekDisplay}</div>
-    <div class="l">this week</div>
-  </div>
-  <div class="stat">
-    <div class="n">{total}</div>
-    <div class="l">total</div>
-  </div>
-  <div class="stat">
-    <div class="n">{sinceLastLabel}</div>
-    <div class="l">since last</div>
-  </div>
-  <div class="stat">
-    <div class="n">{archived}</div>
-    <div class="l">archived</div>
-  </div>
+<div class:list={['stats', `shadow-${colour}`]}>
+  {stats.map((s) => (
+    <div class:list={['stat', s.accent && 'accent', s.accent && `accent-${colour}`]}>
+      <div class="n">{s.value}</div>
+      <div class="l">{s.label}</div>
+      {s.sub && <div class="sub">{s.sub}</div>}
+    </div>
+  ))}
 </div>
+
+<style>
+  /* Per-colour offset shadow. Notebook keeps the peach default; new surfaces
+     opt-in via the colour prop. The `.stats` base rules live in global.css. */
+  .stats.shadow-peach { box-shadow: 4px 4px 0 var(--peach); }
+  .stats.shadow-pink { box-shadow: 4px 4px 0 var(--pink); }
+  .stats.shadow-purple { box-shadow: 4px 4px 0 var(--purple); }
+  .stats.shadow-lavender { box-shadow: 4px 4px 0 var(--lavender); }
+  .stats.shadow-teal { box-shadow: 4px 4px 0 var(--teal); }
+  .stat.accent.accent-peach .n { color: var(--peach); }
+  .stat.accent.accent-pink .n { color: var(--pink); }
+  .stat.accent.accent-purple .n { color: var(--purple); }
+  .stat.accent.accent-lavender .n { color: var(--lavender); }
+  .stat.accent.accent-teal .n { color: var(--teal); }
+  .stat .sub {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--ink-faint);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-top: 0.15em;
+  }
+</style>

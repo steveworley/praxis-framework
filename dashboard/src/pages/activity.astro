@@ -1,13 +1,26 @@
 ---
-import EmptyState from '@/components/EmptyState.astro';
+import ActivityEntry from '@/components/activity/ActivityEntry.astro';
+import StatsStrip from '@/components/notebook/StatsStrip.astro';
 import RouteHeader from '@/components/RouteHeader.astro';
+import FilterChips, {
+  type ChipOption,
+} from '@/components/shared/FilterChips.astro';
 import BaseLayout from '@/layouts/BaseLayout.astro';
-import { assembleActivity, type ActivityEntry } from '@/lib/activity-loader';
-import { isDecisionEntry, toDecisionView } from '@/lib/decision-renderer';
+import { assembleActivity, type ActivityEntry as ActivityEntryType } from '@/lib/activity-loader';
 import { parsePersona, type Persona } from '@/lib/persona-parser';
 import { bucketByDay, recentActivityCount } from '@/lib/recent-stats';
 import { detectMode, getLogGlob, getRoleHome, nowIso } from '@/lib/role-home';
-import { formatIsoTime } from '@/lib/ui/time';
+import { buildChipHref } from '@/lib/ui/filter-href';
+
+/**
+ * /activity — journal-shaped event feed. Day-grouped, latest first. Each
+ * day starts with a hairline rule + italic label ("Thu, 14 May · 11
+ * entries"); inside the group, events render as gutter-rail rows via
+ * `ActivityEntry`.
+ *
+ * Filter state: `?action=<kind>` query param (chip nav, no JS for paint).
+ * Defaults to `all`.
+ */
 
 export const prerender = false;
 
@@ -24,7 +37,7 @@ const [personaRes, activityRes] = await Promise.allSettled([
 ]);
 
 const persona: Persona | null = personaRes.status === 'fulfilled' ? personaRes.value : null;
-const activity: ActivityEntry[] = activityRes.status === 'fulfilled' ? activityRes.value : [];
+const activity: ActivityEntryType[] = activityRes.status === 'fulfilled' ? activityRes.value : [];
 const activityError = activityRes.status === 'rejected' ? String(activityRes.reason) : null;
 
 const fullName = persona?.identity['full_name'] ?? persona?.identity['name'] ?? '';
@@ -36,39 +49,63 @@ for (const e of activity) {
   actionCounts[action] = (actionCounts[action] ?? 0) + 1;
 }
 const actionKeys = Object.keys(actionCounts).sort();
-// Relabel the `decision` action chip as `decisions` for clarity per the
-// decisions-feed UX. The data-filter value stays `decision` so it matches
-// the row's data-action attribute.
-const filters: Array<{ key: string; label: string; count: number }> = [
-  { key: 'all', label: 'all', count: activity.length },
-  ...actionKeys.map((k) => ({
-    key: k,
-    label: k === 'decision' ? 'decisions' : k,
-    count: actionCounts[k] ?? 0,
-  })),
-];
 
-const buckets = bucketByDay(activity);
+const rawAction = Astro.url.searchParams.get('action') ?? 'all';
+const KNOWN_ACTIONS = new Set(['all', ...actionKeys]);
+const activeAction = KNOWN_ACTIONS.has(rawAction) ? rawAction : 'all';
+
+const filteredActivity = activity.filter((e) => {
+  if (activeAction === 'all') return true;
+  const a = typeof e.action === 'string' && e.action.length > 0 ? e.action : 'other';
+  return a === activeAction;
+});
+
+const buckets = bucketByDay(filteredActivity);
 const todayCount = recentActivityCount(activity, 1);
+const weekCount = recentActivityCount(activity, 7);
+const decisions7d = recentActivityCount(
+  activity.filter((e) => e.action === 'decision'),
+  7,
+);
+const toolCalls7d = recentActivityCount(
+  activity.filter((e) => e.action === 'tool_call'),
+  7,
+);
 
-function buildHeadline(e: ActivityEntry): string {
-  const headline = typeof e.headline === 'string' ? e.headline : '';
-  if (headline.length > 0) return headline;
-  if (typeof e.notes === 'string' && e.notes.length > 0) return e.notes;
-  const action = typeof e.action === 'string' ? e.action : '';
-  return action || '(no detail)';
+const ACT_DEFAULTS = { action: 'all' };
+
+function kindChips(): ChipOption[] {
+  const opts: Array<Omit<ChipOption, 'href'>> = [
+    { value: 'all', label: 'all', count: activity.length },
+    ...actionKeys.map((k) => ({
+      value: k,
+      label: k === 'decision' ? 'decisions' : k,
+      count: actionCounts[k] ?? 0,
+    })),
+  ];
+  return opts.map((o) => ({
+    ...o,
+    href: buildChipHref({
+      pathname: '/activity',
+      current: { action: activeAction },
+      group: 'action',
+      value: o.value,
+      defaults: ACT_DEFAULTS,
+    }),
+  }));
 }
 
-function metaLine(e: ActivityEntry): string {
-  const bits: string[] = [];
-  if (typeof e.agent === 'string' && e.agent.length > 0) bits.push(`from ${e.agent}`);
-  const keep = ['domain', 'company', 'campaign', 'channel', 'kind', 'urgency', 'next_step', 'outcome'] as const;
-  for (const k of keep) {
-    const v = e[k];
-    if (typeof v === 'string' && v.length > 0) bits.push(`${k}=${v}`);
-  }
-  return bits.join(' · ');
+function personaShort(p: Persona | null): string {
+  const ident = p?.identity ?? {};
+  const full = (ident['full_name'] ?? ident['name'] ?? '').trim();
+  const idx = full.indexOf(' ');
+  return idx < 0 ? (full || 'The role') : full.slice(0, idx);
 }
+const subject = personaShort(persona);
+const title = persona ? `What ${subject} has been doing` : "What I've been doing";
+const sub = persona
+  ? `${subject}'s working trace — tool calls, decisions, verb runs — latest first.`
+  : "The role's working trace — tool calls, decisions, verb runs — latest first.";
 ---
 
 <BaseLayout title={fullName ? `Activity · ${fullName}` : 'Activity · Praxis'}>
@@ -79,144 +116,95 @@ function metaLine(e: ActivityEntry): string {
       updatedAt={updatedAt}
     />
 
-    <div class="page-body">
-      <div class="group-head">
-        <span class="group-counter">last {activity.length} entries · {todayCount} today</span>
+    <section class="nb-hero">
+      <div class="hero-left">
+        <div class="pill purple">ACTIVITY</div>
+        <h1>{title}</h1>
+        <div class="sub">{sub}</div>
       </div>
+      <StatsStrip
+        colour="purple"
+        stats={[
+          { label: 'today', value: todayCount, accent: true },
+          { label: 'this week', value: weekCount },
+          { label: 'decisions 7d', value: decisions7d },
+          { label: 'tool calls 7d', value: toolCalls7d },
+        ]}
+      />
+    </section>
 
-      {activityError ? (
-        <EmptyState>Failed to load activity: {activityError}</EmptyState>
-      ) : activity.length === 0 ? (
-        <EmptyState>No activity logged yet.</EmptyState>
-      ) : (
-        <>
-          <div class="filter-row spaced" data-filter-group="action">
-            {filters.map((f) => (
-              <span
-                class:list={['filter', f.key === 'all' && 'active']}
-                data-filter={f.key}
-              >
-                {f.label}<span class="ct">{f.count}</span>
-              </span>
-            ))}
-          </div>
+    {activityError ? (
+      <div class="nb-empty">Failed to load activity: {activityError}</div>
+    ) : activity.length === 0 ? (
+      <div class="nb-empty">No activity logged yet.</div>
+    ) : (
+      <>
+        <section class="nb-filters">
+          <FilterChips label="kind" current={activeAction} options={kindChips()} />
+        </section>
 
-          <div data-filter-feed>
+        {buckets.length === 0 ? (
+          <div class="nb-empty">No activity matches the current filter.</div>
+        ) : (
+          <section class="entries activity-entries">
             {buckets.map((bucket) => (
-              <div class="day-group" data-bucket={bucket.day}>
-                <div class="day-band">
-                  {bucket.label} · <span data-bucket-count>{bucket.items.length}</span> <span data-bucket-noun>{bucket.items.length === 1 ? 'entry' : 'entries'}</span>
+              <Fragment>
+                <div class="day-header">
+                  <span class="day-label">{bucket.label}</span>
+                  <span class="day-count">
+                    {bucket.items.length} {bucket.items.length === 1 ? 'entry' : 'entries'}
+                  </span>
                 </div>
-                {bucket.items.map((e) => {
-                  const action = typeof e.action === 'string' && e.action.length > 0 ? e.action : 'other';
-                  const time = formatIsoTime(typeof e.timestamp === 'string' ? e.timestamp : undefined);
-                  const headline = buildHeadline(e);
-                  const meta = metaLine(e);
-                  if (isDecisionEntry(e)) {
-                    const view = toDecisionView(e);
-                    return (
-                      <div class="decision-row" data-action={action}>
-                        <div class="act-row">
-                          <span class="time">{time}</span>
-                          <span class:list={['verb', action]}>
-                            decision
-                            {view.decisionType && (
-                              <span class="decision-type-pill">{view.decisionType}</span>
-                            )}
-                          </span>
-                          <div class="what">
-                            {headline}
-                            {meta && <span class="meta">{meta}</span>}
-                          </div>
-                        </div>
-                        <div class="rationale-block">
-                          <dl>
-                            {view.chosen && (
-                              <>
-                                <dt>chosen</dt>
-                                <dd style="color: var(--ink);">{view.chosen}</dd>
-                              </>
-                            )}
-                            {view.considered && (
-                              <>
-                                <dt>considered</dt>
-                                <dd class="considered">{view.considered}</dd>
-                              </>
-                            )}
-                            {view.rationale && (
-                              <>
-                                <dt>rationale</dt>
-                                <dd>{view.rationale}</dd>
-                              </>
-                            )}
-                            {view.confidence && (
-                              <>
-                                <dt>confidence</dt>
-                                <dd>
-                                  <span class:list={['confidence-pill', view.confidenceClass]}>
-                                    {view.confidence}
-                                  </span>
-                                </dd>
-                              </>
-                            )}
-                          </dl>
-                        </div>
-                      </div>
-                    );
-                  }
-                  return (
-                    <div class="act-row" data-action={action}>
-                      <span class="time">{time}</span>
-                      <span class:list={['verb', action]}>{action}</span>
-                      <div class="what">
-                        {headline}
-                        {meta && <span class="meta">{meta}</span>}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                {bucket.items.map((entry) => <ActivityEntry entry={entry} />)}
+              </Fragment>
             ))}
-          </div>
-        </>
-      )}
-    </div>
+          </section>
+        )}
+      </>
+    )}
   </main>
-
-  <script is:inline>
-    (function () {
-      const feed = document.querySelector('[data-filter-feed]');
-      const group = document.querySelector('[data-filter-group="action"]');
-      if (!(feed instanceof HTMLElement) || !(group instanceof HTMLElement)) return;
-      let active = 'all';
-      group.addEventListener('click', (event) => {
-        const target = event.target;
-        if (!(target instanceof HTMLElement)) return;
-        const filter = target.closest('[data-filter]');
-        if (!(filter instanceof HTMLElement)) return;
-        const value = filter.dataset.filter;
-        if (!value) return;
-        group.querySelectorAll('[data-filter]').forEach((b) => b.classList.remove('active'));
-        filter.classList.add('active');
-        active = value;
-        const dayGroups = feed.querySelectorAll('[data-bucket]');
-        dayGroups.forEach((dg) => {
-          if (!(dg instanceof HTMLElement)) return;
-          const rows = dg.querySelectorAll('[data-action]');
-          let visible = 0;
-          rows.forEach((row) => {
-            if (!(row instanceof HTMLElement)) return;
-            const match = active === 'all' || row.dataset.action === active;
-            row.style.display = match ? '' : 'none';
-            if (match) visible += 1;
-          });
-          dg.style.display = visible > 0 ? '' : 'none';
-          const countEl = dg.querySelector('[data-bucket-count]');
-          const nounEl = dg.querySelector('[data-bucket-noun]');
-          if (countEl instanceof HTMLElement) countEl.textContent = String(visible);
-          if (nounEl instanceof HTMLElement) nounEl.textContent = visible === 1 ? 'entry' : 'entries';
-        });
-      });
-    })();
-  </script>
 </BaseLayout>
+
+<style>
+  .nb-hero .hero-left .pill.purple {
+    background: var(--purple);
+    color: var(--surface);
+  }
+
+  /* Day-header rule. Sits between groups of activity entries — italic
+     Source Serif 4 label, hairline rule, mono count caption. */
+  .day-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1em;
+    padding: 1.4rem 0 0.4rem;
+    margin-top: 0.6rem;
+    border-top: 2px solid var(--ink);
+  }
+  .day-header:first-of-type {
+    margin-top: 0;
+    border-top: none;
+  }
+  .day-label {
+    font-family: var(--display);
+    font-style: italic;
+    font-weight: 500;
+    font-size: 16px;
+    color: var(--ink-soft);
+  }
+  .day-count {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-muted);
+  }
+
+  /* The activity entry shell already pads itself; remove the default top
+     rule on the first entry of each day group so the day-header carries the
+     visual break. */
+  .activity-entries :global(.entry.activity-entry) {
+    border-top: 1px solid var(--rule);
+  }
+</style>

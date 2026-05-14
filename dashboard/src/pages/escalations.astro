@@ -1,19 +1,32 @@
 ---
-import EmptyState from '@/components/EmptyState.astro';
-import FullEscalation from '@/components/FullEscalation.astro';
+import EscalationEntry from '@/components/escalations/EscalationEntry.astro';
+import StatsStrip from '@/components/notebook/StatsStrip.astro';
 import RouteHeader from '@/components/RouteHeader.astro';
+import FilterChips, {
+  type ChipOption,
+} from '@/components/shared/FilterChips.astro';
 import BaseLayout from '@/layouts/BaseLayout.astro';
-import { assembleEscalations, type EscalationsResult } from '@/lib/escalations-loader';
+import { assembleEscalations, type EscalationEntry as EscalationEntryType, type EscalationsResult } from '@/lib/escalations-loader';
+import { loadHealth } from '@/lib/health-loader';
 import { parsePersona, type Persona } from '@/lib/persona-parser';
 import { detectMode, getRoleHome, nowIso } from '@/lib/role-home';
+import { buildChipHref } from '@/lib/ui/filter-href';
+import { daysSince } from '@/lib/ui/time';
 
-/** /escalations — the unified triage + audit surface. Operators read the
- * full body, filter by status/kind, and act on open cards directly (accept,
- * decline, or jump to draft review for proposed_skill escalations).
+/**
+ * /escalations — journal-shaped triage + audit surface. Replaces the
+ * flat-card layout from PR #51 with the gutter+body shell shared with
+ * /notebook, /output and /activity.
  *
- * Honours `?status=open` to default the status filter; otherwise lands on
- * `all`. The query param is the only one we read — kind defaults to `all`
- * regardless. */
+ * Filter state lives in `?status=&kind=` query params (anchor-chip
+ * navigation, no JS required for paint). The `?status=open` default from
+ * PR #51 still applies — landing on /escalations after a notification
+ * narrows to the open queue automatically.
+ *
+ * Action affordances on open entries (Accept / Decline / review draft →)
+ * are rendered inline by `EscalationActions` mounted from
+ * `EscalationEntry`; their `/api/triage/*` contracts are unchanged.
+ */
 
 export const prerender = false;
 
@@ -23,9 +36,10 @@ if (mode === 'seed') {
   return Astro.redirect('/setup');
 }
 
-const [personaRes, escalationsRes] = await Promise.allSettled([
+const [personaRes, escalationsRes, healthRes] = await Promise.allSettled([
   parsePersona(roleHome),
   assembleEscalations(roleHome),
+  loadHealth(roleHome),
 ]);
 
 const persona: Persona | null = personaRes.status === 'fulfilled' ? personaRes.value : null;
@@ -33,42 +47,115 @@ const escalations: EscalationsResult | null =
   escalationsRes.status === 'fulfilled' ? escalationsRes.value : null;
 const escalationError =
   escalationsRes.status === 'rejected' ? String(escalationsRes.reason) : null;
+const health = healthRes.status === 'fulfilled' ? healthRes.value : null;
 
 const fullName = persona?.identity['full_name'] ?? persona?.identity['name'] ?? '';
 const updatedAt = nowIso();
 
-const entries = escalations?.entries ?? [];
+const entries: EscalationEntryType[] = escalations?.entries ?? [];
 const counts = escalations?.countsByStatus ?? { open: 0, resolved: 0, accepted: 0, declined: 0 };
+
+// Resolved within the last 7 days — quick "have I been triaging?" signal.
+const resolved7d = entries.filter((e) => {
+  if (e.status !== 'resolved' && e.status !== 'accepted' && e.status !== 'declined') return false;
+  const d = daysSince(e.created);
+  return d !== null && d <= 7;
+}).length;
+
+const medianTtt = health?.escalations.median_time_to_triage_days ?? null;
+const medianTttDisplay = (() => {
+  if (medianTtt === null) return '—';
+  if (medianTtt < 1) {
+    // Sub-day medians arrive as fractional days; show as hours rounded down
+    // (1h floor so a 5-minute triage doesn't read as "0h").
+    const hours = Math.max(1, Math.round(medianTtt * 24));
+    return `${hours}h`;
+  }
+  return `${Math.round(medianTtt)}d`;
+})();
 
 const kindCounts: Record<string, number> = {};
 for (const e of entries) {
   kindCounts[e.kind] = (kindCounts[e.kind] ?? 0) + 1;
 }
 
-/**
- * Default the status filter from `?status=<value>` when it's one of the
- * known status keys; otherwise show `all`. Anything else — including
- * unrecognised values — falls through to `all` so we never present an
- * empty board because of a stale link.
- */
-const KNOWN_STATUSES = new Set(['all', 'open', 'resolved', 'accepted', 'declined']);
+const KNOWN_STATUSES = new Set(['all', 'open', 'triaged', 'resolved', 'accepted', 'declined']);
+const KNOWN_KINDS = new Set(['all', 'help', 'improvement', 'proposed_skill', 'criterion_drift']);
 const rawStatus = Astro.url.searchParams.get('status');
-const initialStatus = rawStatus && KNOWN_STATUSES.has(rawStatus) ? rawStatus : 'all';
+const rawKind = Astro.url.searchParams.get('kind');
+const activeStatus = rawStatus && KNOWN_STATUSES.has(rawStatus) ? rawStatus : 'open';
+const activeKind = rawKind && KNOWN_KINDS.has(rawKind) ? rawKind : 'all';
 
-const statusFilters: Array<{ key: string; label: string; count: number }> = [
-  { key: 'all', label: 'all', count: entries.length },
-  { key: 'open', label: 'open', count: counts.open },
-  { key: 'resolved', label: 'resolved', count: counts.resolved },
-  { key: 'accepted', label: 'accepted', count: counts.accepted },
-  { key: 'declined', label: 'declined', count: counts.declined },
-];
-const kindFilters: Array<{ key: string; label: string; count: number | null }> = [
-  { key: 'all', label: 'all kinds', count: null },
-  { key: 'help', label: 'help', count: kindCounts['help'] ?? 0 },
-  { key: 'improvement', label: 'improvement', count: kindCounts['improvement'] ?? 0 },
-  { key: 'proposed_skill', label: 'proposed_skill', count: kindCounts['proposed_skill'] ?? 0 },
-  { key: 'criterion_drift', label: 'criterion_drift', count: kindCounts['criterion_drift'] ?? 0 },
-];
+// `triaged` is a meta-status meaning "accepted OR declined" — the operator's
+// take-down queue. It rolls up the two terminal states without `resolved`.
+function statusMatches(entry: EscalationEntryType, axis: string): boolean {
+  if (axis === 'all') return true;
+  if (axis === 'triaged') return entry.status === 'accepted' || entry.status === 'declined';
+  return entry.status === axis;
+}
+
+const filteredEntries = entries.filter((e) => {
+  if (!statusMatches(e, activeStatus)) return false;
+  if (activeKind !== 'all' && e.kind !== activeKind) return false;
+  return true;
+});
+
+const ESC_DEFAULTS = { status: 'open', kind: 'all' };
+const escCurrent = { status: activeStatus, kind: activeKind };
+
+function statusChips(): ChipOption[] {
+  const opts = [
+    { value: 'all', label: 'all', count: entries.length },
+    { value: 'open', label: 'open', count: counts.open },
+    { value: 'triaged', label: 'triaged', count: counts.accepted + counts.declined },
+    { value: 'resolved', label: 'resolved', count: counts.resolved },
+    { value: 'accepted', label: 'accepted', count: counts.accepted },
+    { value: 'declined', label: 'declined', count: counts.declined },
+  ];
+  return opts.map((o) => ({
+    ...o,
+    href: buildChipHref({
+      pathname: '/escalations',
+      current: escCurrent,
+      group: 'status',
+      value: o.value,
+      defaults: ESC_DEFAULTS,
+    }),
+  }));
+}
+
+function kindChips(): ChipOption[] {
+  const opts: Array<Omit<ChipOption, 'href'>> = [
+    { value: 'all', label: 'all' },
+    { value: 'help', label: 'help', count: kindCounts['help'] ?? 0 },
+    { value: 'improvement', label: 'improvement', count: kindCounts['improvement'] ?? 0 },
+    { value: 'proposed_skill', label: 'proposed_skill', count: kindCounts['proposed_skill'] ?? 0 },
+    { value: 'criterion_drift', label: 'criterion_drift', count: kindCounts['criterion_drift'] ?? 0 },
+  ];
+  return opts.map((o) => ({
+    ...o,
+    href: buildChipHref({
+      pathname: '/escalations',
+      current: escCurrent,
+      group: 'kind',
+      value: o.value,
+      defaults: ESC_DEFAULTS,
+    }),
+  }));
+}
+
+function personaShort(p: Persona | null): string {
+  const ident = p?.identity ?? {};
+  const full = (ident['full_name'] ?? ident['name'] ?? '').trim();
+  const idx = full.indexOf(' ');
+  return idx < 0 ? (full || 'The role') : full.slice(0, idx);
+}
+
+const personaSubject = personaShort(persona);
+const title = persona ? `What ${personaSubject} has flagged` : "What I've flagged";
+const sub = persona
+  ? `Help requests, process improvements, proposed skills, and criterion drift — ${personaSubject}'s open audit trail.`
+  : 'Help requests, process improvements, proposed skills, and criterion drift — the role\'s open audit trail.';
 ---
 
 <BaseLayout title={fullName ? `Escalations · ${fullName}` : 'Escalations · Praxis'}>
@@ -79,92 +166,55 @@ const kindFilters: Array<{ key: string; label: string; count: number | null }> =
       updatedAt={updatedAt}
     />
 
-    <div class="page-body">
-      <div class="group-head">
-        <span class="group-counter">{entries.length} total · {counts.open} open</span>
+    <section class="nb-hero">
+      <div class="hero-left">
+        <div class="pill pink">ESCALATIONS</div>
+        <h1>{title}</h1>
+        <div class="sub">{sub}</div>
       </div>
+      <StatsStrip
+        colour="pink"
+        stats={[
+          { label: 'open', value: counts.open, accent: true },
+          { label: 'filed', value: entries.length },
+          { label: 'median ttt (28d)', value: medianTttDisplay },
+          { label: 'resolved 7d', value: resolved7d },
+        ]}
+      />
+    </section>
 
-      {escalationError ? (
-        <EmptyState>Failed to load escalations: {escalationError}</EmptyState>
-      ) : entries.length === 0 ? (
-        <EmptyState>
-          No escalations on file. Help requests, process improvements, and proposed skills will surface here.
-        </EmptyState>
-      ) : (
-        <>
-          <div class="filter-row spaced" data-filter-group="status">
-            {statusFilters.map((f) => (
-              <span
-                class:list={['filter', f.key === initialStatus && 'active']}
-                data-filter={f.key}
-              >
-                {f.label}<span class="ct">{f.count}</span>
-              </span>
-            ))}
-          </div>
-          <div class="filter-row" data-filter-group="kind">
-            {kindFilters.map((f) => (
-              <span
-                class:list={['filter', f.key === 'all' && 'active']}
-                data-filter={f.key}
-              >
-                {f.label}{f.count !== null && <span class="ct">{f.count}</span>}
-              </span>
-            ))}
-          </div>
+    {escalationError ? (
+      <div class="nb-empty">Failed to load escalations: {escalationError}</div>
+    ) : entries.length === 0 ? (
+      <div class="nb-empty">
+        No escalations on file. Help requests, process improvements, and proposed skills will surface here.
+      </div>
+    ) : (
+      <>
+        <section class="nb-filters">
+          <FilterChips label="status" current={activeStatus} options={statusChips()} />
+          <FilterChips label="kind" current={activeKind} options={kindChips()} />
+        </section>
 
-          <div data-filter-feed data-initial-status={initialStatus}>
-            {entries.map((e) => <FullEscalation escalation={e} />)}
-          </div>
-        </>
-      )}
-    </div>
+        {filteredEntries.length === 0 ? (
+          <div class="nb-empty">No escalations match the current filter.</div>
+        ) : (
+          <section class="entries">
+            {filteredEntries.map((e) => <EscalationEntry escalation={e} />)}
+          </section>
+        )}
+      </>
+    )}
   </main>
 
   <script is:inline src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
-  <script is:inline>
-    (function () {
-      const feed = document.querySelector('[data-filter-feed]');
-      if (!(feed instanceof HTMLElement)) return;
-      const groups = document.querySelectorAll('[data-filter-group]');
-      const initialStatus = feed.dataset.initialStatus || 'all';
-      const active = { status: initialStatus, kind: 'all' };
-
-      function apply() {
-        const cards = feed.children;
-        for (const card of cards) {
-          if (!(card instanceof HTMLElement)) continue;
-          const status = card.dataset.status ?? '';
-          const kind = card.dataset.kind ?? '';
-          const matchStatus = active.status === 'all' || status === active.status;
-          const matchKind = active.kind === 'all' || kind === active.kind;
-          card.style.display = matchStatus && matchKind ? '' : 'none';
-        }
-      }
-
-      groups.forEach((group) => {
-        if (!(group instanceof HTMLElement)) return;
-        const groupName = group.dataset.filterGroup;
-        if (!groupName) return;
-        group.addEventListener('click', (event) => {
-          const target = event.target;
-          if (!(target instanceof HTMLElement)) return;
-          const filter = target.closest('[data-filter]');
-          if (!(filter instanceof HTMLElement)) return;
-          const value = filter.dataset.filter;
-          if (!value) return;
-          group.querySelectorAll('[data-filter]').forEach((b) => b.classList.remove('active'));
-          filter.classList.add('active');
-          if (groupName === 'status' || groupName === 'kind') {
-            active[groupName] = value;
-            apply();
-          }
-        });
-      });
-
-      // Apply the initial filter on load so `?status=open` actually narrows
-      // the feed before the operator interacts with any chip.
-      apply();
-    })();
-  </script>
 </BaseLayout>
+
+<style>
+  /* Section-pill colour override for the escalations surface. The base
+     `.nb-hero .hero-left .pill` rule in global.css paints peach by default. */
+  .nb-hero .hero-left .pill.pink {
+    background: var(--pink);
+    color: var(--ink);
+  }
+</style>

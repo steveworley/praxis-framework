@@ -1,0 +1,48 @@
+---
+/**
+ * One row of anchor-chips for the journal-shaped list surfaces. The chip is
+ * the pixel-font/uppercase/count treatment originally on `/notebook` and now
+ * shared with `/escalations`, `/output`, and `/activity`.
+ *
+ * The component is layout-only: the page builds the `options` array with
+ * pre-computed hrefs (so filter state stays shareable via query params, no
+ * JS required). When `label` is set, the row leads with a 5em mono caption.
+ *
+ * The pure-function helper `buildChipHref` lives in `@/lib/ui/filter-href`
+ * for callers that want to centralise the param-preserving logic; this
+ * component intentionally accepts hrefs verbatim so a page can deviate (for
+ * routes like `/output/[type]` where the chip target is a different
+ * pathname, not just a different query).
+ */
+export interface ChipOption {
+  value: string;
+  label: string;
+  count?: number | undefined;
+  href: string;
+}
+
+interface Props {
+  /** Optional pixel-font row label (e.g. `category`, `status`, `kind`). */
+  label?: string | undefined;
+  /** Currently selected chip value. Matched against each `option.value`. */
+  current: string;
+  options: ChipOption[];
+}
+
+const { label, current, options } = Astro.props;
+---
+
+<div class="filter-row">
+  {label && <span class="filter-label">{label}</span>}
+  {options.map((opt) => (
+    <a
+      class:list={['chip', opt.value === current && 'active']}
+      href={opt.href}
+    >
+      {opt.label}
+      {opt.count !== undefined && opt.count !== null && (
+        <span class="ct">{opt.count}</span>
+      )}
+    </a>
+  ))}
+</div>

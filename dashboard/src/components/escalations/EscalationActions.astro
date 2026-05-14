@@ -1,0 +1,214 @@
+---
+import type { EscalationEntry } from '@/lib/escalations-loader';
+
+/**
+ * Inline action affordances for an open escalation. Lifted out of
+ * `FullEscalation.astro` so both the legacy card and the new
+ * gutter-rail `EscalationEntry` can mount the same Alpine-driven UI
+ * without duplication.
+ *
+ *   - `proposed_skill` → "review draft →" link to `/triage/draft/[slug]`.
+ *   - everything else → Accept (optional note) and Decline (required reason)
+ *     buttons. Both POST to `/api/triage/escalations/[id]/{accept,decline}`
+ *     with the same payload shape `/triage` uses.
+ *
+ * The wrapper provides its own `x-data` scope so the consuming entry
+ * doesn't have to. Callers render this inside their entry shell only when
+ * `escalation.status === 'open'`.
+ */
+interface Props {
+  escalation: EscalationEntry;
+}
+
+const { escalation: e } = Astro.props;
+const isProposed = e.kind === 'proposed_skill';
+---
+
+<div
+  class="card-actions"
+  x-data={`{ pending: null, note: '', busy: false, error: '', ok: '' }`}
+>
+  <template x-if="error">
+    <div class="card-banner error" x-text="error"></div>
+  </template>
+  <template x-if="ok">
+    <div class="card-banner ok" x-text="ok"></div>
+  </template>
+
+  {isProposed ? (
+    <div class="actions-row">
+      <a class="card-btn primary" href={`/triage/draft/${encodeURIComponent(e.slug)}`}>
+        review draft →
+      </a>
+    </div>
+  ) : (
+    <>
+      <div class="actions-row" x-show="pending === null">
+        <button type="button" class="card-btn primary" @click={`pending = 'accept'; note = ''; error = ''`}>
+          Accept
+        </button>
+        <button type="button" class="card-btn danger" @click={`pending = 'decline'; note = ''; error = ''`}>
+          Decline
+        </button>
+      </div>
+
+      <template x-if="pending === 'accept'">
+        <form
+          class="action-form"
+          data-escalation-id={e.slug}
+          data-action="accept"
+          @submit.prevent={`busy = true; error = ''; const id = $el.dataset.escalationId; const payload = note.trim() ? { operator_note: note.trim() } : {}; fetch('/api/triage/escalations/' + encodeURIComponent(id) + '/accept', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).then(async (r) => { if (!r.ok) { const err = await r.json().catch(() => ({})); throw new Error(err.error || ('Accept failed (' + r.status + ')')); } return r.json(); }).then(() => { ok = 'Accepted — refresh to update the list.'; pending = null; }).catch((e) => { error = e.message || String(e); }).finally(() => { busy = false; })`}
+        >
+          <label>Optional operator note (appended to the file):</label>
+          <textarea x-model="note" rows="3" placeholder="will land this week"></textarea>
+          <div class="action-form-row">
+            <button type="submit" class="card-btn primary" :disabled="busy">
+              <span x-show="!busy">Confirm accept</span>
+              <span x-show="busy">Saving…</span>
+            </button>
+            <button type="button" class="card-btn ghost" @click="pending = null; note = ''">Cancel</button>
+          </div>
+        </form>
+      </template>
+
+      <template x-if="pending === 'decline'">
+        <form
+          class="action-form"
+          data-escalation-id={e.slug}
+          data-action="decline"
+          @submit.prevent={`busy = true; error = ''; const id = $el.dataset.escalationId; const reason = note.trim(); if (!reason) { busy = false; error = 'Reason required.'; return; } fetch('/api/triage/escalations/' + encodeURIComponent(id) + '/decline', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason }) }).then(async (r) => { if (!r.ok) { const err = await r.json().catch(() => ({})); throw new Error(err.error || ('Decline failed (' + r.status + ')')); } return r.json(); }).then(() => { ok = 'Declined — refresh to update the list.'; pending = null; }).catch((e) => { error = e.message || String(e); }).finally(() => { busy = false; })`}
+        >
+          <label>Decline reason (required):</label>
+          <textarea x-model="note" rows="3" placeholder="duplicate of existing verb; out of scope; etc."></textarea>
+          <div class="action-form-row">
+            <button type="submit" class="card-btn danger" :disabled="busy || !note.trim()">
+              <span x-show="!busy">Confirm decline</span>
+              <span x-show="busy">Saving…</span>
+            </button>
+            <button type="button" class="card-btn ghost" @click="pending = null; note = ''">Cancel</button>
+          </div>
+        </form>
+      </template>
+    </>
+  )}
+</div>
+
+<style>
+  /* Action affordances on open escalation cards. Pink section colour — the
+     escalations surface owns pink in the redesign palette. */
+  .card-actions {
+    margin-top: 1rem;
+    padding-top: 0.9rem;
+    border-top: 1px dashed var(--rule);
+  }
+  .actions-row {
+    display: flex;
+    gap: 0.55rem;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .card-btn {
+    background: var(--surface);
+    border: 1.5px solid var(--ink);
+    border-radius: 2px;
+    padding: 0.4rem 1rem;
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    color: var(--ink);
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    transition: box-shadow 80ms ease, transform 80ms ease;
+  }
+  .card-btn:hover:not(:disabled) {
+    box-shadow: 3px 3px 0 var(--pink);
+    transform: translate(-1px, -1px);
+    text-decoration: none;
+  }
+  .card-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .card-btn.primary {
+    background: var(--ink);
+    color: var(--bg);
+  }
+  .card-btn.primary:hover:not(:disabled) {
+    box-shadow: 3px 3px 0 var(--pink);
+  }
+  .card-btn.danger {
+    border-color: var(--danger);
+    color: var(--danger);
+  }
+  .card-btn.danger:hover:not(:disabled) {
+    background: var(--danger);
+    color: var(--surface);
+    box-shadow: 3px 3px 0 var(--pink);
+  }
+  .card-btn.ghost {
+    border-color: transparent;
+    color: var(--ink-muted);
+  }
+  .card-btn.ghost:hover {
+    color: var(--ink);
+    box-shadow: none;
+    transform: none;
+  }
+  .action-form {
+    margin-top: 0.8rem;
+    padding: 0.85rem 1rem;
+    background: var(--surface-mute);
+    border-left: 3px solid var(--pink);
+    border-radius: 2px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .action-form label {
+    font-family: var(--mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-muted);
+  }
+  .action-form textarea {
+    width: 100%;
+    font-family: inherit;
+    font-size: 13.5px;
+    line-height: 1.55;
+    padding: 0.55rem 0.7rem;
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    background: var(--surface);
+    color: var(--ink);
+    resize: vertical;
+  }
+  .action-form textarea:focus {
+    outline: none;
+    border-color: var(--ink-soft);
+  }
+  .action-form-row {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+  .card-banner {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    padding: 0.45rem 0.7rem;
+    margin-bottom: 0.6rem;
+    border-radius: 2px;
+  }
+  .card-banner.error {
+    background: #fbe2dc;
+    color: var(--danger);
+    border: 1px solid var(--danger);
+  }
+  .card-banner.ok {
+    background: var(--pink-soft);
+    color: var(--ink);
+    border: 1px solid var(--pink);
+  }
+</style>

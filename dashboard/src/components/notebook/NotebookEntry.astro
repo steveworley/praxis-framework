@@ -1,13 +1,14 @@
 ---
+import GutterEntry from '@/components/shared/GutterEntry.astro';
 import type { MemoryEntry } from '@/lib/memory-loader';
 import { renderMarkdown } from '@/lib/markdown';
 import { daysSince, formatAgeLabel, formatIsoDate, formatIsoTime } from '@/lib/ui/time';
 
 /**
  * One memory entry rendered in the redesigned /notebook journal layout. The
- * layout is a 14em gutter (category pill in palette colour + date + age +
- * slug) on the left, and the entry body (title + rendered markdown) on the
- * right. Entries are separated by a hairline rule only — no card chrome.
+ * row composes the shared `GutterEntry` shell: a 14em gutter on the left
+ * (category pill in palette colour + date + age + slug) and the body
+ * (title + rendered markdown) on the right.
  *
  * Category → palette colour mapping (`notes` → peach, `accounts` → purple,
  * `people` → pink, `conversations` → lavender, anything else → peach
@@ -37,7 +38,6 @@ const touchedAt = entry.updated ?? entry.created;
 const days = daysSince(touchedAt);
 const ageLabel = formatAgeLabel(days);
 
-// Date format: `2026-05-14 · today` or `2026-05-10 · 4d ago`
 const datePart = touchedAt ? formatIsoDate(touchedAt) : '';
 const timePart = touchedAt ? formatIsoTime(touchedAt) : '';
 
@@ -51,9 +51,6 @@ function ageBucket(d: number | null): string {
 
 const bucket = ageBucket(days);
 
-// Category-coloured pill. The full set of categories isn't fixed — operators
-// can drop a markdown file under `memory/whatever/` and it'll surface as
-// that category. Map the well-known ones; everything else gets peach.
 const KNOWN_CAT_COLOURS: Record<string, string> = {
   notes: 'peach',
   accounts: 'purple',
@@ -63,13 +60,15 @@ const KNOWN_CAT_COLOURS: Record<string, string> = {
 const catColour = KNOWN_CAT_COLOURS[entry.category] ?? 'peach';
 ---
 
-<article
-  class:list={['entry', entry.category]}
-  data-category={entry.category}
-  data-age-bucket={bucket}
-  data-archived={entry.archived ? 'true' : 'false'}
+<GutterEntry
+  archived={entry.archived}
+  variant={entry.category}
+  dataAttrs={{
+    category: entry.category,
+    'age-bucket': bucket,
+  }}
 >
-  <div class="gutter">
+  <Fragment slot="gutter">
     <span class:list={['cat', catColour]}>{entry.category}</span>
     <span class="when">
       {datePart && <>{datePart}{ageLabel && <> · <span class="age">{ageLabel}</span></>}</>}
@@ -77,9 +76,7 @@ const catColour = KNOWN_CAT_COLOURS[entry.category] ?? 'peach';
     </span>
     {entry.archived && <span class="archived-tag">archived</span>}
     <span class="slug">{entry.slug}</span>
-  </div>
-  <div class="body">
-    <h2>{titleText}</h2>
-    <div class="prose" set:html={bodyHtml}></div>
-  </div>
-</article>
+  </Fragment>
+  <h2>{titleText}</h2>
+  <div class="prose" set:html={bodyHtml}></div>
+</GutterEntry>
