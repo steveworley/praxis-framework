@@ -34,6 +34,8 @@ const sampleInput = (): SeedInput => ({
     { trait: 'curious', qualifiers: [] },
   ],
   capabilities: ['I write tests', 'I refuse to ship without coverage'],
+  accountabilities: [],
+  success_criteria: [],
   inhibitions: ['I never edit prod data without an approval flow'],
   initial_verbs: [
     {
@@ -124,6 +126,68 @@ describe('seedRole', () => {
     expect(persona).toContain('- **curious** -- asks questions before pitching; pulls on threads');
     expect(persona).toContain('- I write tests');
     expect(persona).toContain('- I never edit prod data without an approval flow');
+  });
+
+  describe('persona Accountabilities and Success criteria', () => {
+    it('renders both sections when populated in SeedInput', async () => {
+      const input: SeedInput = {
+        ...sampleInput(),
+        accountabilities: [
+          "I'm responsible for the quality of cold outreach drafts before they reach the operator",
+          "I'm responsible for keeping memory entries current within 24h of every prospect touch",
+        ],
+        success_criteria: [
+          'Drafts land within ≤2 review cycles before operator sends',
+          'Weekly account reads surface ≥1 actionable signal per watched account',
+        ],
+      };
+      await seedRole(input, tmp);
+      const persona = await fs.readFile(path.join(tmp, 'persona.md'), 'utf-8');
+
+      expect(persona).toContain('## Accountabilities');
+      expect(persona).toContain(
+        "- I'm responsible for the quality of cold outreach drafts before they reach the operator",
+      );
+      expect(persona).toContain(
+        "- I'm responsible for keeping memory entries current within 24h of every prospect touch",
+      );
+
+      expect(persona).toContain('## Success criteria');
+      expect(persona).toContain('- Drafts land within ≤2 review cycles before operator sends');
+      expect(persona).toContain(
+        '- Weekly account reads surface ≥1 actionable signal per watched account',
+      );
+
+      // Ordering: Capabilities → Accountabilities → Success criteria → Hard inhibitions.
+      const capIdx = persona.indexOf('## Capabilities');
+      const accIdx = persona.indexOf('## Accountabilities');
+      const succIdx = persona.indexOf('## Success criteria');
+      const inhIdx = persona.indexOf('## Hard inhibitions');
+      expect(capIdx).toBeLessThan(accIdx);
+      expect(accIdx).toBeLessThan(succIdx);
+      expect(succIdx).toBeLessThan(inhIdx);
+    });
+
+    it('leaves template placeholders when neither section has values', async () => {
+      // sampleInput() now ships with empty accountabilities + success_criteria;
+      // the seeded persona keeps the template's placeholder bullets intact.
+      await seedRole(sampleInput(), tmp);
+      const persona = await fs.readFile(path.join(tmp, 'persona.md'), 'utf-8');
+
+      expect(persona).toContain('## Accountabilities');
+      expect(persona).toContain('## Success criteria');
+      // Template placeholders should still be present (no operator content injected).
+      expect(persona).toContain("- I'm responsible for {first-person responsibility");
+      expect(persona).toContain('{Outcome — concrete and falsifiable');
+    });
+
+    it('extends the How I learn section with the self-assessment instruction', async () => {
+      await seedRole(sampleInput(), tmp);
+      const persona = await fs.readFile(path.join(tmp, 'persona.md'), 'utf-8');
+      expect(persona).toContain('## How I learn');
+      expect(persona).toContain('Criteria self-assessment YYYY-MM-DD');
+      expect(persona).toContain('on-track (green), drifting (amber), off (red)');
+    });
   });
 
   it('renders multi-qualifier voice traits as nested bullets', async () => {

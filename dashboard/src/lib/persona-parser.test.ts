@@ -23,6 +23,8 @@ describe('parsePersona', () => {
       identity: {},
       voice: [],
       capabilities: [],
+      accountabilities: [],
+      success_criteria: [],
       inhibitions: [],
       initial_verbs: [],
     });
@@ -42,8 +44,48 @@ describe('parsePersona', () => {
       { trait: 'warm', qualifiers: ['never uses corporate filler'] },
     ]);
     expect(persona.capabilities).toEqual(['I can read accounts weekly', 'I can summarise threads']);
+    expect(persona.accountabilities).toEqual([]);
+    expect(persona.success_criteria).toEqual([]);
     expect(persona.inhibitions).toEqual(['I never send emails without approval']);
     expect(persona.initial_verbs).toEqual([]);
+  });
+
+  it('parses accountabilities and success criteria when present', async () => {
+    const text = `# Persona — Iris\n\n## Identity\n\n- **Full name**: Iris Chen\n\n## Voice & Personality\n\n- **direct** -- single-sentence opens\n\n## Capabilities\n\n- I can read accounts weekly\n\n## Accountabilities\n\nBridges between what I CAN do and what I drive TOWARD.\n\n- I'm responsible for the quality of cold outreach drafts before they reach the operator.\n- I'm responsible for keeping memory entries current within 24h of every prospect touch.\n\n## Success criteria\n\n- Drafts land within ≤2 review cycles before operator sends.\n- Weekly account reads surface ≥1 actionable signal per watched account.\n- No prospect who has opted-out is ever re-touched.\n\n## Hard inhibitions\n\n- I never send emails without approval\n`;
+    await fs.writeFile(path.join(tempDir, 'persona.md'), text, 'utf-8');
+    const persona = await parsePersona(tempDir);
+    expect(persona.accountabilities).toEqual([
+      "I'm responsible for the quality of cold outreach drafts before they reach the operator.",
+      "I'm responsible for keeping memory entries current within 24h of every prospect touch.",
+    ]);
+    expect(persona.success_criteria).toEqual([
+      'Drafts land within ≤2 review cycles before operator sends.',
+      'Weekly account reads surface ≥1 actionable signal per watched account.',
+      'No prospect who has opted-out is ever re-touched.',
+    ]);
+  });
+
+  it('parses accountabilities when success criteria is absent (partial)', async () => {
+    const text = `# Persona — Iris\n\n## Identity\n\n- **Full name**: Iris Chen\n\n## Voice & Personality\n\n- **direct** -- single-sentence opens\n\n## Capabilities\n\n- I can read accounts weekly\n\n## Accountabilities\n\n- I'm responsible for surfacing churn risk early.\n\n## Hard inhibitions\n\n- I never send without approval\n`;
+    await fs.writeFile(path.join(tempDir, 'persona.md'), text, 'utf-8');
+    const persona = await parsePersona(tempDir);
+    expect(persona.accountabilities).toEqual([
+      "I'm responsible for surfacing churn risk early.",
+    ]);
+    expect(persona.success_criteria).toEqual([]);
+  });
+
+  it('preserves markdown formatting inside bullet items', async () => {
+    const text = `# Persona — Iris\n\n## Identity\n\n- **Full name**: Iris Chen\n\n## Voice & Personality\n\n- **direct** -- single-sentence opens\n\n## Capabilities\n\n- I can read accounts weekly\n\n## Accountabilities\n\n- I'm responsible for **draft quality** before review.\n- I'm responsible for keeping \`memory/\` current.\n\n## Success criteria\n\n- Drafts land in *≤2* review cycles.\n\n## Hard inhibitions\n\n- I never send without approval\n`;
+    await fs.writeFile(path.join(tempDir, 'persona.md'), text, 'utf-8');
+    const persona = await parsePersona(tempDir);
+    expect(persona.accountabilities).toEqual([
+      "I'm responsible for **draft quality** before review.",
+      "I'm responsible for keeping `memory/` current.",
+    ]);
+    expect(persona.success_criteria).toEqual([
+      'Drafts land in *≤2* review cycles.',
+    ]);
   });
 
   it('parses multi-qualifier traits as nested bullets', async () => {
@@ -100,6 +142,8 @@ describe('parsePersonaText', () => {
       identity: {},
       voice: [],
       capabilities: [],
+      accountabilities: [],
+      success_criteria: [],
       inhibitions: [],
       initial_verbs: [],
     });

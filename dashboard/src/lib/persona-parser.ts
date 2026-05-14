@@ -28,6 +28,17 @@ export interface Persona {
   identity: Record<string, string>;
   voice: VoiceTrait[];
   capabilities: string[];
+  /**
+   * First-person "I'm responsible for…" statements. The bridge between
+   * capabilities (what the role CAN do) and success criteria (how the role
+   * is judged). Free-text bullet list parsed from `## Accountabilities`.
+   */
+  accountabilities: string[];
+  /**
+   * Observable, falsifiable outcome bullets. The role uses these for
+   * end-of-run self-assessment. Parsed from `## Success criteria`.
+   */
+  success_criteria: string[];
   inhibitions: string[];
   /**
    * Stub verbs — only emitted by the research-engine handoff draft, not the
@@ -118,6 +129,20 @@ export function parsePersonaText(text: string): Persona {
     }
   }
 
+  const accountabilitiesSection = extractSection(text, 'Accountabilities');
+  if (accountabilitiesSection) {
+    for (const item of bulletItems(accountabilitiesSection)) {
+      out.accountabilities.push(item);
+    }
+  }
+
+  const successCriteriaSection = extractSection(text, 'Success criteria');
+  if (successCriteriaSection) {
+    for (const item of bulletItems(successCriteriaSection)) {
+      out.success_criteria.push(item);
+    }
+  }
+
   const inhibitionsSection = extractSection(text, 'Hard inhibitions');
   if (inhibitionsSection) {
     for (const item of bulletItems(inhibitionsSection)) {
@@ -168,7 +193,15 @@ export function parsePersonaText(text: string): Persona {
 }
 
 function emptyPersona(): Persona {
-  return { identity: {}, voice: [], capabilities: [], inhibitions: [], initial_verbs: [] };
+  return {
+    identity: {},
+    voice: [],
+    capabilities: [],
+    accountabilities: [],
+    success_criteria: [],
+    inhibitions: [],
+    initial_verbs: [],
+  };
 }
 
 function extractSection(text: string, heading: string): string | null {

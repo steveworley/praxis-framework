@@ -50,6 +50,31 @@ describe('buildSystemPrompt', () => {
     expect(prompt).toContain('## Hard inhibitions');
   });
 
+  it('includes Accountabilities and Success criteria sections when present', async () => {
+    const text = `# Persona — Iris\n\n## Identity\n\n- **Full name**: Iris Chen\n\n## Voice & Personality\n\n- **direct** -- single-sentence opens\n\n## Capabilities\n\n- I run weekly account reads\n\n## Accountabilities\n\n- I'm responsible for draft quality before review.\n\n## Success criteria\n\n- Drafts land within ≤2 review cycles.\n\n## Hard inhibitions\n\n- I never send without approval\n`;
+    await fs.writeFile(path.join(tempDir, 'persona.md'), text, 'utf-8');
+    const prompt = await buildSystemPrompt(tempDir);
+    expect(prompt).toContain('## Accountabilities');
+    expect(prompt).toContain("I'm responsible for draft quality before review.");
+    expect(prompt).toContain('## Success criteria');
+    expect(prompt).toContain('Drafts land within ≤2 review cycles.');
+    // Ordering: identity → voice → capabilities → accountabilities → success criteria → inhibitions.
+    const accIdx = prompt.indexOf('## Accountabilities');
+    const succIdx = prompt.indexOf('## Success criteria');
+    const capIdx = prompt.indexOf('## Capabilities');
+    const inhIdx = prompt.indexOf('## Hard inhibitions');
+    expect(capIdx).toBeLessThan(accIdx);
+    expect(accIdx).toBeLessThan(succIdx);
+    expect(succIdx).toBeLessThan(inhIdx);
+  });
+
+  it('omits Accountabilities and Success criteria when persona has none', async () => {
+    await seedPersona();
+    const prompt = await buildSystemPrompt(tempDir);
+    expect(prompt).not.toContain('## Accountabilities');
+    expect(prompt).not.toContain('## Success criteria');
+  });
+
   it('omits the verbs section when verbs/ is missing or empty', async () => {
     await seedPersona();
     const prompt = await buildSystemPrompt(tempDir);

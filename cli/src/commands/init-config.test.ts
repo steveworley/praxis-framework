@@ -28,6 +28,10 @@ const sampleConfig = {
     { trait: 'direct', qualifiers: ['short sentences, no hedging'] },
   ],
   capabilities: ['drafts cold-outreach emails'],
+  accountabilities: [
+    "I'm responsible for the quality of cold outreach drafts before they reach the operator",
+  ],
+  success_criteria: ['Drafts land within ≤2 review cycles before operator sends'],
   inhibitions: ['never quote prices without sign-off'],
   initial_verbs: [
     {
@@ -66,6 +70,25 @@ describe('runInitConfig', () => {
     const persona = await fs.readFile(path.join(targetPath, 'persona.md'), 'utf-8');
     expect(persona).toContain('sales-lead');
     expect(persona).toContain('Acme BD');
+  });
+
+  it('round-trips accountabilities and success_criteria from config to persona.md', async () => {
+    const configPath = path.join(tmp, 'role.json');
+    const targetPath = path.join(tmp, 'out');
+    await fs.mkdir(targetPath, { recursive: true });
+    await fs.writeFile(configPath, JSON.stringify(sampleConfig), 'utf-8');
+
+    await runInitConfig({ configPath, targetPath });
+
+    const persona = await fs.readFile(path.join(targetPath, 'persona.md'), 'utf-8');
+    expect(persona).toContain('## Accountabilities');
+    expect(persona).toContain(
+      "- I'm responsible for the quality of cold outreach drafts before they reach the operator",
+    );
+    expect(persona).toContain('## Success criteria');
+    expect(persona).toContain('- Drafts land within ≤2 review cycles before operator sends');
+    // Self-assessment instruction lands via the template extension.
+    expect(persona).toContain('Criteria self-assessment YYYY-MM-DD');
   });
 
   it('writes the runtime scaffolding (docker-compose.yml + .env.example + .gitignore)', async () => {

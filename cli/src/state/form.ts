@@ -50,6 +50,12 @@ export const Form = z.object({
   voice_traits: z.array(VoiceTrait).default([]),
   // Action-shaped responsibilities for this role.
   capabilities: z.array(z.string()).default([]),
+  // First-person "I'm responsible for …" statements — bridges between what
+  // the role CAN do and what it drives TOWARD.
+  accountabilities: z.array(z.string()).default([]),
+  // Observable, falsifiable outcomes the role's performance is judged
+  // against. Used for end-of-run self-assessment.
+  success_criteria: z.array(z.string()).default([]),
   // Hard "never do" rules, intentionally absolute.
   inhibitions: z.array(z.string()).default([]),
   // First verbs the role will run; slug is filename-shaped.
@@ -69,6 +75,8 @@ export const emptyForm = (): Form => ({
   tools: [],
   voice_traits: [],
   capabilities: [],
+  accountabilities: [],
+  success_criteria: [],
   inhibitions: [],
   initial_verbs: [],
 });

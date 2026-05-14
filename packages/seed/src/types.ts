@@ -72,6 +72,19 @@ export const SeedInputSchema = z.object({
     .default({}),
   voice_traits: z.array(VoiceTraitSchema).min(1).max(8),
   capabilities: z.array(z.string().min(1).max(280)).max(10).default([]),
+  /**
+   * First-person "I'm responsible for…" statements. Bridges between what the
+   * role CAN do (capabilities) and what it drives TOWARD (success criteria).
+   * Optional — an empty array leaves the persona template's placeholder
+   * bullets in place.
+   */
+  accountabilities: z.array(z.string().min(1).max(280)).max(8).default([]),
+  /**
+   * Observable, falsifiable outcome bullets. The role uses these for
+   * end-of-run self-assessment. Plain text — no measure DSL. Optional — an
+   * empty array leaves the persona template's placeholder bullets in place.
+   */
+  success_criteria: z.array(z.string().min(1).max(280)).max(10).default([]),
   inhibitions: z.array(z.string().min(1).max(280)).max(10).default([]),
   initial_verbs: z.array(SeedVerbSchema).max(5).default([]),
   // Optional MCP capability names selected during tool selection. The

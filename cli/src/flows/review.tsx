@@ -73,6 +73,18 @@ export const Review = ({ form, scaffoldPath, onConfirm, onCancel }: Props) => {
             {form.capabilities.length === 0 ? muted('(none)') : JSON.stringify(form.capabilities)}
           </Text>
           <Text>
+            {muted('accountabilities:')}{' '}
+            {form.accountabilities.length === 0
+              ? muted('(none)')
+              : JSON.stringify(form.accountabilities)}
+          </Text>
+          <Text>
+            {muted('success_criteria:')}{' '}
+            {form.success_criteria.length === 0
+              ? muted('(none)')
+              : JSON.stringify(form.success_criteria)}
+          </Text>
+          <Text>
             {muted('inhibitions:')}{' '}
             {form.inhibitions.length === 0 ? muted('(none)') : JSON.stringify(form.inhibitions)}
           </Text>

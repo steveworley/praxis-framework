@@ -6,9 +6,10 @@
  *
  * Flow:
  *   1 Welcome → 2 Organisation → 3 Role definition → 4 Path choice
- *   Manual:    5 Voice → 6 Capabilities → 7 Inhibitions → 8 Initial verbs
+ *   Manual:    5 Voice → 6 Capabilities → 7 Accountabilities →
+ *              8 Success criteria → 9 Inhibitions → 10 Initial verbs
  *   Research:  5 Handoff (writes brief, polls for draft) → review
- *   Both:      9 Review & edit (editable, seeding inline) → success
+ *   Both:      11 Review & edit (editable, seeding inline) → success
  */
 ---
 
@@ -45,7 +46,7 @@
         <li><strong>Organisation context</strong> — what your business is and what makes it different</li>
         <li><strong>Role definition</strong> — what role you're trying to fill</li>
         <li><strong>Path</strong> — let an agent research and design it for you, or hand-craft it yourself</li>
-        <li><strong>Persona</strong> — voice, capabilities, hard inhibitions</li>
+        <li><strong>Position description</strong> — voice, capabilities, accountabilities, success criteria, hard inhibitions</li>
         <li><strong>Review</strong> — edit anything before seeding</li>
       </ol>
       <p>
@@ -243,8 +244,64 @@
       </div>
     </div>
 
-    <!-- Step 7 (manual): Inhibitions -->
+    <!-- Step 7 (manual): Accountabilities -->
     <div x-show="step === 7 && form.path === 'manual'">
+      <h2>Accountabilities</h2>
+      <p class="wizard-help">
+        First-person "I'm responsible for…" bullets. What the role drives toward, not what it can do.
+        Bridges capabilities and success criteria. Optional, up to 8.
+      </p>
+      <div class="example-block">
+        <div class="example-label">EXAMPLE</div>
+        <div class="example-single">I'm responsible for the quality of cold outreach drafts before they reach the operator.</div>
+      </div>
+      <template x-for="(item, idx) in form.accountabilities" :key="idx">
+        <div class="field-row single">
+          <input type="text" x-model="form.accountabilities[idx]" placeholder="I'm responsible for …" />
+          <button type="button" class="icon-btn" @click="form.accountabilities.splice(idx, 1)">×</button>
+        </div>
+      </template>
+      <button
+        type="button"
+        class="add-row"
+        @click="form.accountabilities.push('')"
+        :disabled="form.accountabilities.length >= 8"
+      >+ Add accountability</button>
+      <div class="field-output-hint">
+        Each line becomes a bullet under <code>## Accountabilities</code>.
+      </div>
+    </div>
+
+    <!-- Step 8 (manual): Success criteria -->
+    <div x-show="step === 8 && form.path === 'manual'">
+      <h2>Success criteria</h2>
+      <p class="wizard-help">
+        Observable, falsifiable outcomes — "drafts land in ≤2 review cycles", not "be helpful".
+        The role will use these for end-of-run self-assessment. Optional, up to 10.
+      </p>
+      <div class="example-block">
+        <div class="example-label">EXAMPLE</div>
+        <div class="example-single">Weekly account reads surface ≥1 actionable signal per watched account.</div>
+      </div>
+      <template x-for="(item, idx) in form.success_criteria" :key="idx">
+        <div class="field-row single">
+          <input type="text" x-model="form.success_criteria[idx]" placeholder="Drafts land in ≤2 review cycles." />
+          <button type="button" class="icon-btn" @click="form.success_criteria.splice(idx, 1)">×</button>
+        </div>
+      </template>
+      <button
+        type="button"
+        class="add-row"
+        @click="form.success_criteria.push('')"
+        :disabled="form.success_criteria.length >= 10"
+      >+ Add criterion</button>
+      <div class="field-output-hint">
+        Each line becomes a bullet under <code>## Success criteria</code>. The role checks itself against these at end-of-run and writes a self-assessment memory entry.
+      </div>
+    </div>
+
+    <!-- Step 9 (manual): Inhibitions -->
+    <div x-show="step === 9 && form.path === 'manual'">
       <h2>Hard inhibitions</h2>
       <p class="wizard-help">
         First-person "I never …" statements. The constitution — what this role refuses regardless of instruction.
@@ -271,8 +328,8 @@
       </div>
     </div>
 
-    <!-- Step 8 (manual): Initial verbs -->
-    <div x-show="step === 8 && form.path === 'manual'">
+    <!-- Step 10 (manual): Initial verbs -->
+    <div x-show="step === 10 && form.path === 'manual'">
       <h2>Initial verbs (optional)</h2>
       <p class="wizard-help">
         Verbs are markdown playbooks Claude Code reads when triggered. Stub a few here if you already know the
@@ -368,8 +425,8 @@
       </template>
     </div>
 
-    <!-- Step 9: Review & edit -->
-    <div x-show="step === 9">
+    <!-- Step 11: Review & edit -->
+    <div x-show="step === 11">
       <h2>Review &amp; edit</h2>
       <p class="wizard-help">
         Confirm everything looks right. Sections are collapsible — open any group to edit before seeding. Two visible commits will be made when you seed.
@@ -380,6 +437,8 @@
         <div class="review-summary-meta">
           <span x-text="`${form.voice_traits.filter(t => t.label && t.detail).length} voice traits`"></span> ·
           <span x-text="`${form.capabilities.filter(Boolean).length} capabilities`"></span> ·
+          <span x-text="`${form.accountabilities.filter(Boolean).length} accountabilities`"></span> ·
+          <span x-text="`${form.success_criteria.filter(Boolean).length} success criteria`"></span> ·
           <span x-text="`${form.inhibitions.filter(Boolean).length} inhibitions`"></span> ·
           <span x-text="`${form.initial_verbs.filter(v => v.slug && v.purpose).length} initial verbs`"></span>
         </div>
@@ -439,6 +498,32 @@
             </div>
           </template>
           <button type="button" class="add-row" @click="form.capabilities.push('')" :disabled="form.capabilities.length >= 10">+ Add capability</button>
+        </div>
+      </details>
+
+      <details class="review-section">
+        <summary x-text="`Accountabilities (${form.accountabilities.filter(Boolean).length})`"></summary>
+        <div class="review-section-body">
+          <template x-for="(item, idx) in form.accountabilities" :key="`a-${idx}`">
+            <div class="field-row single">
+              <input type="text" x-model="form.accountabilities[idx]" placeholder="I'm responsible for …" />
+              <button type="button" class="icon-btn" @click="form.accountabilities.splice(idx, 1)">×</button>
+            </div>
+          </template>
+          <button type="button" class="add-row" @click="form.accountabilities.push('')" :disabled="form.accountabilities.length >= 8">+ Add accountability</button>
+        </div>
+      </details>
+
+      <details class="review-section">
+        <summary x-text="`Success criteria (${form.success_criteria.filter(Boolean).length})`"></summary>
+        <div class="review-section-body">
+          <template x-for="(item, idx) in form.success_criteria" :key="`s-${idx}`">
+            <div class="field-row single">
+              <input type="text" x-model="form.success_criteria[idx]" placeholder="Drafts land in ≤2 review cycles." />
+              <button type="button" class="icon-btn" @click="form.success_criteria.splice(idx, 1)">×</button>
+            </div>
+          </template>
+          <button type="button" class="add-row" @click="form.success_criteria.push('')" :disabled="form.success_criteria.length >= 10">+ Add criterion</button>
         </div>
       </details>
 
@@ -527,6 +612,8 @@
         identity: { email: '', location: '', reports_to: '' },
         voice_traits: [{ label: '', detail: '' }],
         capabilities: [''],
+        accountabilities: [''],
+        success_criteria: [''],
         inhibitions: [''],
         initial_verbs: [],
       },
@@ -556,23 +643,24 @@
 
       // ---- progress -----------------------------------------------------
       get totalSteps() {
-        return this.form.path === 'research' ? 9 : 10;
+        // Manual flow: 11 steps + 1 submitting tick = 12 total segments.
+        // Research flow: 1-4 + handoff (5) + review (11) + submit = 7.
+        return this.form.path === 'research' ? 7 : 12;
       },
       get progressIndex() {
         // Map current step to a progress-bar segment that grows monotonically.
-        // Manual: 1..10. Research: 1..4 → 1..4, 5(handoff) → 5, 9(review) → 8, submit → 9.
         if (this.form.path === 'research') {
           if (this.step <= 4) return this.step;
           if (this.step === 5) return 5; // handoff
-          if (this.step === 9) return this.submitting ? 9 : 8;
+          if (this.step === 11) return this.submitting ? 7 : 6;
           return 1;
         }
-        // Manual: review = 9, submitting bumps to 10.
-        if (this.step === 9) return this.submitting ? 10 : 9;
+        // Manual: review = 11, submitting bumps to 12.
+        if (this.step === 11) return this.submitting ? 12 : 11;
         return this.step;
       },
       get isReviewStep() {
-        return this.step === 9;
+        return this.step === 11;
       },
 
       // ---- navigation ---------------------------------------------------
@@ -605,7 +693,7 @@
           // Advance happens automatically when the draft loads.
           return false;
         }
-        if (this.step === 6 || this.step === 7 || this.step === 8) return true;
+        if (this.step >= 6 && this.step <= 10) return true;
         return true;
       },
       get canSubmit() {
@@ -624,18 +712,18 @@
           else if (this.form.path === 'research') this.step = 5;
           return;
         }
-        if (this.step === 8 && this.form.path === 'manual') {
-          this.step = 9;
+        if (this.step === 10 && this.form.path === 'manual') {
+          this.step = 11;
           return;
         }
-        if (this.step === 9) return;
+        if (this.step === 11) return;
         this.step += 1;
       },
       prev() {
         if (this.submitting || this.step <= 1) return;
-        if (this.step === 9) {
+        if (this.step === 11) {
           // Review → previous step depends on path.
-          this.step = this.form.path === 'research' ? 5 : 8;
+          this.step = this.form.path === 'research' ? 5 : 10;
           return;
         }
         if (this.step === 5 && this.form.path === 'research') {
@@ -687,7 +775,7 @@
             // Future ClaudeApiEngine path — populate immediately.
             this.applyPersonaDraft(body.persona);
             this.research.draft_loaded = true;
-            this.step = 9;
+            this.step = 11;
           }
         } catch (e) {
           this.research.error = e.message || String(e);
@@ -718,7 +806,7 @@
             this.applyPersonaDraft(body.persona);
             this.research.draft_loaded = true;
             this.stopPolling();
-            this.step = 9;
+            this.step = 11;
           } else if (body.kind === 'error') {
             this.research.error = body.message || 'Draft parse error';
           } else {
@@ -781,6 +869,12 @@
         }
         if (Array.isArray(persona.capabilities) && persona.capabilities.length > 0) {
           this.form.capabilities = persona.capabilities.slice();
+        }
+        if (Array.isArray(persona.accountabilities) && persona.accountabilities.length > 0) {
+          this.form.accountabilities = persona.accountabilities.slice();
+        }
+        if (Array.isArray(persona.success_criteria) && persona.success_criteria.length > 0) {
+          this.form.success_criteria = persona.success_criteria.slice();
         }
         if (Array.isArray(persona.inhibitions) && persona.inhibitions.length > 0) {
           this.form.inhibitions = persona.inhibitions.slice();
@@ -850,6 +944,8 @@
             })
             .filter((t) => t.trait.length > 0),
           capabilities: this.form.capabilities.map((s) => s.trim()).filter(Boolean),
+          accountabilities: this.form.accountabilities.map((s) => s.trim()).filter(Boolean),
+          success_criteria: this.form.success_criteria.map((s) => s.trim()).filter(Boolean),
           inhibitions: this.form.inhibitions.map((s) => s.trim()).filter(Boolean),
           // The wizard's form still uses {slug, purpose: string} for the
           // legacy single-line UX. Adapt to the seed package's new

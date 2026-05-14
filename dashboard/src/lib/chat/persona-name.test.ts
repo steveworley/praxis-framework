@@ -100,6 +100,8 @@ describe('personaNameFrom', () => {
       identity: { name: 'Iris Chen', role_name: 'csm-agent' },
       voice: [],
       capabilities: [],
+      accountabilities: [],
+      success_criteria: [],
       inhibitions: [],
       initial_verbs: [],
     });

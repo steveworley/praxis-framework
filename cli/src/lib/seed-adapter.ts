@@ -27,6 +27,8 @@ export function adaptFormToSeedInput(form: Form): AdaptResult {
     role_definition: form.role_definition,
     voice_traits: form.voice_traits,
     capabilities: form.capabilities,
+    accountabilities: form.accountabilities,
+    success_criteria: form.success_criteria,
     inhibitions: form.inhibitions,
     initial_verbs: form.initial_verbs,
     tools: form.tools,

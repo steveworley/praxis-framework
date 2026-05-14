@@ -16,6 +16,8 @@ import { PathChoiceFlow } from './flows/path-choice.js';
 import { ToolSelection } from './flows/tools.js';
 import { VoiceFlow } from './flows/voice.js';
 import { CapabilitiesFlow } from './flows/capabilities.js';
+import { AccountabilitiesFlow } from './flows/accountabilities.js';
+import { SuccessCriteriaFlow } from './flows/success-criteria.js';
 import { InhibitionsFlow } from './flows/inhibitions.js';
 import { InitialVerbsFlow } from './flows/initial-verbs.js';
 import { Review } from './flows/review.js';
@@ -175,6 +177,32 @@ const renderStep = ({
         onCancel={cancel}
         onNext={(capabilities: string[]) => {
           setForm({ ...form, capabilities });
+          goTo('accountabilities');
+        }}
+      />
+    );
+  }
+
+  if (step === 'accountabilities') {
+    return (
+      <AccountabilitiesFlow
+        initial={form.accountabilities}
+        onCancel={cancel}
+        onNext={(accountabilities: string[]) => {
+          setForm({ ...form, accountabilities });
+          goTo('success-criteria');
+        }}
+      />
+    );
+  }
+
+  if (step === 'success-criteria') {
+    return (
+      <SuccessCriteriaFlow
+        initial={form.success_criteria}
+        onCancel={cancel}
+        onNext={(success_criteria: string[]) => {
+          setForm({ ...form, success_criteria });
           goTo('inhibitions');
         }}
       />

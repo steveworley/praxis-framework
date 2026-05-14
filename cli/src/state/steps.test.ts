@@ -17,6 +17,8 @@ describe('STEPS', () => {
       'tool-selection',
       'voice',
       'capabilities',
+      'accountabilities',
+      'success-criteria',
       'inhibitions',
       'initial-verbs',
       'review',
@@ -39,7 +41,9 @@ describe('nextStep', () => {
     expect(nextStep('path-choice')).toBe('tool-selection');
     expect(nextStep('tool-selection')).toBe('voice');
     expect(nextStep('voice')).toBe('capabilities');
-    expect(nextStep('capabilities')).toBe('inhibitions');
+    expect(nextStep('capabilities')).toBe('accountabilities');
+    expect(nextStep('accountabilities')).toBe('success-criteria');
+    expect(nextStep('success-criteria')).toBe('inhibitions');
     expect(nextStep('inhibitions')).toBe('initial-verbs');
     expect(nextStep('initial-verbs')).toBe('review');
     expect(nextStep('review')).toBe('wrote');
