@@ -1,0 +1,170 @@
+---
+import EscalationActions from '@/components/escalations/EscalationActions.astro';
+import GutterEntry from '@/components/shared/GutterEntry.astro';
+import type { EscalationEntry } from '@/lib/escalations-loader';
+import { renderMarkdown } from '@/lib/markdown';
+import { daysSince, formatAgeLabel, formatIsoDate } from '@/lib/ui/time';
+
+/**
+ * One escalation rendered in the journal-shaped /escalations list. The shell
+ * is the shared `GutterEntry`; this component supplies the escalation-specific
+ * gutter contents (kind pill, status pip, filed-date, severity, slug) and the
+ * body (title, source meta, prose, action affordances on open entries).
+ *
+ * Action affordances are rendered inline via `EscalationActions` so the
+ * accept/decline forms and proposed-skill review link stay one DOM node
+ * away from the surrounding context — the same UX FullEscalation.astro had,
+ * just inside the new shell.
+ *
+ * `data-status` / `data-kind` attributes drive the page-level filter script.
+ */
+interface Props {
+  escalation: EscalationEntry;
+}
+
+const { escalation: e } = Astro.props;
+
+// Kind palette: help / improvement / criterion_drift sit on pink (escalations
+// own pink); proposed_skill rides purple because it bridges into capabilities.
+const KIND_COLOURS: Record<string, 'pink' | 'purple'> = {
+  help: 'pink',
+  improvement: 'pink',
+  criterion_drift: 'pink',
+  proposed_skill: 'purple',
+};
+const kindColour = KIND_COLOURS[e.kind] ?? 'pink';
+
+const isOpen = e.status === 'open';
+const days = daysSince(e.created);
+const ageLabel = formatAgeLabel(days);
+const datePart = e.created ? formatIsoDate(e.created) : '';
+
+// Role-written escalation bodies frequently lead with `# <title>` as an H1
+// that duplicates the rendered title. Strip a leading H1 that matches the
+// title (case-insensitive, whitespace-tolerant) before rendering markdown.
+function stripDuplicateTitleH1(body: string, title: string): string {
+  const titleNorm = title.trim().toLowerCase();
+  if (!titleNorm) return body;
+  const match = /^\s*#\s+(.+?)\s*$/m.exec(body);
+  if (match && match[1].trim().toLowerCase() === titleNorm) {
+    return body.replace(match[0], '').replace(/^\s*\n/, '');
+  }
+  return body;
+}
+const bodyHtml = renderMarkdown(stripDuplicateTitleH1(e.body, e.title));
+
+const draftLineCount = e.proposed_skill_body
+  ? e.proposed_skill_body.split('\n').length
+  : 0;
+---
+
+<GutterEntry
+  variant={`esc-${e.status}`}
+  dataAttrs={{ status: e.status, kind: e.kind }}
+>
+  <Fragment slot="gutter">
+    <span class:list={['cat', kindColour]}>
+      {e.kind === 'proposed_skill' ? 'proposed' : e.kind}
+    </span>
+    <span class:list={['status-pip', `st-${e.status}`]}>
+      <span class="pip"></span>{e.status}
+    </span>
+    <span class="when">
+      {datePart && <>{datePart}{ageLabel && <> · <span class="age">{ageLabel}</span></>}</>}
+    </span>
+    {e.urgency === 'high' && <span class="severity high">HIGH</span>}
+    <span class="slug">{e.slug}</span>
+  </Fragment>
+
+  <h2>{e.title}</h2>
+  {e.agent_context && (
+    <div class="esc-source">from {e.agent_context}</div>
+  )}
+  <div class="prose" set:html={bodyHtml}></div>
+
+  {e.kind === 'proposed_skill' && e.proposed_skill_body && (
+    <div class="draft-block">
+      <div class="draft-meta">
+        draft · {e.proposed_skill_path} · {draftLineCount} {draftLineCount === 1 ? 'line' : 'lines'}
+      </div>{e.proposed_skill_body}
+    </div>
+  )}
+  {e.kind === 'proposed_skill' && !e.proposed_skill_body && e.proposed_skill_path && (
+    <p class="draft-missing">draft missing at <code>{e.proposed_skill_path}</code></p>
+  )}
+
+  {isOpen && <EscalationActions escalation={e} />}
+</GutterEntry>
+
+<style>
+  /* Status pip — small coloured circle followed by the status word, mono. */
+  .status-pip {
+    font-family: var(--mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-soft);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4em;
+  }
+  .status-pip .pip {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--ink-faint);
+    display: inline-block;
+  }
+  .status-pip.st-open .pip { background: var(--pink); }
+  .status-pip.st-resolved .pip { background: var(--good, #5b9e7a); }
+  .status-pip.st-accepted .pip { background: var(--teal); }
+  .status-pip.st-declined .pip { background: var(--danger, #b94032); }
+
+  .severity {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.06em;
+    color: var(--ink-muted);
+  }
+  .severity.high { color: var(--danger, #b94032); font-weight: 600; }
+
+  .esc-source {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--ink-muted);
+    margin-bottom: 0.6em;
+  }
+
+  /* Inlined draft block (proposed_skill). Re-uses the visual treatment from
+     the original FullEscalation; styles live here so we don't have to keep
+     two copies in sync. */
+  .draft-block {
+    margin-top: 1rem;
+    padding: 0.85rem 1rem;
+    background: var(--surface-mute);
+    border-left: 3px solid var(--purple);
+    font-family: var(--mono);
+    font-size: 12.5px;
+    white-space: pre-wrap;
+    color: var(--ink-soft);
+  }
+  .draft-block .draft-meta {
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-muted);
+    margin-bottom: 0.5em;
+  }
+  .draft-missing {
+    margin-top: 1rem;
+    color: var(--ink-muted);
+    font-style: italic;
+  }
+
+  /* Resolved/declined/accepted dim slightly so the open queue carries focus. */
+  :global(.entry.esc-resolved),
+  :global(.entry.esc-declined),
+  :global(.entry.esc-accepted) {
+    opacity: 0.7;
+  }
+</style>

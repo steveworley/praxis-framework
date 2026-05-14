@@ -1,0 +1,126 @@
+---
+import GutterEntry from '@/components/shared/GutterEntry.astro';
+import StatusPill from '@/components/output/StatusPill.astro';
+import type { OutputSummary } from '@/lib/output/types';
+import { daysSince, formatAgeLabel, formatIsoDate } from '@/lib/ui/time';
+
+/**
+ * One output entry rendered in the journal-shaped /output list. The shell
+ * composes `GutterEntry` with `href` set, so the whole row is a single click
+ * target leading to the focused reader (`/output/<type>/<slug>` for non-
+ * records; records use the `<entity_type>/<entity_id>/<slug>` rest path).
+ *
+ * Type → palette tint: the output surface owns purple, so every type pill
+ * rides a purple variant. The variants differ in saturation so a quick
+ * glance distinguishes documents (filled purple) from drafts (soft purple),
+ * etc. Status lives in a `StatusPill` next to the title — drives the same
+ * palette as the type filter on `/output/[type]`.
+ */
+interface Props {
+  output: OutputSummary;
+}
+
+const { output: o } = Astro.props;
+
+const days = daysSince(o.updated);
+const ageLabel = formatAgeLabel(days);
+const datePart = o.updated ? formatIsoDate(o.updated) : '';
+
+function detailHref(out: OutputSummary): string {
+  if (out.type === 'record') {
+    const et = out.extras['entity_type'];
+    const eid = out.extras['entity_id'];
+    return `/output/record/${et}/${eid}/${out.slug}`;
+  }
+  return `/output/${out.type}/${out.slug}`;
+}
+
+const href = detailHref(o);
+
+// Type variants. document/draft/record carry distinct tints so the gutter
+// scans at a glance; plan and reference share the soft variant.
+const TYPE_VARIANT: Record<string, 'purple' | 'purple-soft' | 'lavender' | 'lavender-soft' | 'teal-soft'> = {
+  document: 'purple',
+  draft: 'purple-soft',
+  record: 'lavender',
+  plan: 'teal-soft',
+  reference: 'lavender-soft',
+};
+const typeVariant = TYPE_VARIANT[o.type] ?? 'purple';
+
+// Type-specific subtitle bits surfaced in the body's meta row.
+const metaBits: string[] = [];
+if (o.type === 'record' && typeof o.extras['entity_type'] === 'string') {
+  const et = o.extras['entity_type'];
+  const eid = o.extras['entity_id'];
+  metaBits.push(`${et}${typeof eid === 'string' ? ` · ${eid}` : ''}`);
+}
+if (o.type === 'draft' && typeof o.extras['recipient'] === 'string') {
+  metaBits.push(`to ${o.extras['recipient']}`);
+}
+if (o.type === 'draft' && typeof o.extras['channel'] === 'string') {
+  metaBits.push(o.extras['channel']);
+}
+---
+
+<GutterEntry
+  href={href}
+  variant={`out-${o.type}`}
+  dataAttrs={{ type: o.type, status: o.status }}
+>
+  <Fragment slot="gutter">
+    <span class:list={['cat', `tone-${typeVariant}`]}>{o.type}</span>
+    <span class="when">
+      {datePart && <>{datePart}{ageLabel && <> · <span class="age">{ageLabel}</span></>}</>}
+    </span>
+    <span class="slug">{o.slug}</span>
+  </Fragment>
+
+  <div class="out-entry-head">
+    <h2>{o.title}</h2>
+    <StatusPill status={o.status} />
+  </div>
+  {metaBits.length > 0 && (
+    <div class="out-entry-meta">{metaBits.join(' · ')}</div>
+  )}
+</GutterEntry>
+
+<style>
+  /* Type tints — purple-family, owned by the output surface. */
+  :global(.entry .gutter .cat.tone-purple) {
+    background: var(--purple);
+    color: var(--surface);
+  }
+  :global(.entry .gutter .cat.tone-purple-soft) {
+    background: var(--purple-soft);
+    color: var(--ink);
+  }
+  :global(.entry .gutter .cat.tone-lavender) {
+    background: var(--lavender);
+    color: var(--surface);
+  }
+  :global(.entry .gutter .cat.tone-lavender-soft) {
+    background: var(--lavender-soft);
+    color: var(--ink);
+  }
+  :global(.entry .gutter .cat.tone-teal-soft) {
+    background: var(--teal-soft);
+    color: var(--ink);
+  }
+
+  .out-entry-head {
+    display: flex;
+    align-items: baseline;
+    gap: 0.8rem;
+    flex-wrap: wrap;
+  }
+  .out-entry-head h2 {
+    margin-bottom: 0;
+  }
+  .out-entry-meta {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--ink-muted);
+    margin-top: 0.35em;
+  }
+</style>

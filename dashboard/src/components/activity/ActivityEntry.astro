@@ -1,0 +1,158 @@
+---
+import GutterEntry from '@/components/shared/GutterEntry.astro';
+import type { ActivityEntry as ActivityEntryType } from '@/lib/activity-loader';
+import { isDecisionEntry, toDecisionView } from '@/lib/decision-renderer';
+import { formatIsoTime } from '@/lib/ui/time';
+
+/**
+ * One activity event rendered in the journal-shaped /activity feed. Events
+ * are shorter and more frequent than notebook entries, so the body collapses
+ * to a single line of mono text with optional metadata, plus the existing
+ * decision rationale block when the event is a decision.
+ *
+ * Action → palette tint:
+ *   - decision        → purple (purple owns activity)
+ *   - tool_call       → purple-soft (subordinate to decisions)
+ *   - verb_started    → teal-soft (verb lifecycle reads as cooler)
+ *   - verb_completed  → teal-soft
+ *   - everything else → purple-soft fallback
+ */
+interface Props {
+  entry: ActivityEntryType;
+}
+
+const { entry: e } = Astro.props;
+
+const action = typeof e.action === 'string' && e.action.length > 0 ? e.action : 'other';
+const time = formatIsoTime(typeof e.timestamp === 'string' ? e.timestamp : undefined);
+
+function buildHeadline(entry: ActivityEntryType): string {
+  const headline = typeof entry.headline === 'string' ? entry.headline : '';
+  if (headline.length > 0) return headline;
+  if (typeof entry.notes === 'string' && entry.notes.length > 0) return entry.notes;
+  const act = typeof entry.action === 'string' ? entry.action : '';
+  return act || '(no detail)';
+}
+
+function metaLine(entry: ActivityEntryType): string {
+  const bits: string[] = [];
+  if (typeof entry.agent === 'string' && entry.agent.length > 0) bits.push(`from ${entry.agent}`);
+  const keep = ['domain', 'company', 'campaign', 'channel', 'kind', 'urgency', 'next_step', 'outcome'] as const;
+  for (const k of keep) {
+    const v = entry[k];
+    if (typeof v === 'string' && v.length > 0) bits.push(`${k}=${v}`);
+  }
+  return bits.join(' · ');
+}
+
+const ACTION_TONE: Record<string, 'purple' | 'purple-soft' | 'teal-soft'> = {
+  decision: 'purple',
+  tool_call: 'purple-soft',
+  verb_started: 'teal-soft',
+  verb_completed: 'teal-soft',
+};
+const tone = ACTION_TONE[action] ?? 'purple-soft';
+
+const headline = buildHeadline(e);
+const meta = metaLine(e);
+const isDecision = isDecisionEntry(e);
+const decisionView = isDecision ? toDecisionView(e) : null;
+---
+
+<GutterEntry
+  variant="activity-entry"
+  dataAttrs={{ action }}
+>
+  <Fragment slot="gutter">
+    <span class:list={['cat', `tone-${tone}`]}>{action}</span>
+    <span class="when">{time}</span>
+    {typeof e.agent === 'string' && e.agent.length > 0 && (
+      <span class="from">from {e.agent}</span>
+    )}
+  </Fragment>
+
+  <div class="act-headline">{headline}</div>
+  {meta && <div class="act-meta">{meta}</div>}
+
+  {decisionView && (
+    <div class="rationale-block">
+      <dl>
+        {decisionView.chosen && (
+          <>
+            <dt>chosen</dt>
+            <dd style="color: var(--ink);">{decisionView.chosen}</dd>
+          </>
+        )}
+        {decisionView.considered && (
+          <>
+            <dt>considered</dt>
+            <dd class="considered">{decisionView.considered}</dd>
+          </>
+        )}
+        {decisionView.rationale && (
+          <>
+            <dt>rationale</dt>
+            <dd>{decisionView.rationale}</dd>
+          </>
+        )}
+        {decisionView.confidence && (
+          <>
+            <dt>confidence</dt>
+            <dd>
+              <span class:list={['confidence-pill', decisionView.confidenceClass]}>
+                {decisionView.confidence}
+              </span>
+            </dd>
+          </>
+        )}
+        {decisionView.decisionType && (
+          <>
+            <dt>type</dt>
+            <dd>
+              <span class="decision-type-pill">{decisionView.decisionType}</span>
+            </dd>
+          </>
+        )}
+      </dl>
+    </div>
+  )}
+</GutterEntry>
+
+<style>
+  :global(.entry .gutter .cat.tone-purple) {
+    background: var(--purple);
+    color: var(--surface);
+  }
+  :global(.entry .gutter .cat.tone-purple-soft) {
+    background: var(--purple-soft);
+    color: var(--ink);
+  }
+  :global(.entry .gutter .cat.tone-teal-soft) {
+    background: var(--teal-soft);
+    color: var(--ink);
+  }
+  :global(.entry .gutter .from) {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--ink-faint);
+  }
+
+  .act-headline {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--ink);
+    line-height: 1.55;
+    word-break: break-word;
+  }
+  .act-meta {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--ink-muted);
+    margin-top: 0.3em;
+  }
+  /* Override the inherited 14em wide entry padding so activity rows feel
+     denser than notebook entries (events are more frequent + shorter). */
+  :global(.entry.activity-entry) {
+    padding: 1.2rem 0;
+  }
+</style>

@@ -1,18 +1,18 @@
 ---
+import FilterChips, {
+  type ChipOption,
+} from '@/components/shared/FilterChips.astro';
+import { buildChipHref } from '@/lib/ui/filter-href';
+
 /**
- * The three filter rows on /notebook (category × age × visibility). Each
- * chip is an anchor with the URL params encoded so the filter state is
- * shareable / refreshable / progressively enhanced — no Alpine, no JS
- * required. The page initialises its `active` state from `Astro.url`'s
- * `cat` / `age` / `vis` params.
+ * The three filter rows on /notebook (category × age × visibility). Now
+ * composes the shared `FilterChips` shell so the chip shape stays in sync
+ * across journal-shaped surfaces.
  *
- * Chip visual style follows the character-sheet mockup: ink-background when
- * active (paper text), paper-background with a hairline rule when inactive.
- * Counts render in a small mono `<span class="ct">…</span>` next to the
- * label.
- *
- * The component itself is layout-only: it doesn't know what the filters
- * filter, just renders the chip rows and links to `?cat=X&age=Y&vis=Z`.
+ * The page-side API is unchanged: it still passes `categories`, `ages`,
+ * `visibilities` and `active`, and the component handles href construction
+ * via the shared `buildChipHref` helper. Defaults (cat=all, age=any,
+ * vis=live) are encoded here because they're notebook-specific.
  */
 export interface FilterOption {
   key: string;
@@ -29,49 +29,41 @@ interface Props {
 
 const { categories, ages, visibilities, active } = Astro.props;
 
-function hrefFor(group: 'cat' | 'age' | 'vis', value: string): string {
-  const params = new URLSearchParams();
-  const next = { ...active, [group]: value };
-  if (next.cat !== 'all') params.set('cat', next.cat);
-  if (next.age !== 'any') params.set('age', next.age);
-  if (next.vis !== 'live') params.set('vis', next.vis);
-  const q = params.toString();
-  return q ? `/notebook?${q}` : '/notebook';
+const DEFAULTS = { cat: 'all', age: 'any', vis: 'live' };
+
+function toChipOptions(
+  group: 'cat' | 'age' | 'vis',
+  opts: FilterOption[],
+): ChipOption[] {
+  return opts.map((o) => ({
+    value: o.key,
+    label: o.label,
+    count: o.count ?? undefined,
+    href: buildChipHref({
+      pathname: '/notebook',
+      current: active,
+      group,
+      value: o.key,
+      defaults: DEFAULTS,
+    }),
+  }));
 }
 ---
 
 <section class="nb-filters">
-  <div class="filter-row">
-    <span class="filter-label">category</span>
-    {categories.map((f) => (
-      <a
-        class:list={['chip', f.key === active.cat && 'active']}
-        href={hrefFor('cat', f.key)}
-      >
-        {f.label}{f.count !== null && <span class="ct">{f.count}</span>}
-      </a>
-    ))}
-  </div>
-  <div class="filter-row">
-    <span class="filter-label">age</span>
-    {ages.map((f) => (
-      <a
-        class:list={['chip', f.key === active.age && 'active']}
-        href={hrefFor('age', f.key)}
-      >
-        {f.label}{f.count !== null && <span class="ct">{f.count}</span>}
-      </a>
-    ))}
-  </div>
-  <div class="filter-row">
-    <span class="filter-label">visibility</span>
-    {visibilities.map((f) => (
-      <a
-        class:list={['chip', f.key === active.vis && 'active']}
-        href={hrefFor('vis', f.key)}
-      >
-        {f.label}{f.count !== null && <span class="ct">{f.count}</span>}
-      </a>
-    ))}
-  </div>
+  <FilterChips
+    label="category"
+    current={active.cat}
+    options={toChipOptions('cat', categories)}
+  />
+  <FilterChips
+    label="age"
+    current={active.age}
+    options={toChipOptions('age', ages)}
+  />
+  <FilterChips
+    label="visibility"
+    current={active.vis}
+    options={toChipOptions('vis', visibilities)}
+  />
 </section>

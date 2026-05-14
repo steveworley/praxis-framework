@@ -1,5 +1,4 @@
 ---
-import Breadcrumb from '@/components/Breadcrumb.astro';
 import EmptyState from '@/components/EmptyState.astro';
 import DocumentView from '@/components/output/DocumentView.astro';
 import DraftView from '@/components/output/DraftView.astro';
@@ -20,10 +19,16 @@ import { parsePersona, type Persona } from '@/lib/persona-parser';
 import { detectMode, getRoleHome, nowIso } from '@/lib/role-home';
 
 /**
- * /output/[type]/[...slug] — single-output detail. Loads the file via the
- * loader, dispatches to the per-type renderer based on `meta.type`. For
+ * /output/[type]/[...slug] — focused-reader detail page. Loads the file via
+ * the loader, dispatches to the per-type renderer based on `meta.type`. For
  * records, the rest-param slug carries the `<entity_type>/<entity_id>/
  * <slug>` path; for other types it's just the slug.
+ *
+ * Layout vs. the old detail page: no hero, no stats strip, no filters — this
+ * is a reading surface. A small back link sits above the rendered article;
+ * the per-type renderer supplies the title and prose body. The Fraunces +
+ * Source Serif 4 treatment matches notebook entries because the data is
+ * the same shape (markdown + frontmatter).
  */
 
 export const prerender = false;
@@ -74,13 +79,9 @@ const pageTitle = detail ? `${detail.meta.title} · Output` : `Output · Praxis`
       updatedAt={updatedAt}
     />
 
-    <Breadcrumb
-      crumbs={[
-        { label: 'output', href: '/output' },
-        { label: type, href: `/output/${type}` },
-        { label: slugParam },
-      ]}
-    />
+    <div class="out-back">
+      <a href={`/output/${type}`}>← {type}</a>
+    </div>
 
     {notFound && <EmptyState>Output not found at this path.</EmptyState>}
     {error && <EmptyState>Could not load output: {error}</EmptyState>}
@@ -95,5 +96,22 @@ const pageTitle = detail ? `${detail.meta.title} · Output` : `Output · Praxis`
       <ReferenceView meta={detail.meta} bodyHtml={bodyHtml} />
     )}
   </main>
-
 </BaseLayout>
+
+<style>
+  .out-back {
+    margin-top: 1.6rem;
+    margin-bottom: 0.6rem;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink-muted);
+  }
+  .out-back a {
+    color: var(--ink-muted);
+    text-decoration: none;
+  }
+  .out-back a:hover {
+    color: var(--ink);
+    text-decoration: underline;
+  }
+</style>

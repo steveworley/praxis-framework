@@ -1,9 +1,10 @@
 ---
-import Breadcrumb from '@/components/Breadcrumb.astro';
-import EmptyState from '@/components/EmptyState.astro';
-import FilePath from '@/components/FilePath.astro';
+import StatsStrip from '@/components/notebook/StatsStrip.astro';
+import OutputEntry from '@/components/output/OutputEntry.astro';
 import RouteHeader from '@/components/RouteHeader.astro';
-import StatusPill from '@/components/output/StatusPill.astro';
+import FilterChips, {
+  type ChipOption,
+} from '@/components/shared/FilterChips.astro';
 import BaseLayout from '@/layouts/BaseLayout.astro';
 import { personaNameFrom } from '@/lib/chat/persona-name';
 import { listOutputs } from '@/lib/output/loader';
@@ -16,10 +17,14 @@ import {
 } from '@/lib/output/types';
 import { parsePersona, type Persona } from '@/lib/persona-parser';
 import { detectMode, getRoleHome, nowIso } from '@/lib/role-home';
+import { buildChipHref } from '@/lib/ui/filter-href';
+import { daysSince } from '@/lib/ui/time';
 
 /**
- * /output/[type] — table-style listing for one type. Filters: status, and
- * (for records) entity_type/entity_id picked from the existing data.
+ * /output/[type] — type-scoped listing in the journal-shaped shell. The hero
+ * + filter rows mirror /output/index, with the type chip locked to the route
+ * param so the operator's mental model stays "I'm in the type's view".
+ * Status and entity_type filters live alongside as additional query keys.
  */
 
 export const prerender = false;
@@ -36,17 +41,14 @@ if (mode === 'seed') {
   return Astro.redirect('/setup');
 }
 
-const url = new URL(Astro.request.url);
-const statusFilter = url.searchParams.get('status');
-const entityTypeFilter = url.searchParams.get('entity_type');
-const entityIdFilter = url.searchParams.get('entity_id');
+const statusFilter = Astro.url.searchParams.get('status');
+const entityTypeFilter = Astro.url.searchParams.get('entity_type');
 
 const listOpts: Parameters<typeof listOutputs>[1] = { type };
 if (statusFilter && (STATUS_ENUM as readonly string[]).includes(statusFilter)) {
   listOpts.status = statusFilter as OutputStatus;
 }
 if (type === 'record' && entityTypeFilter) listOpts.entityType = entityTypeFilter;
-if (type === 'record' && entityIdFilter) listOpts.entityId = entityIdFilter;
 
 const [personaRes, entriesRes, allOfTypeRes] = await Promise.allSettled([
   parsePersona(roleHome),
@@ -59,65 +61,93 @@ const personaName = personaNameFrom(persona);
 const entries: OutputSummary[] = entriesRes.status === 'fulfilled' ? entriesRes.value : [];
 const allOfType: OutputSummary[] = allOfTypeRes.status === 'fulfilled' ? allOfTypeRes.value : [];
 
-// Status filter chips: build from `allOfType` so counts are stable as the
-// operator narrows by entity. Active state from `listOpts.status`.
 const statusCounts: Record<string, number> = {};
 for (const e of allOfType) {
   statusCounts[e.status] = (statusCounts[e.status] ?? 0) + 1;
 }
-const statusChips: Array<{ key: string; label: string; count: number; active: boolean }> = [
-  { key: 'all', label: 'all', count: allOfType.length, active: !statusFilter },
-  ...STATUS_ENUM.filter((s) => (statusCounts[s] ?? 0) > 0).map((s) => ({
-    key: s,
-    label: s,
-    count: statusCounts[s] ?? 0,
-    active: statusFilter === s,
-  })),
-];
 
-// Entity dimension for records.
-let entityTypes: Array<{ key: string; count: number }> = [];
-if (type === 'record') {
-  const m: Record<string, number> = {};
+const updatedAt = nowIso();
+
+// Stats — focused on the type's own slice.
+const thisWeek = allOfType.filter((o) => {
+  const d = daysSince(o.updated);
+  return d !== null && d <= 7;
+}).length;
+
+const TYPE_BLURBS: Record<OutputType, string> = {
+  document: 'Long-form prose: briefs, notes, analyses.',
+  draft: 'Outgoing communication waiting to be sent.',
+  record: 'Entity-tied observations: reads, calls, meetings.',
+  plan: 'Multi-step intent with a checklist.',
+  reference: 'Reusable knowledge: heuristics, recipes, calibrations.',
+};
+
+const TYPE_DEFAULTS = { status: 'all', entity_type: 'all' };
+const typeCurrent = {
+  status: statusFilter ?? 'all',
+  entity_type: entityTypeFilter ?? 'all',
+};
+
+function statusChips(): ChipOption[] {
+  const opts: Array<Omit<ChipOption, 'href'>> = [
+    { value: 'all', label: 'all', count: allOfType.length },
+    ...STATUS_ENUM.filter((s) => (statusCounts[s] ?? 0) > 0).map((s) => ({
+      value: s,
+      label: s as string,
+      count: statusCounts[s] ?? 0,
+    })),
+  ];
+  return opts.map((o) => ({
+    ...o,
+    href: buildChipHref({
+      pathname: `/output/${type}`,
+      current: typeCurrent,
+      group: 'status',
+      value: o.value,
+      defaults: TYPE_DEFAULTS,
+    }),
+  }));
+}
+
+function entityChips(): ChipOption[] {
+  const counts: Record<string, number> = {};
   for (const e of allOfType) {
     const et = typeof e.extras['entity_type'] === 'string' ? e.extras['entity_type'] : '';
     if (!et) continue;
-    m[et] = (m[et] ?? 0) + 1;
+    counts[et] = (counts[et] ?? 0) + 1;
   }
-  entityTypes = Object.entries(m)
-    .map(([key, count]) => ({ key, count }))
-    .sort((a, b) => a.key.localeCompare(b.key));
+  const opts: Array<Omit<ChipOption, 'href'>> = [
+    { value: 'all', label: 'all', count: allOfType.length },
+    ...Object.entries(counts)
+      .map(([k, c]) => ({ value: k, label: k, count: c }))
+      .sort((a, b) => a.value.localeCompare(b.value)),
+  ];
+  return opts.map((o) => ({
+    ...o,
+    href: buildChipHref({
+      pathname: `/output/${type}`,
+      current: typeCurrent,
+      group: 'entity_type',
+      value: o.value,
+      defaults: TYPE_DEFAULTS,
+    }),
+  }));
 }
 
-function detailHref(o: OutputSummary): string {
-  if (o.type === 'record') {
-    const et = o.extras['entity_type'];
-    const eid = o.extras['entity_id'];
-    return `/output/record/${et}/${eid}/${o.slug}`;
-  }
-  return `/output/${o.type}/${o.slug}`;
+// Type-row chips — let the operator hop between types from inside any
+// type-scoped view. The currently selected route maps to the type chip.
+function typeChips(): ChipOption[] {
+  return [
+    { value: 'all', label: 'all', href: '/output' },
+    ...OUTPUT_TYPE_ENUM.map((t) => ({
+      value: t as string,
+      label: t as string,
+      href: `/output/${t}`,
+    })),
+  ];
 }
 
-function chipHref(status: string | null): string {
-  const u = new URL(Astro.request.url);
-  if (status === null || status === 'all') u.searchParams.delete('status');
-  else u.searchParams.set('status', status);
-  return `${u.pathname}?${u.searchParams.toString()}`.replace(/\?$/, '');
-}
-
-function entityHref(et: string | null): string {
-  const u = new URL(Astro.request.url);
-  if (et === null) {
-    u.searchParams.delete('entity_type');
-    u.searchParams.delete('entity_id');
-  } else {
-    u.searchParams.set('entity_type', et);
-    u.searchParams.delete('entity_id');
-  }
-  return `${u.pathname}?${u.searchParams.toString()}`.replace(/\?$/, '');
-}
-
-const updatedAt = nowIso();
+const title = persona ? `${personaName.short}'s ${type}s` : `What I've produced — ${type}s`;
 ---
 
 <BaseLayout title={`${type} · Output · Praxis`}>
@@ -128,174 +158,49 @@ const updatedAt = nowIso();
       updatedAt={updatedAt}
     />
 
-    <div class="type-list">
-      <Breadcrumb crumbs={[{ label: 'output', href: '/output' }, { label: type }]} />
-
-      <div class="group-head">
-        <span class="group-title">{type}</span>
-        <span class="group-counter">
-          {entries.length} of {allOfType.length}
-        </span>
+    <section class="nb-hero">
+      <div class="hero-left">
+        <div class="pill purple">OUTPUT · {type.toUpperCase()}</div>
+        <h1>{title}</h1>
+        <div class="sub">{TYPE_BLURBS[type]}</div>
       </div>
+      <StatsStrip
+        colour="purple"
+        stats={[
+          { label: 'this week', value: thisWeek > 0 ? `+${thisWeek}` : '0', accent: true },
+          { label: `total ${type}`, value: allOfType.length },
+          { label: 'showing', value: entries.length },
+        ]}
+      />
+    </section>
 
-      <div class="chip-row">
-        {statusChips.map((c) => (
-          <a
-            class:list={['chip', c.active && 'active']}
-            href={chipHref(c.key)}
-          >
-            {c.label}<span class="ct">{c.count}</span>
-          </a>
-        ))}
+    <section class="nb-filters">
+      <FilterChips label="type" current={type} options={typeChips()} />
+      <FilterChips label="status" current={statusFilter ?? 'all'} options={statusChips()} />
+      {type === 'record' && (
+        <FilterChips
+          label="entity"
+          current={entityTypeFilter ?? 'all'}
+          options={entityChips()}
+        />
+      )}
+    </section>
+
+    {entries.length === 0 ? (
+      <div class="nb-empty">
+        No {type} entries{statusFilter || entityTypeFilter ? ' matching this filter' : ''}.
       </div>
-
-      {type === 'record' && entityTypes.length > 0 && (
-        <div class="chip-row">
-          <span class="chip-label">entity type:</span>
-          <a
-            class:list={['chip', !entityTypeFilter && 'active']}
-            href={entityHref(null)}
-          >all</a>
-          {entityTypes.map((et) => (
-            <a
-              class:list={['chip', entityTypeFilter === et.key && 'active']}
-              href={entityHref(et.key)}
-            >
-              {et.key}<span class="ct">{et.count}</span>
-            </a>
-          ))}
-        </div>
-      )}
-
-      {entries.length === 0 ? (
-        <EmptyState>
-          No {type} entries{statusFilter || entityTypeFilter ? ' matching this filter' : ''}.
-        </EmptyState>
-      ) : (
-        <ul class="entries">
-          {entries.map((o) => (
-            <li class="entry">
-              <a href={detailHref(o)} class="entry-link">
-                <div class="entry-title-row">
-                  <span class="entry-title">{o.title}</span>
-                  <StatusPill status={o.status} />
-                </div>
-                <div class="entry-meta">
-                  <FilePath path={o.path} />
-                  <span class="dot">·</span>
-                  <span>updated {o.updated}</span>
-                  {type === 'record' && o.extras['entity_type'] && (
-                    <>
-                      <span class="dot">·</span>
-                      <span>{o.extras['entity_type']} · {o.extras['entity_id']}</span>
-                    </>
-                  )}
-                  {type === 'draft' && typeof o.extras['recipient'] === 'string' && (
-                    <>
-                      <span class="dot">·</span>
-                      <span>to {o.extras['recipient']}</span>
-                    </>
-                  )}
-                </div>
-              </a>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+    ) : (
+      <section class="entries">
+        {entries.map((o) => <OutputEntry output={o} />)}
+      </section>
+    )}
   </main>
-
-  <style>
-    .type-list {
-      margin-top: 1.2rem;
-    }
-    .group-title {
-      text-transform: capitalize;
-    }
-    .chip-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.4rem;
-      margin: 0.8rem 0 1rem;
-      align-items: baseline;
-    }
-    .chip-label {
-      font-size: 11.5px;
-      color: var(--ink-muted);
-      font-family: ui-monospace, monospace;
-      margin-right: 0.3rem;
-    }
-    .chip {
-      display: inline-flex;
-      align-items: baseline;
-      gap: 0.4rem;
-      padding: 0.2rem 0.65rem;
-      border: 1px solid var(--rule);
-      border-radius: 12px;
-      text-decoration: none;
-      color: var(--ink-soft);
-      font-size: 12.5px;
-      background: var(--surface);
-    }
-    .chip:hover {
-      border-color: var(--rule-strong);
-      color: var(--ink);
-    }
-    .chip.active {
-      background: var(--ink);
-      color: var(--surface);
-      border-color: var(--ink);
-    }
-    .chip .ct {
-      font-family: ui-monospace, monospace;
-      font-size: 11px;
-      opacity: 0.7;
-    }
-
-    .entries {
-      list-style: none;
-      padding: 0;
-      margin: 1rem 0 0;
-    }
-    .entry {
-      border-top: 1px solid var(--rule);
-    }
-    .entry:last-child {
-      border-bottom: 1px solid var(--rule);
-    }
-    .entry-link {
-      display: block;
-      padding: 0.85rem 0;
-      text-decoration: none;
-      color: inherit;
-    }
-    .entry-link:hover {
-      padding-left: 0.5rem;
-      padding-right: 0.5rem;
-      background: var(--surface-mute);
-    }
-    .entry-title-row {
-      display: flex;
-      gap: 0.7rem;
-      align-items: baseline;
-      flex-wrap: wrap;
-      margin-bottom: 0.25rem;
-    }
-    .entry-title {
-      font-size: 14.5px;
-      font-weight: 500;
-      color: var(--ink);
-    }
-    .entry-meta {
-      font-family: ui-monospace, monospace;
-      font-size: 11.5px;
-      color: var(--ink-muted);
-      display: flex;
-      gap: 0.4rem;
-      flex-wrap: wrap;
-    }
-    .entry-meta .dot {
-      color: var(--ink-faint);
-    }
-  </style>
 </BaseLayout>
+
+<style>
+  .nb-hero .hero-left .pill.purple {
+    background: var(--purple);
+    color: var(--surface);
+  }
+</style>

@@ -161,10 +161,13 @@ const title = persona ? `What ${personaShort(persona)} has noticed` : "What I've
         <div class="sub">{sub}</div>
       </div>
       <StatsStrip
-        thisWeek={thisWeek}
-        total={total}
-        sinceLastLabel={sinceLastDays}
-        archived={archivedEntries.length}
+        colour="peach"
+        stats={[
+          { label: 'this week', value: thisWeek > 0 ? `+${thisWeek}` : '0', accent: true },
+          { label: 'total', value: total },
+          { label: 'since last', value: sinceLastDays },
+          { label: 'archived', value: archivedEntries.length },
+        ]}
       />
     </section>
 

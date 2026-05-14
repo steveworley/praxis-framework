@@ -1,0 +1,74 @@
+---
+/**
+ * Two-column gutter+body row shared by the journal-shaped list surfaces:
+ * `/notebook`, `/escalations`, `/output`, `/activity`. The shell renders the
+ * 14em gutter rail on the left, the body slot on the right, and a hairline
+ * rule above each entry (no card chrome, generous vertical padding).
+ *
+ * Slot contract:
+ *   - `gutter` (named) — category pill, dates, slugs, status pips. Caller
+ *     decides the contents; this component just hands the gutter column a
+ *     vertical flex stack with `0.7em` gap to match the notebook layout.
+ *   - default — the body (h1 title, meta, prose, action affordances).
+ *
+ * Behaviour:
+ *   - `href` wraps the whole entry in an `<a>` so the row is one click
+ *     target. When omitted, the entry stays passive (used by /escalations
+ *     and /activity where the body itself carries forms/links).
+ *   - `archived` dims the row to 55% opacity; mirrors the `data-archived`
+ *     attribute the notebook page uses for visibility filtering.
+ *   - `dataAttrs` is forwarded as `data-*` attributes so callers can drive
+ *     page-level filter scripts (e.g. `data-status`, `data-kind`, `data-action`)
+ *     without sprinkling per-surface variants of this shell.
+ *
+ * Visual styling lives in `global.css` under `.entries .entry` — this file
+ * stays presentation-thin so future surface additions can ride the same
+ * pattern.
+ */
+interface Props {
+  href?: string | undefined;
+  archived?: boolean | undefined;
+  /** Additional `class:list`-friendly tokens (e.g. surface colour variant). */
+  variant?: string | undefined;
+  /** `data-*` attribute map for page-level filter scripts. */
+  dataAttrs?: Record<string, string | number | boolean | undefined> | undefined;
+}
+
+const { href, archived = false, variant, dataAttrs = {} } = Astro.props;
+
+// Spread `data-*` attributes onto the wrapper. We accept booleans/numbers
+// alongside strings so callers can pass through native values without
+// pre-stringifying every one.
+const dataset: Record<string, string> = {};
+for (const [key, value] of Object.entries(dataAttrs)) {
+  if (value === undefined || value === null) continue;
+  dataset[`data-${key}`] = String(value);
+}
+if (archived) dataset['data-archived'] = 'true';
+
+const Tag = href ? 'a' : 'article';
+const tagProps: Record<string, string> = { ...dataset };
+if (href) tagProps['href'] = href;
+---
+
+<Tag class:list={['entry', variant]} {...tagProps}>
+  <div class="gutter">
+    <slot name="gutter" />
+  </div>
+  <div class="body">
+    <slot />
+  </div>
+</Tag>
+
+<style>
+  /* Make the anchor variant inherit colour + drop default underlines so the
+     row reads like the article variant. The shared `.entry` rules in
+     global.css handle layout. */
+  a.entry {
+    color: inherit;
+    text-decoration: none;
+  }
+  a.entry:hover {
+    background: var(--surface-mute);
+  }
+</style>
