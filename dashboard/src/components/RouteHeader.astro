@@ -3,13 +3,45 @@ import { assembleEscalations } from '@/lib/escalations-loader';
 import { getRoleHome } from '@/lib/role-home';
 import { listProposedVerbs } from '@/lib/triage';
 
-/** Top app head + nav, rendered identically on every route. The `current`
- * prop drives the active-tab underline; badge counts (escalations / triage)
- * are loaded inside this component so every page renders them consistently
- * without having to pipe state through props. If either loader fails the
- * affected badge silently falls back to 0 — surfacing loader errors is the
- * caller's concern via its own per-section error handling. */
+/**
+ * Top brand strip + nav, rendered identically on every route.
+ *
+ * Two horizontal strips break out of the parent `.container` to full-bleed:
+ * 1. A dark `--ink` brand strip showing the pixel-rendered `PRAXIS` logo
+ *    (each letter coloured from the palette), a separator, the role name in
+ *    mono caps, then the updated-at timestamp and a refresh button.
+ * 2. A surface-coloured nav strip with monospace tabs. The current tab gets
+ *    a 3px coloured underline keyed to the per-surface accent (peach, pink,
+ *    purple, lavender, teal) so each surface's identity carries into the
+ *    chrome.
+ *
+ * Open-count badges (escalations / triage) are loaded inside this component
+ * so every page renders them consistently without piping state through
+ * props. If either loader fails, the affected badge silently falls back to 0
+ * — surfacing loader errors is the caller's concern via its own per-section
+ * error handling.
+ */
 export type RouteName = 'home' | 'chat' | 'escalations' | 'triage' | 'notebook' | 'activity' | 'output' | 'role' | 'capabilities' | 'health';
+
+/**
+ * Per-surface accent colour. Drives both the active-tab underline in this
+ * component and the default `SectionPill` colour on the migrated surfaces.
+ * Keep this table in sync with `docs/future/dashboard-redesign.md` § Tokens.
+ */
+type SurfaceColour = 'peach' | 'pink' | 'purple' | 'lavender' | 'teal';
+
+const ROUTE_COLOUR: Record<RouteName, SurfaceColour> = {
+  home: 'teal',
+  chat: 'teal',
+  triage: 'pink',
+  escalations: 'pink',
+  notebook: 'peach',
+  output: 'purple',
+  activity: 'purple',
+  role: 'teal',
+  capabilities: 'purple',
+  health: 'teal',
+};
 
 interface Props {
   current: RouteName;
@@ -32,7 +64,7 @@ const proposedVerbCount =
   proposedRes.status === 'fulfilled' ? proposedRes.value.length : 0;
 const triageCount = escalationOpenCount + proposedVerbCount;
 
-const tabs: Array<{ key: RouteName; href: string; label: string }> = [
+const tabs: { key: RouteName; href: string; label: string }[] = [
   { key: 'home', href: '/', label: 'home' },
   { key: 'chat', href: '/chat', label: 'chat' },
   { key: 'triage', href: '/triage', label: 'triage' },
@@ -44,29 +76,41 @@ const tabs: Array<{ key: RouteName; href: string; label: string }> = [
   { key: 'capabilities', href: '/capabilities', label: 'capabilities' },
   { key: 'health', href: '/health', label: 'health' },
 ];
+
+const personaTag = (personaName ?? '').trim().toUpperCase();
 ---
 
-<div class="app-head">
-  <div>
-    <span class="app-brand">
-      PRAXIS{personaName && <span class="name">{personaName}</span>}
-    </span>
-  </div>
-  <div class="app-head-meta">
+<div class="brand-strip">
+  <span class="px-logo" aria-label="PRAXIS">
+    <span>P</span><span>R</span><span>A</span><span>X</span><span>I</span><span>S</span>
+  </span>
+  {personaTag.length > 0 && (
+    <>
+      <span class="sep">·</span>
+      <span class="role-tag">{personaTag}</span>
+    </>
+  )}
+  <span class="meta">
     {updatedAt && <span>updated {updatedAt}</span>}
     <button type="button" onclick="window.location.reload()">refresh</button>
-  </div>
+  </span>
 </div>
-<nav class="app-nav">
-  {tabs.map((t) => (
-    <a class:list={[t.key === current && 'current']} href={t.href}>
-      {t.label}
-      {t.key === 'escalations' && escalationOpenCount > 0 && (
-        <span class="open-count"> {escalationOpenCount}</span>
-      )}
-      {t.key === 'triage' && triageCount > 0 && (
-        <span class="open-count"> {triageCount}</span>
-      )}
-    </a>
-  ))}
-</nav>
+<div class="nav-wrap">
+  <nav class="nav">
+    {tabs.map((t) => {
+      const isCurrent = t.key === current;
+      const colour = ROUTE_COLOUR[t.key];
+      return (
+        <a class:list={[isCurrent && 'current', isCurrent && `current-${colour}`]} href={t.href}>
+          {t.label}
+          {t.key === 'escalations' && escalationOpenCount > 0 && (
+            <span class="count">{escalationOpenCount}</span>
+          )}
+          {t.key === 'triage' && triageCount > 0 && (
+            <span class="count">{triageCount}</span>
+          )}
+        </a>
+      );
+    })}
+  </nav>
+</div>

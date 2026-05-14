@@ -1,9 +1,6 @@
 ---
-import EmptyState from '@/components/EmptyState.astro';
-import VerbRow from '@/components/VerbRow.astro';
-import IdentityStrip from '@/components/IdentityStrip.astro';
-import PersonaPane from '@/components/PersonaPane.astro';
 import RouteHeader from '@/components/RouteHeader.astro';
+import SectionPill from '@/components/SectionPill.astro';
 import BaseLayout from '@/layouts/BaseLayout.astro';
 import { type VerbsResult, listLibFiles, loadVerbs } from '@/lib/verbs-loader';
 import {
@@ -14,6 +11,8 @@ import {
 } from '@/lib/autonomy-loader';
 import { parsePersona, type Persona } from '@/lib/persona-parser';
 import { detectMode, getRoleHome, nowIso } from '@/lib/role-home';
+import { assembleMemory } from '@/lib/memory-loader';
+import { getLatestSelfAssessmentsByCriterion, type CriterionStatusValue } from '@/lib/self-assessment-parser';
 import { formatIsoDate } from '@/lib/ui/time';
 import { firstLine } from '@/lib/ui/text';
 
@@ -25,17 +24,19 @@ if (mode === 'seed') {
   return Astro.redirect('/setup');
 }
 
-const [personaRes, verbsRes, libRes, autonomyRes] = await Promise.allSettled([
+const [personaRes, verbsRes, libRes, autonomyRes, memoryRes] = await Promise.allSettled([
   parsePersona(roleHome),
   loadVerbs(roleHome),
   listLibFiles(roleHome),
   loadAutonomy(roleHome),
+  assembleMemory(roleHome),
 ]);
 
 const persona: Persona | null = personaRes.status === 'fulfilled' ? personaRes.value : null;
 const personaError = personaRes.status === 'rejected' ? String(personaRes.reason) : null;
 const verbs: VerbsResult = verbsRes.status === 'fulfilled' ? verbsRes.value : { live: [], proposed: [] };
 const libFiles: string[] = libRes.status === 'fulfilled' ? libRes.value : [];
+const memoryEntries = memoryRes.status === 'fulfilled' ? memoryRes.value : [];
 
 const autonomy: AutonomyConfig | null =
   autonomyRes.status === 'fulfilled' ? autonomyRes.value : null;
@@ -58,7 +59,67 @@ if (autonomy && persona) {
 }
 
 const fullName = persona?.identity['full_name'] ?? persona?.identity['name'] ?? '';
+/** Working title is the italic sub-heading under the role name in the hero —
+ * e.g. "Business Development". Falls back to the legacy `role` field when
+ * `working_title` is absent. */
+const workingTitle =
+  persona?.identity['working_title'] ?? persona?.identity['title'] ?? '';
+/** Purpose paragraph below the hero name. Personas emitted by the wizard use
+ * the `Role` identity field for the one-sentence purpose; older personas
+ * may carry an explicit `purpose` instead. */
+const purpose =
+  persona?.identity['purpose'] ?? persona?.identity['role'] ?? '';
 const updatedAt = nowIso();
+
+/** Compose hero "Facts" panel keys from the persona identity. Each entry is
+ * present only when the underlying field is set; absent fields silently drop
+ * out of the card so the rendered shape always matches the data. */
+interface Fact {
+  k: string;
+  v: string;
+}
+
+function buildFacts(p: Persona | null, verbsCount: number): Fact[] {
+  const out: Fact[] = [];
+  if (!p) return out;
+  const i = p.identity;
+  if (i['reports_to']) out.push({ k: 'reports to', v: i['reports_to'] });
+  if (i['email']) out.push({ k: 'email', v: i['email'] });
+  if (i['location']) out.push({ k: 'location', v: i['location'] });
+  const started = i['started'] ?? i['since'] ?? '';
+  if (started) out.push({ k: 'started', v: started });
+  out.push({ k: 'verbs', v: `${verbsCount} live` });
+  return out;
+}
+
+const facts = buildFacts(persona, verbs.live.length);
+
+/** Map self-assessment status to its pip glyph + colour class.
+ * `unsure` and missing assessments both render as `◌` to keep the visual
+ * gap between "we haven't measured this" and "the role isn't sure" honest
+ * but minimal — the status word in the right column carries the nuance. */
+function statusPip(status: CriterionStatusValue | null): { glyph: string; cls: string; label: string } {
+  if (status === 'green') return { glyph: '●', cls: 'green', label: 'green' };
+  if (status === 'amber') return { glyph: '◐', cls: 'amber', label: 'amber' };
+  if (status === 'red') return { glyph: '○', cls: 'red', label: 'red' };
+  if (status === 'unsure') return { glyph: '◌', cls: '', label: 'unsure' };
+  return { glyph: '◌', cls: '', label: 'unsure' };
+}
+
+const declaredCriteria = persona?.success_criteria ?? [];
+const byCriterion = getLatestSelfAssessmentsByCriterion(memoryEntries);
+const criteriaWithStatus = declaredCriteria.map((criterion) => {
+  const history = byCriterion.get(criterion) ?? [];
+  return { criterion, latest: history[0] ?? null };
+});
+const assessedCount = criteriaWithStatus.filter((c) => c.latest !== null).length;
+
+const voiceCount = persona?.voice.length ?? 0;
+const accountabilitiesCount = persona?.accountabilities.length ?? 0;
+const capabilitiesCount = persona?.capabilities.length ?? 0;
+const inhibitionsCount = persona?.inhibitions.length ?? 0;
+const liveVerbsCount = verbs.live.length;
+const proposedVerbsCount = verbs.proposed.length;
 
 function summariseSurface(s: AutonomyConfig['surfaces'][number]): string {
   const bits: string[] = [s.mode];
@@ -70,135 +131,250 @@ const autonomySummary = autonomy && autonomy.surfaces.length > 0
   ? `${autonomy.surfaces.length} ${autonomy.surfaces.length === 1 ? 'surface' : 'surfaces'} opened — ${autonomy.surfaces.map(summariseSurface).join(', ')}`
   : '';
 
+const editsCounter = autonomy
+  ? `${autonomy.surfaces.length} ${autonomy.surfaces.length === 1 ? 'surface' : 'surfaces'} · ${edits.length} ${edits.length === 1 ? 'edit' : 'edits'} (30d)`
+  : 'no autonomy.yaml';
+
+function verbSlug(file: string): string {
+  const base = file.replace(/^.*[\\/]/, '');
+  return base.replace(/\.md$/i, '');
+}
 ---
 
 <BaseLayout title={fullName ? `Role · ${fullName}` : 'Role · Praxis'}>
   <main class="container">
-    <RouteHeader
-      current="role"
-      personaName={fullName}
-      updatedAt={updatedAt}
-    />
+    <RouteHeader current="role" personaName={fullName} updatedAt={updatedAt} />
 
     <div class="page-body">
-      {persona ? (
-        <IdentityStrip persona={persona} showEmail={true} />
+      {!persona ? (
+        <div class="empty-pixel">Failed to parse persona: {personaError ?? 'no persona.md found'}</div>
       ) : (
-        <EmptyState>
-          Failed to parse persona: {personaError ?? 'no persona.md found'}
-        </EmptyState>
-      )}
-
-      <div class="group">
-        <div class="group-head">
-          <span class="group-title">Position description</span>
-          <span class="group-counter">authored · persona.md</span>
-        </div>
-        <div class="persona-block">
-          <PersonaPane
-            variant="voice"
-            heading="Voice"
-            source={`${persona?.voice.length ?? 0} ${(persona?.voice.length ?? 0) === 1 ? 'rule' : 'rules'}`}
-            empty='Add a "## Voice & Personality" section to persona.md with bulleted "- **trait** -- qualifier" entries (or nested sub-bullets for multi-qualifier traits).'
-            items={persona?.voice ?? []}
-          />
-          <PersonaPane
-            variant="list"
-            heading="Accountabilities"
-            source={`${persona?.accountabilities.length ?? 0} ${(persona?.accountabilities.length ?? 0) === 1 ? 'item' : 'items'}`}
-            empty={'Add an "## Accountabilities" section to persona.md with first-person "I\'m responsible for…" bullets.'}
-            items={persona?.accountabilities ?? []}
-          />
-          <PersonaPane
-            variant="list"
-            heading="Capabilities"
-            source={`${persona?.capabilities.length ?? 0} ${(persona?.capabilities.length ?? 0) === 1 ? 'item' : 'items'}`}
-            empty='Add a "## Capabilities" section to persona.md with first-person "I can …" bullets.'
-            items={persona?.capabilities ?? []}
-          />
-          <PersonaPane
-            variant="list"
-            heading="Success criteria"
-            source={`${persona?.success_criteria.length ?? 0} ${(persona?.success_criteria.length ?? 0) === 1 ? 'criterion' : 'criteria'}`}
-            empty='Add a "## Success criteria" section with observable, falsifiable outcomes.'
-            items={persona?.success_criteria ?? []}
-          />
-          <PersonaPane
-            variant="constitution"
-            heading="Hard inhibitions"
-            source={`${persona?.inhibitions.length ?? 0} ${(persona?.inhibitions.length ?? 0) === 1 ? 'rule' : 'rules'}`}
-            empty='Add a "## Hard inhibitions" section to persona.md.'
-            items={persona?.inhibitions ?? []}
-          />
-        </div>
-      </div>
-
-      <div class="group" id="verbs">
-        <div class="group-head">
-          <span class="group-title">Verbs</span>
-          <span class="group-counter">
-            {verbs.live.length} live
-            {verbs.proposed.length > 0 && ` · ${verbs.proposed.length} pending review`}
-          </span>
-        </div>
-        {verbs.live.length === 0 && verbs.proposed.length === 0 ? (
-          <EmptyState>No verbs authored yet. Add `.md` files under `verbs/`.</EmptyState>
-        ) : (
-          <div class="verbs-list">
-            {verbs.live.map((v) => <VerbRow verb={v} />)}
-            {verbs.proposed.map((v) => <VerbRow verb={v} proposed={true} />)}
-          </div>
-        )}
-      </div>
-
-      <div class="group">
-        <div class="group-head">
-          <span class="group-title">Recent edits</span>
-          <span class="group-counter">
-            {autonomy ? `${autonomy.surfaces.length} ${autonomy.surfaces.length === 1 ? 'surface' : 'surfaces'} · ${edits.length} ${edits.length === 1 ? 'edit' : 'edits'} (30d)` : 'no autonomy.yaml'}
-          </span>
-        </div>
-        {!autonomy || edits.length === 0 ? (
-          <EmptyState>
-            No autonomous edits yet. The role's grown surfaces are listed in lib/autonomy.yaml.
-          </EmptyState>
-        ) : (
-          <>
-            {autonomySummary && (
-              <div class="autonomy-summary">{autonomySummary}</div>
-            )}
-            <div class="edits-list">
-              {edits.map((e) => (
-                <div class="edit-row">
-                  <span class="sha">{e.short_sha}</span>
-                  <span class="date">{formatIsoDate(e.date)}</span>
-                  <div class="what">
-                    {firstLine(e.message)}
-                    {e.files.length > 0 && (
-                      <span class="paths">{e.files.join(' · ')}</span>
-                    )}
-                    <span class="author">{e.author_name} &lt;{e.author_email}&gt;</span>
-                  </div>
-                </div>
-              ))}
+        <>
+          <section class="role-hero">
+            <div class="hero-left">
+              <div class="role-label">⌗ position description</div>
+              <div class="name">{fullName}</div>
+              {workingTitle && <div class="title">{workingTitle}</div>}
+              {purpose && <div class="purpose">{purpose}</div>}
             </div>
-          </>
-        )}
-      </div>
+            {facts.length > 0 && (
+              <div class="hero-right">
+                <div class="label">Facts</div>
+                {facts.map((f) => (
+                  <div class="fact">
+                    <span class="k">{f.k}</span>
+                    <span class="v">{f.v}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
 
-      <div class="group">
-        <div class="group-head">
-          <span class="group-title">Reference data</span>
-          <span class="group-counter">authored · lib/</span>
-        </div>
-        {libFiles.length === 0 ? (
-          <EmptyState>No reference data. Add YAML files to `lib/` to anchor the role's facts.</EmptyState>
-        ) : (
-          <div class="lib-list">
-            {libFiles.map((f) => <code>{f}</code>)}
+          <div class="pd-sections">
+            <section class="sec">
+              <SectionPill
+                colour="peach"
+                label="VOICE"
+                title="How I sound"
+                counter={`${voiceCount} ${voiceCount === 1 ? 'trait' : 'traits'}`}
+              />
+              {voiceCount === 0 ? (
+                <div class="empty-pixel">
+                  Add a "## Voice & Personality" section to persona.md with bulleted
+                  "- **trait** -- qualifier" entries.
+                </div>
+              ) : (
+                <div class="voice-chips">
+                  {persona.voice.map((v) => (
+                    <div class="voice-chip">
+                      <div class="trait">{v.trait}</div>
+                      {v.qualifiers.length > 0 && (
+                        <div class="quals">
+                          {v.qualifiers.map((q) => <span>{q}</span>)}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <section class="sec">
+              <SectionPill
+                colour="pink"
+                label="ACCOUNTABILITIES"
+                title="What I'm responsible for"
+                counter={`${accountabilitiesCount} ${accountabilitiesCount === 1 ? 'item' : 'items'}`}
+              />
+              {accountabilitiesCount === 0 ? (
+                <div class="empty-pixel">
+                  Add an "## Accountabilities" section to persona.md with first-person
+                  "I'm responsible for…" bullets.
+                </div>
+              ) : (
+                <div class="acc-stack">
+                  {persona.accountabilities.map((line, idx) => (
+                    <div class="acc-item">
+                      <div class="num">{String(idx + 1).padStart(2, '0')}</div>
+                      <div class="body">{line}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <section class="sec">
+              <SectionPill
+                colour="purple"
+                label="CAPABILITIES"
+                title="What I can do"
+                counter={`${capabilitiesCount} ${capabilitiesCount === 1 ? 'item' : 'items'}`}
+              />
+              {capabilitiesCount === 0 ? (
+                <div class="empty-pixel">
+                  Add a "## Capabilities" section to persona.md with first-person
+                  "I can …" bullets.
+                </div>
+              ) : (
+                <div class="cap-grid">
+                  {persona.capabilities.map((cap) => (
+                    <div class="cap-card">{cap}</div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <section class="sec">
+              <SectionPill
+                colour="lavender"
+                label="SUCCESS CRITERIA"
+                title="How I'm measured"
+                counter={`${declaredCriteria.length} ${declaredCriteria.length === 1 ? 'criterion' : 'criteria'} · ${assessedCount} assessed`}
+              />
+              {declaredCriteria.length === 0 ? (
+                <div class="empty-pixel">
+                  Add a "## Success criteria" section with observable, falsifiable outcomes.
+                </div>
+              ) : (
+                <div class="sc-list">
+                  {criteriaWithStatus.map(({ criterion, latest }) => {
+                    const pip = statusPip(latest?.status ?? null);
+                    return (
+                      <div class="sc-item">
+                        <div class:list={['pip', pip.cls]}>{pip.glyph}</div>
+                        <div class="text">{criterion}</div>
+                        <div class="status">{pip.label}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+
+            <section class="sec">
+              <SectionPill
+                colour="oxblood"
+                label="HARD INHIBITIONS"
+                title="What I never do"
+                counter={`${inhibitionsCount} ${inhibitionsCount === 1 ? 'rule' : 'rules'} · constitutional`}
+              />
+              {inhibitionsCount === 0 ? (
+                <div class="empty-pixel">
+                  Add a "## Hard inhibitions" section to persona.md.
+                </div>
+              ) : (
+                <div class="inhib-block">
+                  <ul>
+                    {persona.inhibitions.map((line) => <li>{line}</li>)}
+                  </ul>
+                </div>
+              )}
+            </section>
           </div>
-        )}
-      </div>
+
+          <section class="sec" style="margin-top: 5rem;">
+            <SectionPill
+              colour="teal"
+              label="VERBS"
+              title="My playbooks"
+              counter={liveVerbsCount === 0 && proposedVerbsCount === 0
+                ? 'none authored'
+                : `${liveVerbsCount} live${proposedVerbsCount > 0 ? ` · ${proposedVerbsCount} pending review` : ''}`}
+            />
+            {liveVerbsCount === 0 && proposedVerbsCount === 0 ? (
+              <div class="empty-pixel">No verbs authored yet. Add `.md` files under `verbs/`.</div>
+            ) : (
+              <>
+                {verbs.live.map((v) => (
+                  <a class="verb-row-new" href={`/verbs/${verbSlug(v.file)}`}>
+                    <span class="file">{v.file}</span>
+                    <span class="label">{v.label}</span>
+                    <span class="tag">{v.tag}</span>
+                  </a>
+                ))}
+                {verbs.proposed.map((v) => (
+                  <div class="verb-row-new proposed">
+                    <span class="file">{v.file}</span>
+                    <span class="label">{v.label}</span>
+                    <span class="tag">PROPOSED</span>
+                  </div>
+                ))}
+              </>
+            )}
+          </section>
+
+          <section class="sec">
+            <SectionPill
+              colour="peach"
+              label="RECENT EDITS"
+              title="What's grown autonomously"
+              counter={editsCounter}
+            />
+            {!autonomy || edits.length === 0 ? (
+              <div class="empty-pixel">
+                No autonomous edits yet. The role's grown surfaces are listed in lib/autonomy.yaml.
+              </div>
+            ) : (
+              <>
+                {autonomySummary && <div class="autonomy-summary">{autonomySummary}</div>}
+                <div class="edits-list">
+                  {edits.map((e) => (
+                    <div class="edit-row">
+                      <span class="sha">{e.short_sha}</span>
+                      <span class="date">{formatIsoDate(e.date)}</span>
+                      <div class="what">
+                        {firstLine(e.message)}
+                        {e.files.length > 0 && (
+                          <span class="paths">{e.files.join(' · ')}</span>
+                        )}
+                        <span class="author">{e.author_name} &lt;{e.author_email}&gt;</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </section>
+
+          <section class="sec">
+            <SectionPill
+              colour="pink"
+              label="REFERENCE DATA"
+              title="The world I read from"
+              counter="authored · lib/"
+            />
+            {libFiles.length === 0 ? (
+              <div class="empty-pixel">
+                No reference data. Add YAML files to `lib/` to anchor the role's facts.
+              </div>
+            ) : (
+              <div class="ref-list">
+                {libFiles.map((f) => <code>{f}</code>)}
+              </div>
+            )}
+          </section>
+        </>
+      )}
     </div>
   </main>
 </BaseLayout>

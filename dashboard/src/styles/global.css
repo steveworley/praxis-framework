@@ -1,19 +1,137 @@
+/* ============================================================================
+ * Praxis dashboard — design system (Phase 1)
+ *
+ * Type, palette, and chrome tokens for the character-sheet redesign. The
+ * legacy class rules from the previous design are preserved below so that
+ * not-yet-migrated surfaces (notebook, health, output, activity, triage,
+ * escalations, capabilities, chat) continue to render correctly with the new
+ * chrome until Phase 2 reshapes their bodies.
+ * ========================================================================== */
+
+/* ----- Self-hosted fonts (no remote fetch at runtime) ---------------------
+ * Variable fonts ship as single files spanning their full weight/optical-size
+ * range, which is preferable to multiple static weight files.
+ * `Departure Mono` is the pixel-font accent face. If the file ever fails to
+ * load, `JetBrains Mono` is the documented fallback (in --pixel). The visual
+ * character changes slightly — pixel forms read as monospace forms — but
+ * readability stays intact.
+ * ------------------------------------------------------------------------- */
+@font-face {
+  font-family: 'Fraunces';
+  font-style: italic;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/fraunces-italic-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Fraunces';
+  font-style: normal;
+  font-weight: 500 700;
+  font-display: swap;
+  src: url('/fonts/fraunces-normal-500-700.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Source Serif 4';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/source-serif-4-italic-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Source Serif 4';
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: url('/fonts/source-serif-4-normal-400-600.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/inter-normal-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/inter-normal-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/inter-normal-600.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/jetbrains-mono-normal-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/jetbrains-mono-normal-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Departure Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/departure-mono.woff2') format('woff2');
+}
+
 :root {
-  --bg: #fafaf9;
+  /* type stacks */
+  --display: 'Fraunces', Georgia, serif;
+  --prose: 'Source Serif 4', Georgia, serif;
+  --ui: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --pixel: 'Departure Mono', 'JetBrains Mono', ui-monospace, monospace;
+
+  /* paper — warm cream */
+  --bg: #f9f5ed;
   --surface: #ffffff;
-  --surface-mute: #f4f4f3;
-  --surface-deep: #ececea;
-  --rule: #dcdbd8;
-  --rule-strong: #c0bfbb;
-  --ink: #1c1c1c;
-  --ink-soft: #444444;
-  --ink-muted: #777775;
-  --ink-faint: #a4a3a0;
-  --link: #1f5fbf;
-  --warn: #a85f1c;
-  --danger: #a82c1c;
-  --good: #1f6e3c;
-  --info: #5d3a7e;
+  --surface-mute: #f1ece0;
+  --surface-deep: #e7e0d1;
+  --rule: #e7e0d1;
+  --rule-strong: #c8bca0;
+
+  /* ink */
+  --ink: #1a1610;
+  --ink-soft: #4a4438;
+  --ink-muted: #847b66;
+  --ink-faint: #b8ae96;
+
+  /* logo palette — semantic */
+  --peach: #ec9c75;
+  --pink: #d68aaa;
+  --purple: #b48ad4;
+  --lavender: #a692c8;
+  --teal: #6cb8b8;
+
+  --peach-soft: #fce8d8;
+  --pink-soft: #f6dce5;
+  --purple-soft: #ecdcf3;
+  --lavender-soft: #e6dff0;
+  --teal-soft: #d8ebeb;
+
+  /* hard limits */
+  --oxblood: #8a2a20;
+  --oxblood-soft: #fce4df;
+
+  /* status / semantic aliases (legacy surfaces still reference these) */
+  --link: #2d6a99;
+  --warn: #b07628;
+  --danger: #8a2a20;
+  --good: #4a7c3a;
+  --info: #6a4c9c;
   --note: #fcf6dd;
   --note-rule: #e3d7a4;
 }
@@ -24,13 +142,17 @@
   box-sizing: border-box;
 }
 
+html {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
 body {
   background: var(--bg);
   color: var(--ink);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-  font-size: 14px;
+  font-family: var(--ui);
+  font-size: 14.5px;
   line-height: 1.55;
-  -webkit-font-smoothing: antialiased;
 }
 
 a {
@@ -56,83 +178,548 @@ button {
 
 /* Page container */
 .container {
-  max-width: 1200px;
+  max-width: 1180px;
   margin: 0 auto;
-  padding: 2rem;
+  padding: 0 2.5rem;
 }
 
-/* Top app head + nav (per-page header) */
-.app-head {
+/* ============================================================================
+ * Chrome — brand strip + nav
+ *
+ * Rendered by `RouteHeader.astro` at the top of every page. The component
+ * sits inside `<main class="container">` for ease of integration, then breaks
+ * out to full-bleed using viewport-relative negative margins. The brand strip
+ * is dark ink full-bleed; the nav strip sits on the surface colour with a
+ * 1px rule and per-surface coloured underline for the active tab.
+ * ========================================================================== */
+.brand-strip {
+  background: var(--ink);
+  color: var(--bg);
+  padding: 0.7rem 2.5rem;
   display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  border-bottom: 1px solid var(--rule);
-  padding-bottom: 0.7rem;
-  margin-bottom: 1.5rem;
+  align-items: center;
+  gap: 1.2em;
+  border-bottom: 4px solid var(--ink);
+  /* Break out of the centered .container to full-bleed across the viewport.
+     `100vw` would overflow when a vertical scrollbar is present, so reach for
+     the document's own width via `100%` of the viewport-clamped wrapper. */
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
 }
-.app-brand {
-  font-family: ui-monospace, monospace;
-  font-size: 12px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--ink);
+.brand-strip .px-logo {
+  font-family: var(--pixel);
+  font-weight: 400;
+  font-size: 18px;
+  letter-spacing: 0.15em;
+  display: inline-flex;
+  gap: 0.05em;
 }
-.app-brand .name {
-  font-family: -apple-system, system-ui, sans-serif;
-  font-size: 14px;
-  font-weight: 500;
-  letter-spacing: 0;
-  text-transform: none;
-  margin-left: 0.6rem;
-  color: var(--ink);
+.brand-strip .px-logo span:nth-child(1) {
+  color: var(--peach);
 }
-.app-head-meta {
-  font-size: 12px;
+.brand-strip .px-logo span:nth-child(2) {
+  color: var(--pink);
+}
+.brand-strip .px-logo span:nth-child(3) {
+  color: var(--purple);
+}
+.brand-strip .px-logo span:nth-child(4) {
+  color: var(--lavender);
+}
+.brand-strip .px-logo span:nth-child(5) {
+  color: var(--teal);
+}
+.brand-strip .px-logo span:nth-child(6) {
+  color: var(--peach);
+}
+.brand-strip .sep {
   color: var(--ink-faint);
+  font-family: var(--pixel);
 }
-.app-head-meta a,
-.app-head-meta button {
-  margin-left: 0.8rem;
-  background: none;
-  border: none;
-  color: var(--link);
-  font-size: 12px;
-  cursor: pointer;
-  padding: 0;
+.brand-strip .role-tag {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  color: var(--bg);
 }
-.app-head-meta button:hover {
-  text-decoration: underline;
-}
-.app-nav {
+.brand-strip .meta {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-faint);
   display: flex;
-  gap: 1rem;
-  font-size: 13px;
-  margin-top: 1rem;
-  margin-bottom: 1.6rem;
+  align-items: center;
+  gap: 0.8em;
 }
-.app-nav a {
+.brand-strip button {
+  background: transparent;
+  color: var(--bg);
+  border: 1px solid var(--ink-muted);
+  padding: 0.25em 0.7em;
+  font-family: var(--mono);
+  font-size: 11px;
+  cursor: pointer;
+}
+.brand-strip button:hover {
+  border-color: var(--peach);
+  color: var(--peach);
+}
+
+.nav-wrap {
+  background: var(--surface);
+  border-bottom: 1px solid var(--rule);
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  margin-bottom: 3rem;
+}
+.nav {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 2.5rem;
+  display: flex;
+  gap: 0;
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+.nav a {
   color: var(--ink-muted);
+  text-decoration: none;
+  padding: 0.95em 1.2em;
+  border-bottom: 3px solid transparent;
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  margin-bottom: -1px;
+  transition: color 100ms, border-color 100ms;
 }
-.app-nav a:hover {
-  color: var(--link);
+.nav a:hover {
+  color: var(--ink);
   text-decoration: none;
 }
-.app-nav a.current {
+.nav a.current {
   color: var(--ink);
-  font-weight: 600;
-  border-bottom: 2px solid var(--ink);
-  padding-bottom: 0.25rem;
+  font-weight: 500;
+  border-bottom-color: var(--ink); /* fallback if no per-surface class */
 }
-.app-nav .open-count {
-  color: var(--danger);
+.nav a.current-peach {
+  border-bottom-color: var(--peach);
+}
+.nav a.current-pink {
+  border-bottom-color: var(--pink);
+}
+.nav a.current-purple {
+  border-bottom-color: var(--purple);
+}
+.nav a.current-lavender {
+  border-bottom-color: var(--lavender);
+}
+.nav a.current-teal {
+  border-bottom-color: var(--teal);
+}
+.nav .count {
+  background: var(--peach);
+  color: var(--ink);
+  font-family: var(--pixel);
+  font-size: 10px;
   font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 0; /* pixel-shaped, no rounding */
 }
 
-/* Standard top margin for the first block of content under a RouteHeader.
-   Pages used to set this with inline `style="margin-top: 2rem;"`; this
-   class lets every page reach for the same hook. */
+/* ============================================================================
+ * Section heading shape — used by SectionPill.astro on every redesigned
+ * surface. Pixel-font label (in coloured pill) + Fraunces display title +
+ * optional right-aligned mono counter.
+ * ========================================================================== */
+.sec {
+  margin-bottom: 3.5rem;
+}
+.sec-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.9em;
+  margin-bottom: 1.4rem;
+}
+.sec-pill {
+  font-family: var(--pixel);
+  font-size: 11px;
+  font-weight: 400;
+  padding: 0.3em 0.7em;
+  color: var(--ink);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.sec-pill.peach {
+  background: var(--peach);
+}
+.sec-pill.pink {
+  background: var(--pink);
+}
+.sec-pill.purple {
+  background: var(--purple);
+  color: var(--surface);
+}
+.sec-pill.lavender {
+  background: var(--lavender);
+  color: var(--surface);
+}
+.sec-pill.teal {
+  background: var(--teal);
+  color: var(--surface);
+}
+.sec-pill.oxblood {
+  background: var(--oxblood);
+  color: var(--surface);
+}
+.sec-title {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 22px;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+}
+.sec-counter {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--ink-muted);
+}
+
+/* ============================================================================
+ * /role page — character-sheet layout
+ *
+ * Each PD section has its own visual language matched to its content shape;
+ * no shared grid. The class names below are scoped to /role's body and reused
+ * by future surfaces only where the same pattern fits.
+ * ========================================================================== */
+.role-hero {
+  display: grid;
+  grid-template-columns: 5fr 4fr;
+  gap: 3rem;
+  margin-bottom: 4rem;
+  padding-bottom: 3rem;
+  border-bottom: 1px solid var(--rule);
+}
+.role-hero .hero-left .role-label {
+  font-family: var(--pixel);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--teal);
+  margin-bottom: 0.6em;
+}
+.role-hero .hero-left .name {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 56px;
+  line-height: 0.95;
+  letter-spacing: -0.025em;
+  color: var(--ink);
+  font-variation-settings: 'opsz' 144;
+  margin-bottom: 0.35em;
+}
+.role-hero .hero-left .title {
+  font-family: var(--display);
+  font-style: italic;
+  font-weight: 500;
+  font-size: 22px;
+  color: var(--ink-soft);
+  margin-bottom: 1.2em;
+}
+.role-hero .hero-left .purpose {
+  font-size: 16px;
+  line-height: 1.55;
+  color: var(--ink-soft);
+  max-width: 42ch;
+}
+.role-hero .hero-right {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  background: var(--surface);
+  border: 2px solid var(--ink);
+  padding: 1.4rem 1.6rem;
+  align-self: start;
+  box-shadow: 6px 6px 0 var(--teal);
+}
+.role-hero .hero-right .label {
+  font-family: var(--pixel);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  margin-bottom: 1em;
+}
+.role-hero .hero-right .fact {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.5em 0;
+  border-bottom: 1px dashed var(--rule);
+  font-size: 13.5px;
+  gap: 1rem;
+}
+.role-hero .hero-right .fact:last-child {
+  border-bottom: none;
+}
+.role-hero .hero-right .fact .k {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.role-hero .hero-right .fact .v {
+  font-weight: 500;
+  color: var(--ink);
+  text-align: right;
+}
+
+/* Voice — atomic peach trait chips */
+.voice-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7em;
+  align-items: stretch;
+}
+.voice-chip {
+  background: var(--peach-soft);
+  border: 1.5px solid var(--peach);
+  padding: 0.55em 0.9em 0.6em;
+  max-width: 32ch;
+}
+.voice-chip .trait {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--ink);
+  margin-bottom: 0.15em;
+}
+.voice-chip .quals {
+  font-size: 13px;
+  color: var(--ink-soft);
+  line-height: 1.45;
+}
+.voice-chip .quals span {
+  display: block;
+}
+
+/* Accountabilities — pink numbered stack */
+.acc-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6em;
+}
+.acc-item {
+  display: grid;
+  grid-template-columns: 2.5em 1fr;
+  gap: 1em;
+  padding: 0.8em 1em 0.85em;
+  background: var(--pink-soft);
+  border-left: 4px solid var(--pink);
+  align-items: baseline;
+}
+.acc-item .num {
+  font-family: var(--pixel);
+  font-size: 14px;
+  color: var(--pink);
+  text-align: right;
+  letter-spacing: 0;
+}
+.acc-item .body {
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+/* Capabilities — purple 2-col grid with offset shadow */
+.cap-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.7em;
+}
+.cap-card {
+  background: var(--surface);
+  border: 2px solid var(--purple);
+  padding: 0.9em 1.1em;
+  box-shadow: 4px 4px 0 var(--purple-soft);
+  font-size: 14.5px;
+  line-height: 1.4;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 0.7em;
+}
+.cap-card::before {
+  content: '▶';
+  color: var(--purple);
+  font-size: 10px;
+  flex-shrink: 0;
+}
+
+/* Success criteria — lavender bordered list with status pips */
+.sc-list {
+  border: 1.5px solid var(--lavender);
+  background: var(--lavender-soft);
+  padding: 0.2em 0;
+}
+.sc-item {
+  display: grid;
+  grid-template-columns: 2.5em 1fr 4.5em;
+  gap: 0.8em;
+  padding: 0.75em 1.2em;
+  border-bottom: 1px dashed rgba(166, 146, 200, 0.5);
+  align-items: center;
+}
+.sc-item:last-child {
+  border-bottom: none;
+}
+.sc-item .pip {
+  font-family: var(--pixel);
+  font-size: 14px;
+  color: var(--ink-muted);
+}
+.sc-item .pip.green {
+  color: var(--good);
+}
+.sc-item .pip.amber {
+  color: var(--warn);
+}
+.sc-item .pip.red {
+  color: var(--oxblood);
+}
+.sc-item .text {
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--ink);
+}
+.sc-item .status {
+  text-align: right;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
+/* Hard inhibitions — oxblood danger rail */
+.inhib-block {
+  background: var(--oxblood-soft);
+  border-left: 4px solid var(--oxblood);
+  padding: 1em 1.4em;
+}
+.inhib-block ul {
+  list-style: none;
+}
+.inhib-block li {
+  padding: 0.4em 0;
+  border-bottom: 1px dashed rgba(138, 42, 32, 0.18);
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: var(--ink);
+  display: flex;
+  gap: 0.7em;
+}
+.inhib-block li:last-child {
+  border-bottom: none;
+}
+.inhib-block li::before {
+  content: '⊘';
+  color: var(--oxblood);
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+/* Verbs — teal-accent row */
+.verb-row-new {
+  display: grid;
+  grid-template-columns: 13em 1fr auto;
+  align-items: center;
+  padding: 0.85em 1.1em;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  margin-bottom: 0.4em;
+  color: var(--ink);
+  text-decoration: none;
+  transition: border-color 100ms;
+}
+.verb-row-new:hover {
+  border-color: var(--teal);
+  text-decoration: none;
+}
+.verb-row-new .file {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-muted);
+}
+.verb-row-new .label {
+  font-size: 14px;
+  color: var(--ink);
+}
+.verb-row-new .tag {
+  font-family: var(--pixel);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink);
+  background: var(--teal);
+  padding: 2px 7px;
+}
+.verb-row-new.proposed {
+  background: var(--purple-soft);
+  border-color: var(--purple);
+}
+.verb-row-new.proposed .tag {
+  background: var(--purple);
+  color: var(--surface);
+}
+
+/* PD container — sections stack with consistent gap */
+.pd-sections > * + * {
+  margin-top: 3rem;
+}
+
+/* Reference data — file-token list */
+.ref-list {
+  display: flex;
+  gap: 0.4em;
+  flex-wrap: wrap;
+}
+.ref-list code {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-soft);
+  padding: 0.3em 0.7em;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 0;
+}
+
+/* Empty-state inside a redesigned section */
+.sec .empty,
+.empty-pixel {
+  padding: 2em;
+  text-align: center;
+  background: var(--surface);
+  border: 1px dashed var(--rule-strong);
+  font-size: 13.5px;
+  color: var(--ink-muted);
+  font-style: italic;
+  border-radius: 0;
+}
+
+/* Recent edits inside /role — keep the existing edit-row grid but reshape to
+ * match the new chrome. Override below leaves the legacy `.edit-row` rule in
+ * place for transitional surfaces. */
+.sec .edits-list .edit-row {
+  border-color: var(--rule);
+}
+
+/* Top hook for the first block of page content under the chrome. The chrome
+   (`.nav-wrap`) already supplies `margin-bottom: 3rem` so this rule is a
+   no-op now; kept as a layout anchor for selectors that still target it. */
 .page-body {
-  margin-top: 2rem;
+  margin-top: 0;
 }
 
 /* Group titles inside a page */

@@ -1,0 +1,31 @@
+---
+/**
+ * Section heading shape used across every redesigned surface. Renders three
+ * parts on a single baseline-aligned row:
+ *
+ * - **Pill**: pixel-font uppercase label in a coloured chip. The colour
+ *   encodes section semantics (peach = memory/voice, pink = accountabilities
+ *   /escalations, purple = capabilities/output, lavender = success criteria,
+ *   teal = verbs/role/health, oxblood = inhibitions).
+ * - **Title**: Fraunces 600 display title to the pill's right.
+ * - **Counter** (optional): right-aligned mono summary line such as
+ *   "5 criteria · 3 assessed".
+ */
+interface Props {
+  colour: 'peach' | 'pink' | 'purple' | 'lavender' | 'teal' | 'oxblood';
+  /** Pixel-uppercase label inside the coloured pill (e.g. "POSITION DESCRIPTION"). */
+  label: string;
+  /** Fraunces display title to the right of the pill. */
+  title: string;
+  /** Optional right-aligned mono counter line. */
+  counter?: string;
+}
+
+const { colour, label, title, counter } = Astro.props;
+---
+
+<header class="sec-head">
+  <span class:list={['sec-pill', colour]}>{label}</span>
+  <span class="sec-title">{title}</span>
+  {counter && <span class="sec-counter">{counter}</span>}
+</header>
