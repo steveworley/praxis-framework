@@ -53,7 +53,6 @@ const escError = openEscRes.status === 'rejected' ? String(openEscRes.reason) : 
 const verbError = proposedRes.status === 'rejected' ? String(proposedRes.reason) : null;
 
 const updatedAt = nowIso();
-const triageCount = openEscalations.length + proposedVerbs.length;
 
 const bootstrap = {
   escalations: openEscalations,
@@ -67,7 +66,6 @@ const bootstrap = {
     <RouteHeader
       current="triage"
       personaName={persona ? personaName.full : ''}
-      triageCount={triageCount}
       updatedAt={updatedAt}
     />
 

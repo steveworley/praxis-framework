@@ -4,7 +4,6 @@ import RouteHeader from '@/components/RouteHeader.astro';
 import BaseLayout from '@/layouts/BaseLayout.astro';
 import { assembleActivity, type ActivityEntry } from '@/lib/activity-loader';
 import { isDecisionEntry, toDecisionView } from '@/lib/decision-renderer';
-import { assembleEscalations } from '@/lib/escalations-loader';
 import { parsePersona, type Persona } from '@/lib/persona-parser';
 import { bucketByDay, recentActivityCount } from '@/lib/recent-stats';
 import { detectMode, getLogGlob, getRoleHome, nowIso } from '@/lib/role-home';
@@ -19,17 +18,14 @@ if (mode === 'seed') {
 }
 
 const logGlob = getLogGlob();
-const [personaRes, activityRes, escalationsRes] = await Promise.allSettled([
+const [personaRes, activityRes] = await Promise.allSettled([
   parsePersona(roleHome),
   assembleActivity(roleHome, logGlob, 200),
-  assembleEscalations(roleHome),
 ]);
 
 const persona: Persona | null = personaRes.status === 'fulfilled' ? personaRes.value : null;
 const activity: ActivityEntry[] = activityRes.status === 'fulfilled' ? activityRes.value : [];
 const activityError = activityRes.status === 'rejected' ? String(activityRes.reason) : null;
-const openCount =
-  escalationsRes.status === 'fulfilled' ? escalationsRes.value.countsByStatus.open : 0;
 
 const fullName = persona?.identity['full_name'] ?? persona?.identity['name'] ?? '';
 const updatedAt = nowIso();
@@ -80,7 +76,6 @@ function metaLine(e: ActivityEntry): string {
     <RouteHeader
       current="activity"
       personaName={fullName}
-      escalationOpenCount={openCount}
       updatedAt={updatedAt}
     />
 

@@ -158,8 +158,6 @@ async function collectRoleEdits(home: string): Promise<RoleEditsSummary> {
     <RouteHeader
       current="home"
       personaName={persona ? personaName.full : ''}
-      escalationOpenCount={openCount}
-      triageCount={openCount + proposedVerbCount}
       updatedAt={updatedAt}
     />
 

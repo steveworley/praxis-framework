@@ -7,7 +7,6 @@ import {
   type CapabilitiesReport,
   type VerbOutcomeCounts,
 } from '@/lib/capabilities-loader';
-import { assembleEscalations } from '@/lib/escalations-loader';
 import { parsePersona, type Persona } from '@/lib/persona-parser';
 import { detectMode, getRoleHome, nowIso } from '@/lib/role-home';
 import { daysSince, formatAgeLabel } from '@/lib/ui/time';
@@ -20,10 +19,9 @@ if (mode === 'seed') {
   return Astro.redirect('/setup');
 }
 
-const [personaRes, capabilitiesRes, escalationsRes] = await Promise.allSettled([
+const [personaRes, capabilitiesRes] = await Promise.allSettled([
   parsePersona(roleHome),
   loadCapabilities(roleHome),
-  assembleEscalations(roleHome),
 ]);
 
 const persona: Persona | null = personaRes.status === 'fulfilled' ? personaRes.value : null;
@@ -31,8 +29,6 @@ const capabilities: CapabilitiesReport | null =
   capabilitiesRes.status === 'fulfilled' ? capabilitiesRes.value : null;
 const capabilitiesError =
   capabilitiesRes.status === 'rejected' ? String(capabilitiesRes.reason) : null;
-const openCount =
-  escalationsRes.status === 'fulfilled' ? escalationsRes.value.countsByStatus.open : 0;
 
 const fullName = persona?.identity['full_name'] ?? persona?.identity['name'] ?? '';
 const updatedAt = nowIso();
@@ -57,7 +53,6 @@ function outcomeBadge(o: VerbOutcomeCounts): string {
     <RouteHeader
       current="capabilities"
       personaName={fullName}
-      escalationOpenCount={openCount}
       updatedAt={updatedAt}
     />
 

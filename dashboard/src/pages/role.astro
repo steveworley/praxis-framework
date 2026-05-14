@@ -12,7 +12,6 @@ import {
   loadAutonomy,
   recentAutonomousEdits,
 } from '@/lib/autonomy-loader';
-import { assembleEscalations } from '@/lib/escalations-loader';
 import { parsePersona, type Persona } from '@/lib/persona-parser';
 import { detectMode, getRoleHome, nowIso } from '@/lib/role-home';
 import { formatIsoDate } from '@/lib/ui/time';
@@ -26,11 +25,10 @@ if (mode === 'seed') {
   return Astro.redirect('/setup');
 }
 
-const [personaRes, verbsRes, libRes, escalationsRes, autonomyRes] = await Promise.allSettled([
+const [personaRes, verbsRes, libRes, autonomyRes] = await Promise.allSettled([
   parsePersona(roleHome),
   loadVerbs(roleHome),
   listLibFiles(roleHome),
-  assembleEscalations(roleHome),
   loadAutonomy(roleHome),
 ]);
 
@@ -38,8 +36,6 @@ const persona: Persona | null = personaRes.status === 'fulfilled' ? personaRes.v
 const personaError = personaRes.status === 'rejected' ? String(personaRes.reason) : null;
 const verbs: VerbsResult = verbsRes.status === 'fulfilled' ? verbsRes.value : { live: [], proposed: [] };
 const libFiles: string[] = libRes.status === 'fulfilled' ? libRes.value : [];
-const openCount =
-  escalationsRes.status === 'fulfilled' ? escalationsRes.value.countsByStatus.open : 0;
 
 const autonomy: AutonomyConfig | null =
   autonomyRes.status === 'fulfilled' ? autonomyRes.value : null;
@@ -81,7 +77,6 @@ const autonomySummary = autonomy && autonomy.surfaces.length > 0
     <RouteHeader
       current="role"
       personaName={fullName}
-      escalationOpenCount={openCount}
       updatedAt={updatedAt}
     />
 
