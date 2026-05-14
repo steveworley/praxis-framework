@@ -1,8 +1,15 @@
 ---
 import '@/styles/global.css';
 
-/** Page-level layout: shared head + global stylesheet. Typography comes from
- * the system font stack (no remote font fetch). */
+/**
+ * Page-level layout: shared head + global stylesheet + font preloading.
+ *
+ * All five typeface families are self-hosted under `public/fonts/`. The most
+ * commonly-painted weights are preloaded so the first paint doesn't FOUT on
+ * the brand strip or body copy. Less common slices (italics, heavier
+ * Fraunces axis ranges) load lazily through `@font-face` rules and inherit
+ * `font-display: swap`.
+ */
 interface Props {
   title: string;
 }
@@ -16,6 +23,11 @@ const { title } = Astro.props;
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>{title}</title>
+    <link rel="preload" href="/fonts/inter-normal-400.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/inter-normal-500.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/jetbrains-mono-normal-400.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/departure-mono.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/fraunces-normal-500-700.woff2" as="font" type="font/woff2" crossorigin />
   </head>
   <body>
     <slot />
