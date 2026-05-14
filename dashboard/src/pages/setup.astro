@@ -11,29 +11,40 @@ const alreadySeeded = mode === 'role';
 ---
 
 <BaseLayout title="Set up role — Praxis">
-  <main class="container">
-    <div class="app-head">
-      <div>
-        <span class="app-brand">PRAXIS<span class="name">setup</span></span>
-      </div>
-      <div class="app-head-meta"><code>{roleHome}</code></div>
+  <main class="container setup-container">
+    <div class="setup-brand-strip">
+      <a class="px-logo" aria-label="PRAXIS" href="/">
+        <span>P</span><span>R</span><span>A</span><span>X</span><span>I</span><span>S</span>
+      </a>
+      <span class="sep">·</span>
+      <span class="role-tag">SETUP</span>
+      <span class="meta">
+        <span class="setup-path-line"
+          >setting up role at <code>{roleHome}</code></span
+        >
+      </span>
     </div>
-    {alreadySeeded ? (
-      <div class="wizard">
-        <div class="wizard-card">
-          <h1>This role is already set up</h1>
-          <p>
-            <code>persona.md</code> exists at this role's home, so the wizard has nothing to do.
-            Open the dashboard to see the populated role.
+
+    {
+      alreadySeeded ? (
+        <section class="setup-seeded">
+          <div class="setup-seeded-marker">⌗ already growing</div>
+          <h1 class="setup-seeded-title">This role is already growing.</h1>
+          <p class="setup-seeded-prose">
+            <code>persona.md</code> already exists at this role's home, so the
+            wizard has nothing more to do. The role is live — you can see how
+            they sound, what they're responsible for, and what they're
+            currently raising for review.
           </p>
-          <div class="wizard-actions">
-            <span></span>
-            <a class="btn btn-primary" href="/">Go to dashboard</a>
+          <div class="setup-seeded-actions">
+            <a class="setup-cta setup-cta-pink" href="/">
+              Go see them <span class="setup-cta-arrow">→</span>
+            </a>
           </div>
-        </div>
-      </div>
-    ) : (
-      <SetupWizard />
-    )}
+        </section>
+      ) : (
+        <SetupWizard />
+      )
+    }
   </main>
 </BaseLayout>

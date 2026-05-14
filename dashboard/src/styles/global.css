@@ -1638,282 +1638,931 @@ a.verb-row:hover {
 }
 
 /* Wizard styles (kept from previous design — wizard is unchanged surface) */
-.wizard {
+/* ============================================================================
+ * /setup wizard — character-sheet, anticipatory
+ *
+ * The setup surface reads as deliberate and ceremonial — the operator is
+ * making considered choices that will plant a role. Visual language:
+ *   - narrow column (~760px) so each step reads as a single-focus screen,
+ *   - pixel-font STEP indicator + thin progress rule with coloured fill,
+ *   - Fraunces display title + Source Serif 4 italic subtitle per step,
+ *   - inputs are 1.5px ink-bordered, square, with a coloured focus shadow,
+ *   - numbered rows ("01", "02"…) for list-shaped fields (capabilities,
+ *     accountabilities, inhibitions, traits, verbs),
+ *   - per-step accent piped via `--accent` and `--accent-soft` set on the
+ *     wrapper element so the CSS never branches on the active step.
+ *
+ * The accent values are wired by the `setupWizard()` Alpine component on
+ * `.setup-stage` — every styled affordance reads `var(--accent)`. Default
+ * values are kept here so the page renders sensibly if the script defers.
+ * ========================================================================== */
+.setup-container {
   max-width: 760px;
-  margin: 0 auto;
+  padding-top: 0;
 }
-.wizard-card {
-  background: var(--surface);
-  border: 1px solid var(--rule);
-  border-radius: 6px;
-  padding: 1.75rem 2rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-}
-.wizard-step-label {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--ink-muted);
-  margin-bottom: 0.4rem;
-  font-family: ui-monospace, monospace;
-}
-.wizard h1 {
-  font-size: 22px;
-  font-weight: 500;
-  margin-bottom: 0.4rem;
-}
-.wizard h2 {
-  font-size: 18px;
-  font-weight: 500;
-  margin-bottom: 0.4rem;
-}
-.wizard p {
-  color: var(--ink-soft);
-  margin-bottom: 1rem;
-}
-.wizard-help {
-  font-size: 13px;
-  color: var(--ink-muted);
-  margin-bottom: 0.4rem;
-}
-.wizard-progress {
+
+.setup-brand-strip {
+  background: var(--ink);
+  color: var(--bg);
+  padding: 0.7rem 2.5rem;
   display: flex;
-  gap: 0.3rem;
+  align-items: center;
+  gap: 1.2em;
+  border-bottom: 4px solid var(--ink);
+  /* Break out of the centered container to full-bleed. */
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  margin-bottom: 4rem;
+}
+.setup-brand-strip .px-logo {
+  font-family: var(--pixel);
+  font-weight: 400;
+  font-size: 18px;
+  letter-spacing: 0.15em;
+  display: inline-flex;
+  gap: 0.05em;
+  text-decoration: none;
+}
+.setup-brand-strip a.px-logo:hover {
+  text-decoration: none;
+}
+.setup-brand-strip .px-logo span:nth-child(1) {
+  color: var(--peach);
+}
+.setup-brand-strip .px-logo span:nth-child(2) {
+  color: var(--pink);
+}
+.setup-brand-strip .px-logo span:nth-child(3) {
+  color: var(--purple);
+}
+.setup-brand-strip .px-logo span:nth-child(4) {
+  color: var(--lavender);
+}
+.setup-brand-strip .px-logo span:nth-child(5) {
+  color: var(--teal);
+}
+.setup-brand-strip .px-logo span:nth-child(6) {
+  color: var(--peach);
+}
+.setup-brand-strip .sep {
+  color: var(--ink-faint);
+  font-family: var(--pixel);
+}
+.setup-brand-strip .role-tag {
+  font-family: var(--pixel);
+  font-size: 11.5px;
+  letter-spacing: 0.18em;
+  color: var(--bg);
+}
+.setup-brand-strip .meta {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+.setup-brand-strip .setup-path-line code {
+  background: transparent;
+  color: var(--bg);
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 0;
+}
+
+/* Wizard wrapper — provides the per-step `--accent` custom property and the
+   vertical rhythm between step indicator, step body, and nav row. */
+.setup-stage {
+  /* Fallbacks so the page reads even before Alpine hydrates the inline
+     style attribute with the live accent values. */
+  --accent: var(--teal);
+  --accent-soft: var(--teal-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 2.5rem;
+  padding-bottom: 5rem;
+}
+
+/* Step indicator — pixel-font STEP coordinate above a 1px ink rule with a
+   coloured progress fill that grows to match progressIndex / totalSteps. */
+.setup-step-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+.setup-step-label {
+  font-family: var(--pixel);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.setup-step-label--cover {
+  color: var(--accent);
+  margin-bottom: 1.2rem;
+}
+.setup-progress {
+  height: 1px;
+  background: var(--ink);
+  position: relative;
+  overflow: visible;
+}
+.setup-progress-fill {
+  position: absolute;
+  top: -1px;
+  left: 0;
+  height: 3px;
+  background: var(--accent);
+  transition: width 240ms ease;
+}
+
+/* Step body — generous top space, single-column. Each step is a single
+   focal area; the title and subtitle live at the top with breathing room. */
+.setup-step {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding-top: 2.5rem;
+}
+.setup-title {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 44px;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  font-variation-settings: 'opsz' 144;
+  margin-bottom: 0.2rem;
+}
+.setup-subtitle {
+  font-family: var(--prose);
+  font-style: italic;
+  font-size: 17px;
+  line-height: 1.55;
+  color: var(--ink-soft);
+  max-width: 56ch;
   margin-bottom: 1.5rem;
 }
-.wizard-progress-step {
-  flex: 1;
-  height: 4px;
-  background: var(--surface-mute);
-  border-radius: 2px;
-}
-.wizard-progress-step.active {
-  background: var(--link);
-}
-.wizard-progress-step.done {
-  background: var(--good);
-}
-.wizard-actions {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 2rem;
-  padding-top: 1.25rem;
-  border-top: 1px solid var(--rule);
-}
-.btn {
-  padding: 0.55rem 1.1rem;
-  border-radius: 4px;
-  border: 1px solid var(--rule-strong);
-  background: var(--surface);
-  font-size: 14px;
-  cursor: pointer;
-  font-family: inherit;
-}
-.btn:hover:not(:disabled) {
-  background: var(--surface-mute);
-}
-.btn-primary {
-  background: var(--ink);
-  color: var(--surface);
-  border-color: var(--ink);
-}
-.btn-primary:hover:not(:disabled) {
-  background: #000;
-}
-.btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-.field {
-  margin-bottom: 1rem;
-}
-.field label {
-  display: block;
-  font-size: 13px;
-  font-weight: 500;
-  margin-bottom: 0.3rem;
-}
-.field input[type='text'],
-.field input[type='email'],
-.field textarea {
-  width: 100%;
-  padding: 0.55rem 0.75rem;
-  border: 1px solid var(--rule-strong);
-  border-radius: 4px;
-  font-family: inherit;
-  font-size: 14px;
-  background: var(--surface);
-  color: var(--ink);
-}
-.field input:focus,
-.field textarea:focus {
-  outline: 2px solid var(--link);
-  outline-offset: -1px;
-  border-color: var(--link);
-}
-.field-row {
-  display: grid;
-  grid-template-columns: 1fr 2fr auto;
-  gap: 0.5rem;
-  margin-bottom: 0.5rem;
-  align-items: start;
-}
-.field-row.single {
-  grid-template-columns: 1fr auto;
-}
-.icon-btn {
-  background: none;
-  border: 1px solid var(--rule);
-  border-radius: 4px;
-  width: 32px;
-  height: 32px;
-  cursor: pointer;
-  color: var(--ink-muted);
-  font-size: 16px;
-}
-.icon-btn:hover {
-  background: var(--surface-mute);
-  color: var(--danger);
-}
-.add-row {
-  font-size: 13px;
-  color: var(--link);
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 0.3rem 0;
-  margin-top: 0.25rem;
-}
-.add-row:hover {
-  text-decoration: underline;
-}
-.review-list {
-  background: var(--surface-mute);
-  border-radius: 4px;
-  padding: 1rem 1.25rem;
-  margin-bottom: 1rem;
-  font-size: 13px;
+
+/* Welcome prose — Source Serif 4 readable column. */
+.setup-welcome-prose {
+  font-family: var(--prose);
+  font-size: 15.5px;
+  line-height: 1.7;
   color: var(--ink-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-width: 60ch;
 }
-.review-list h3 {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+.setup-welcome-prose strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+.setup-checklist {
+  list-style: decimal;
+  padding-left: 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.setup-checklist li::marker {
+  font-family: var(--pixel);
+  font-size: 12px;
   color: var(--ink-muted);
-  margin-bottom: 0.5rem;
-  font-family: ui-monospace, monospace;
 }
-.review-list ul {
+.setup-commit-list {
   list-style: none;
   padding: 0;
   margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  font-size: 14px;
+  color: var(--ink-soft);
 }
-.review-list li {
-  padding: 0.2rem 0;
-  font-family: ui-monospace, monospace;
+.setup-commit-list li {
+  padding-left: 1.2rem;
+  position: relative;
+}
+.setup-commit-list li::before {
+  content: '·';
+  font-family: var(--pixel);
+  position: absolute;
+  left: 0;
+  color: var(--accent);
+}
+
+/* Field — pixel label + italic help + character-sheet input. */
+.setup-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.setup-field-label {
+  font-family: var(--pixel);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink);
+  display: flex;
+  align-items: baseline;
+  gap: 0.4em;
+}
+.setup-required {
+  font-family: var(--pixel);
+  color: var(--oxblood);
   font-size: 12px;
 }
-.review-list li.danger {
-  color: var(--danger);
+.setup-field-help {
+  font-family: var(--prose);
+  font-style: italic;
+  font-size: 14px;
+  color: var(--ink-muted);
+  line-height: 1.45;
+  margin: 0;
 }
-.error-banner {
-  background: #fbe2dc;
-  color: var(--danger);
-  border: 1px solid #ecdada;
-  border-radius: 4px;
-  padding: 0.75rem 1rem;
-  margin-bottom: 1rem;
-  font-size: 13px;
+.setup-input {
+  width: 100%;
+  padding: 0.85rem 1rem;
+  border: 1.5px solid var(--ink);
+  border-radius: 0;
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--ui);
+  font-size: 16px;
+  line-height: 1.5;
+  margin-top: 0.2rem;
 }
-.success-banner {
-  background: #dcefe2;
-  color: var(--good);
-  border: 1px solid #c5e8dc;
-  border-radius: 4px;
-  padding: 0.75rem 1rem;
-  margin-bottom: 1rem;
-  font-size: 13px;
+.setup-input::placeholder {
+  color: var(--ink-faint);
 }
-.commit-step {
-  font-size: 13px;
+.setup-input:focus {
+  outline: none;
+  box-shadow: 4px 4px 0 var(--accent-soft);
+  transform: translate(-1px, -1px);
+}
+.setup-input--prose {
+  font-family: var(--prose);
+  font-size: 15.5px;
+  line-height: 1.55;
+  min-height: 8em;
+  resize: vertical;
+}
+.setup-input--select {
+  cursor: pointer;
+  appearance: none;
+  background-image: linear-gradient(
+      45deg,
+      transparent 50%,
+      var(--ink) 50%
+    ),
+    linear-gradient(135deg, var(--ink) 50%, transparent 50%);
+  background-position:
+    calc(100% - 18px) 50%,
+    calc(100% - 12px) 50%;
+  background-size:
+    6px 6px,
+    6px 6px;
+  background-repeat: no-repeat;
+  padding-right: 2.2rem;
+}
+.setup-input--inline {
+  margin-top: 0;
+  padding: 0.7rem 0.85rem;
+  font-size: 15px;
+}
+.setup-input--mono {
+  font-family: var(--mono);
+  font-size: 14px;
+}
+
+.setup-field-output {
+  font-family: var(--prose);
+  font-style: italic;
+  font-size: 13.5px;
+  color: var(--ink-muted);
+  margin-top: 0.5rem;
+  padding-top: 0.7rem;
+  border-top: 1px dashed var(--rule);
+}
+.setup-field-output code {
+  font-style: normal;
+  background: transparent;
   color: var(--ink-soft);
-  padding: 0.5rem 0;
-  font-family: ui-monospace, monospace;
+  padding: 0;
+  font-family: var(--mono);
+  font-size: 12.5px;
 }
-.commit-step.done::before {
-  content: '✓ ';
-  color: var(--good);
+
+/* Example block — quiet preamble that anchors each field group with a
+   concrete instance. Pixel-font label, mono prose for the body. */
+.setup-example {
+  background: var(--surface-mute);
+  border-left: 3px solid var(--accent);
+  padding: 0.9rem 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-bottom: 0.5rem;
 }
-.commit-step.pending::before {
-  content: '· ';
+.setup-example-label {
+  font-family: var(--pixel);
+  font-size: 10.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.setup-example-pair {
+  display: grid;
+  grid-template-columns: minmax(8em, 1fr) 2fr;
+  gap: 0.8rem;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.setup-example-pair .ex-label {
+  font-family: var(--display);
+  font-weight: 600;
+  color: var(--ink);
+}
+.setup-example-pair .ex-detail {
+  font-family: var(--prose);
+  color: var(--ink-soft);
+}
+.setup-example-single {
+  font-family: var(--prose);
+  font-style: italic;
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+
+/* Path choice — two numbered cards, ceremonial feel. */
+.setup-paths {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-top: 0.5rem;
+}
+.setup-path {
+  display: grid;
+  grid-template-columns: 2.5em 1fr;
+  gap: 1rem;
+  padding: 1.4rem 1.5rem;
+  background: var(--surface);
+  border: 1.5px solid var(--ink);
+  border-radius: 0;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  color: var(--ink);
+  transition:
+    box-shadow 120ms ease,
+    transform 120ms ease;
+}
+.setup-path:hover {
+  box-shadow: 4px 4px 0 var(--accent-soft);
+  transform: translate(-1px, -1px);
+}
+.setup-path:focus-visible {
+  outline: none;
+  box-shadow: 4px 4px 0 var(--accent);
+  transform: translate(-1px, -1px);
+}
+.setup-path.active {
+  background: var(--accent-soft);
+  box-shadow: 4px 4px 0 var(--accent);
+  transform: translate(-1px, -1px);
+}
+.setup-path-marker {
+  font-family: var(--pixel);
+  font-size: 16px;
+  color: var(--accent);
+  letter-spacing: 0.08em;
+}
+.setup-path-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.setup-path-head {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 18px;
+  color: var(--ink);
+  line-height: 1.2;
+}
+.setup-path-sub {
+  font-family: var(--prose);
+  font-size: 14px;
+  color: var(--ink-soft);
+  line-height: 1.5;
+}
+.setup-path-note {
+  font-family: var(--prose);
+  font-style: italic;
+  font-size: 13px;
   color: var(--ink-muted);
 }
-.commit-step.active::before {
-  content: '⠿ ';
+.setup-path-chip {
+  margin-top: auto;
+  align-self: flex-start;
+  font-family: var(--pixel);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink);
+  background: var(--surface-mute);
+  padding: 0.3em 0.7em;
+}
+
+/* Numbered rows — the list-shaped fields (traits, capabilities, etc.). The
+   "01" / "02" markers echo the /role Accountabilities numbered stack so the
+   wizard reads in the same visual language as the populated dashboard. */
+.setup-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.setup-row {
+  display: grid;
+  grid-template-columns: 2.5em 1fr 2.5em;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.55rem 0.9rem 0.55rem 0;
+  background: var(--surface);
+  border: 1.5px solid var(--ink);
+}
+.setup-row--oxblood {
+  border-color: var(--oxblood);
+  background: var(--oxblood-soft);
+}
+.setup-row-num {
+  font-family: var(--pixel);
+  font-size: 14px;
+  color: var(--accent);
+  text-align: right;
+  letter-spacing: 0;
+  padding-left: 0.9rem;
+}
+.setup-row--oxblood .setup-row-num {
+  color: var(--oxblood);
+}
+.setup-row-fields {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.5rem;
+}
+.setup-row-fields--pair {
+  grid-template-columns: minmax(10em, 1fr) 2fr;
+}
+.setup-row .setup-input--inline {
+  border: none;
+  border-bottom: 1px dashed var(--rule);
+  padding: 0.4rem 0.2rem;
+  margin-top: 0;
+  font-size: 14.5px;
+}
+.setup-row .setup-input--inline:focus {
+  border-bottom-color: var(--accent);
+  box-shadow: none;
+  transform: none;
+}
+.setup-row--oxblood .setup-input--inline:focus {
+  border-bottom-color: var(--oxblood);
+}
+.setup-row-remove {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--ink-faint);
+  font-size: 18px;
+  line-height: 1;
+  padding: 0.3rem 0.5rem;
+  font-family: var(--mono);
+}
+.setup-row-remove:hover:not(:disabled) {
+  color: var(--oxblood);
+}
+.setup-row-remove:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.setup-add-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  font-family: var(--pixel);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink);
+  background: none;
+  border: 1px dashed var(--ink-faint);
+  padding: 0.6em 1em;
+  cursor: pointer;
+  margin-top: 0.3rem;
+  align-self: flex-start;
+  transition:
+    border-color 120ms ease,
+    color 120ms ease;
+}
+.setup-add-row:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.setup-add-row:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.setup-add-row--danger {
+  border-style: dotted;
+  color: var(--ink-muted);
+}
+.setup-add-row--danger:hover:not(:disabled) {
+  border-color: var(--oxblood);
+  color: var(--oxblood);
+}
+
+/* Handoff (research path) */
+.setup-handoff-steps {
+  list-style: decimal;
+  padding-left: 1.4rem;
+  font-family: var(--prose);
+  font-size: 15px;
+  color: var(--ink-soft);
+  line-height: 1.7;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.setup-handoff-steps li::marker {
+  font-family: var(--pixel);
+  font-size: 12px;
+  color: var(--accent);
+}
+.setup-handoff-prompt {
+  margin-top: 0.6rem;
+  padding: 0.7rem 0.9rem;
+  background: var(--surface-mute);
+  border: 1.5px solid var(--ink);
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.setup-handoff-prompt code {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  background: none;
+  color: var(--ink);
+  flex: 1;
+  word-break: break-word;
+  padding: 0;
+}
+.setup-handoff-status {
+  margin-top: 0.8rem;
+  padding: 0.8rem 1rem;
+  border: 1px dashed var(--ink-faint);
+  background: var(--surface-mute);
+  font-family: var(--prose);
+  font-size: 14px;
+  color: var(--ink-soft);
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+.setup-handoff-meta {
+  color: var(--ink-muted);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  margin-left: 0.4rem;
+}
+.setup-handoff-ok {
+  color: var(--good);
+  font-weight: 500;
+  font-family: var(--prose);
+}
+.setup-handoff-pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ink-faint);
+  flex-shrink: 0;
+}
+.setup-handoff-pulse.active {
+  background: var(--accent);
+  animation: setup-handoff-pulse 1.6s ease-in-out infinite;
+}
+@keyframes setup-handoff-pulse {
+  0%, 100% { opacity: 0.3; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1.1); }
+}
+.setup-handoff-overrides {
+  margin-top: 1rem;
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* Review summary + collapsible sections — quieter chrome than the steps
+   themselves so the review reads as a checklist rather than a new screen. */
+.setup-review-summary {
+  background: var(--surface-mute);
+  border-left: 3px solid var(--accent);
+  padding: 1rem 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.setup-review-headline {
+  font-family: var(--display);
+  font-size: 18px;
+  color: var(--ink);
+}
+.setup-review-headline strong {
+  font-weight: 600;
+}
+.setup-review-dot {
+  color: var(--ink-faint);
+  margin: 0 0.3em;
+}
+.setup-review-meta {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-muted);
+}
+.setup-review-jumps {
+  font-family: var(--prose);
+  font-style: italic;
+  font-size: 13px;
+  color: var(--ink-muted);
+}
+.setup-review-jumps a {
+  font-family: var(--prose);
+  font-style: italic;
   color: var(--link);
 }
 
-.field-row-labels {
-  display: grid;
-  grid-template-columns: 1fr 2fr auto;
-  gap: 0.5rem;
-  padding-bottom: 0.3rem;
-  font-size: 10.5px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--ink-muted);
-  font-weight: 600;
-}
-.field-row-labels.single { grid-template-columns: 1fr auto; }
-.field-row-labels span:last-child { visibility: hidden; }
-
-.example-block {
-  background: var(--surface-mute);
+.setup-review-section {
   border: 1px solid var(--rule);
-  border-radius: 4px;
-  padding: 0.7rem 0.9rem;
-  margin-bottom: 1rem;
-  font-size: 12.5px;
-  color: var(--ink-soft);
+  background: var(--surface);
 }
-.example-label {
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 10px;
+.setup-review-section > summary {
+  padding: 0.8rem 1.1rem;
+  cursor: pointer;
+  font-family: var(--pixel);
+  font-size: 12px;
   letter-spacing: 0.1em;
-  color: var(--ink-muted);
-  margin-bottom: 0.4rem;
+  text-transform: uppercase;
+  color: var(--ink);
+  list-style: none;
+  user-select: none;
 }
-.example-pair {
-  display: grid;
-  grid-template-columns: 1fr 2fr;
-  gap: 0.5rem;
-  align-items: start;
+.setup-review-section > summary::-webkit-details-marker {
+  display: none;
 }
-.example-pair .ex-label { font-weight: 600; color: var(--ink); }
-.example-pair .ex-detail { color: var(--ink-soft); }
-.example-single { color: var(--ink-soft); font-style: italic; }
-
-.field-output-hint {
-  font-size: 11px;
-  font-style: italic;
-  color: var(--ink-muted);
-  padding-top: 0.6rem;
+.setup-review-section > summary::before {
+  content: '>';
+  display: inline-block;
+  width: 1.2em;
+  color: var(--accent);
+  font-family: var(--mono);
+  font-weight: 600;
+  transition: transform 120ms ease;
+}
+.setup-review-section[open] > summary::before {
+  transform: rotate(90deg);
+}
+.setup-review-body {
+  padding: 0.7rem 1.1rem 1.1rem;
   border-top: 1px dashed var(--rule);
-  margin-top: 1rem;
-}
-.field-output-hint code {
-  font-style: normal;
-  font-size: 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
 }
 
-.welcome-checklist {
+/* Commit-progress strip — surfaced during submit. */
+.setup-commit-progress {
+  margin-top: 1.2rem;
+  padding: 1rem 1.2rem;
+  background: var(--surface-mute);
+  border-left: 3px solid var(--accent);
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.setup-commit-step {
+  font-family: var(--mono);
   font-size: 13px;
   color: var(--ink-soft);
-  line-height: 1.7;
-  margin: 0.5rem 0 1.2rem 1.2rem;
-  padding: 0;
+  padding: 0.2rem 0;
 }
-.welcome-checklist li { padding-left: 0.2rem; }
+.setup-commit-step code {
+  font-family: var(--mono);
+  background: transparent;
+  padding: 0;
+  font-size: 12.5px;
+  color: var(--ink);
+}
+.setup-commit-step.done::before {
+  content: '✓ ';
+  color: var(--good);
+  font-weight: 600;
+}
+.setup-commit-step.pending::before {
+  content: '· ';
+  color: var(--ink-muted);
+}
+.setup-commit-step.active::before {
+  content: '⠿ ';
+  color: var(--accent);
+}
+
+.setup-error {
+  background: var(--oxblood-soft);
+  color: var(--oxblood);
+  border-left: 3px solid var(--oxblood);
+  padding: 0.8rem 1.1rem;
+  font-family: var(--prose);
+  font-size: 14px;
+}
+
+/* Navigation row — text-only Back on the left, filled CTA on the right.
+   The CTA carries the per-step accent shadow so each step's commitment
+   feels coloured by the topic. */
+.setup-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 2rem;
+  padding-top: 1.6rem;
+  border-top: 1px solid var(--rule);
+}
+.setup-back {
+  font-family: var(--pixel);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.6em 0;
+}
+.setup-back:hover:not(:disabled) {
+  color: var(--ink);
+}
+.setup-back:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.setup-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+  font-family: var(--pixel);
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  background: var(--ink);
+  color: var(--bg);
+  border: 1.5px solid var(--ink);
+  border-radius: 0;
+  padding: 0.85em 1.4em;
+  cursor: pointer;
+  box-shadow: 4px 4px 0 var(--accent);
+  transition:
+    transform 120ms ease,
+    box-shadow 120ms ease;
+  text-decoration: none;
+}
+.setup-cta:hover:not(:disabled) {
+  transform: translate(-1px, -1px);
+  box-shadow: 5px 5px 0 var(--accent);
+  text-decoration: none;
+}
+.setup-cta:active:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 var(--accent);
+}
+.setup-cta:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.setup-cta-arrow {
+  font-family: var(--mono);
+  letter-spacing: 0;
+}
+/* Explicit colour variants for surfaces where the cta sits outside the
+   wizard's `--accent` system (e.g. the already-seeded landing). */
+.setup-cta-pink {
+  box-shadow: 4px 4px 0 var(--pink);
+}
+.setup-cta-pink:hover:not(:disabled) {
+  box-shadow: 5px 5px 0 var(--pink);
+}
+.setup-cta-pink:active:not(:disabled) {
+  box-shadow: 1px 1px 0 var(--pink);
+}
+
+/* Already-seeded landing — quiet, observational copy that mirrors the rest
+   of the dashboard's "looking at the role" mood. */
+.setup-seeded {
+  padding-top: 3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.2rem;
+  max-width: 60ch;
+}
+.setup-seeded-marker {
+  font-family: var(--pixel);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--pink);
+}
+.setup-seeded-title {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 44px;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  font-variation-settings: 'opsz' 144;
+}
+.setup-seeded-prose {
+  font-family: var(--prose);
+  font-size: 16px;
+  line-height: 1.7;
+  color: var(--ink-soft);
+}
+.setup-seeded-prose code {
+  font-family: var(--mono);
+  font-size: 13.5px;
+  background: var(--surface-mute);
+  padding: 1px 6px;
+}
+.setup-seeded-actions {
+  margin-top: 1rem;
+}
+
+/* Mobile collapse — keep inputs full-width, simplify the row grids so
+   numbered + paired fields don't crush horizontally. */
+@media (max-width: 768px) {
+  .setup-container {
+    padding: 0 1rem;
+  }
+  .setup-brand-strip {
+    padding: 0.6rem 1rem;
+    flex-wrap: wrap;
+    gap: 0.7em;
+  }
+  .setup-brand-strip .meta {
+    margin-left: 0;
+    width: 100%;
+    font-size: 10.5px;
+  }
+  .setup-title {
+    font-size: 32px;
+  }
+  .setup-subtitle {
+    font-size: 15px;
+  }
+  .setup-seeded-title {
+    font-size: 32px;
+  }
+  .setup-paths {
+    grid-template-columns: 1fr;
+  }
+  .setup-row {
+    grid-template-columns: 2em 1fr 2em;
+    gap: 0.5rem;
+    padding: 0.5rem 0.5rem 0.5rem 0;
+  }
+  .setup-row-num {
+    padding-left: 0.5rem;
+    font-size: 12px;
+  }
+  .setup-row-fields--pair {
+    grid-template-columns: 1fr;
+  }
+  .setup-example-pair {
+    grid-template-columns: 1fr;
+    gap: 0.3rem;
+  }
+  .setup-actions {
+    flex-direction: row;
+    align-items: stretch;
+    gap: 0.7rem;
+  }
+  .setup-cta {
+    flex: 1;
+    justify-content: center;
+  }
+}
 
 /* Home → chat call-to-action */
 .chat-cta {
