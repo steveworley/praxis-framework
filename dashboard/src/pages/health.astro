@@ -3,12 +3,37 @@ import EmptyState from '@/components/EmptyState.astro';
 import RouteHeader from '@/components/RouteHeader.astro';
 import SectionPill from '@/components/SectionPill.astro';
 import BaseLayout from '@/layouts/BaseLayout.astro';
-import { type HealthReport, loadHealth } from '@/lib/health-loader';
+import { assembleActivity, type ActivityEntry } from '@/lib/activity-loader';
+import { type AutonomousEdit, recentAutonomousEdits } from '@/lib/autonomy-loader';
+import { bucketByWeek, type HealthReport, loadHealth } from '@/lib/health-loader';
 import { assembleMcpWarnings, type McpWarnings } from '@/lib/health/mcp-warnings';
+import { assembleMemory, type MemoryEntry } from '@/lib/memory-loader';
 import { parsePersona, type Persona } from '@/lib/persona-parser';
-import { detectMode, getRoleHome, nowIso } from '@/lib/role-home';
-import type { CriterionStatusValue } from '@/lib/self-assessment-parser';
-import { daysSince, formatAgeLabel } from '@/lib/ui/time';
+import { detectMode, getLogGlob, getRoleHome, nowIso } from '@/lib/role-home';
+import {
+  getLatestSelfAssessmentsByCriterion,
+  type CriterionStatusValue,
+} from '@/lib/self-assessment-parser';
+
+/**
+ * /health — character-sheet redesign (Phase 2 step 3).
+ *
+ * Body shape, top to bottom:
+ *   1. MCP "Configuration drift" panel (PR #53) — conditional, urgent first.
+ *   2. Hero: teal `VITAL SIGNS` pill + 44px Fraunces title + italic sub +
+ *      window-meta strip in mono dim.
+ *   3. 2×2 vital-signs grid: memory (peach) · escalations (pink) · activity
+ *      (purple) · autonomous edits (lavender). Each panel: SectionPill +
+ *      headline Fraunces number + pixel sparkline + 4-row mono breakdown.
+ *   4. Full-width "Success criteria" panel (lavender): one row per declared
+ *      criterion with status pip, prose, optional trend strip, status badge.
+ *
+ * Data is reused from the existing loaders (`loadHealth` plus side calls to
+ * `assembleActivity`, `assembleMemory`, `recentAutonomousEdits`) — no new
+ * loader shapes. Weekly histograms for activity + autonomy are derived inline
+ * with `bucketByWeek` since the existing health loader returns flat 30-day
+ * totals for those two surfaces.
+ */
 
 export const prerender = false;
 
@@ -18,10 +43,30 @@ if (mode === 'seed') {
   return Astro.redirect('/setup');
 }
 
-const [personaRes, healthRes, mcpWarningsRes] = await Promise.allSettled([
+// Same author email the health-loader's autonomy block matches against — kept
+// in sync so the page's weekly histogram aligns with `health.autonomy.role_commits`.
+const ROLE_AUTHOR_EMAIL = 'role@praxis.local';
+const WEEK_COUNT = 4;
+const ACTIVITY_FETCH_LIMIT = 5000;
+
+const [
+  personaRes,
+  healthRes,
+  mcpWarningsRes,
+  memoryRes,
+  activityRes,
+  editsRes,
+] = await Promise.allSettled([
   parsePersona(roleHome),
   loadHealth(roleHome),
   assembleMcpWarnings(roleHome),
+  assembleMemory(roleHome),
+  assembleActivity(roleHome, getLogGlob(), ACTIVITY_FETCH_LIMIT),
+  recentAutonomousEdits(roleHome, {
+    role_email: ROLE_AUTHOR_EMAIL,
+    limit: 500,
+    since_days: 30,
+  }),
 ]);
 
 const persona: Persona | null = personaRes.status === 'fulfilled' ? personaRes.value : null;
@@ -33,35 +78,42 @@ const mcpWarnings: McpWarnings =
     : { missingDeclared: [], unreachable: [] };
 const hasMcpWarnings =
   mcpWarnings.missingDeclared.length > 0 || mcpWarnings.unreachable.length > 0;
+const memoryEntries: MemoryEntry[] =
+  memoryRes.status === 'fulfilled' ? memoryRes.value : [];
+const activityEntries: ActivityEntry[] =
+  activityRes.status === 'fulfilled' ? activityRes.value : [];
+const recentEdits: AutonomousEdit[] = editsRes.status === 'fulfilled' ? editsRes.value : [];
 
 const fullName = persona?.identity['full_name'] ?? persona?.identity['name'] ?? '';
 const updatedAt = nowIso();
+const now = Date.now();
 
 /**
- * Bar-glyph renderer for a weekly histogram. Picks a single Unicode
- * block-glyph per bucket based on its count relative to the row max, so
- * the visual stays textual + monospace-friendly. Used inline next to each
- * bucket's numeric count.
+ * 5-level block-glyph sparkline. Each bucket is one character so a 4-bucket
+ * sparkline reads as "▂▄▆█" — the visual hooks into the per-panel colour via
+ * CSS and the Departure Mono pixel font. Empty buckets render as a thin `▁`
+ * to keep the strip aligned (zero-width spaces would break the grid).
  */
-const GLYPHS = ['·', '▁', '▃', '▅', '▇'];
-function sparkline(counts: number[]): string {
+const SPARK_GLYPHS = ['▁', '▂', '▄', '▆', '█'] as const;
+function renderSparkline(counts: number[]): string {
   const max = counts.reduce((m, n) => (n > m ? n : m), 0);
-  if (max === 0) return GLYPHS[0]!.repeat(counts.length);
+  if (max === 0) return SPARK_GLYPHS[0]!.repeat(counts.length);
   return counts
     .map((n) => {
-      if (n === 0) return GLYPHS[0]!;
+      if (n === 0) return SPARK_GLYPHS[0]!;
       const ratio = n / max;
-      // Map [0..1] onto indices [1..4] of GLYPHS — 1 is the thinnest non-zero
-      // bar, 4 the fullest.
-      const idx = Math.min(GLYPHS.length - 1, Math.max(1, Math.ceil(ratio * (GLYPHS.length - 1))));
-      return GLYPHS[idx]!;
+      // ratio ∈ (0, 1] → idx in [1, 4]
+      const idx = Math.min(SPARK_GLYPHS.length - 1, Math.max(1, Math.ceil(ratio * 4)));
+      return SPARK_GLYPHS[idx]!;
     })
     .join('');
 }
 
-function formatRatio(r: number | null): string {
-  if (r === null) return '—';
-  return `${(r * 100).toFixed(0)}%`;
+/** Compact whole-number formatter — keeps panel headlines compact when counts
+ *  cross the 4-digit mark (e.g. tool-call totals over 1k). */
+function compact(n: number): string {
+  if (n < 1000) return String(n);
+  return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}k`;
 }
 
 function formatDays(d: number | null): string {
@@ -73,70 +125,161 @@ function formatDays(d: number | null): string {
   return `${d.toFixed(1)}d`;
 }
 
-/**
- * Map a self-assessment status to the dashboard's existing tone colour
- * tokens. The criteria panel reuses the same `--good` / `--warn` / `--danger`
- * / `--ink-muted` swatches used elsewhere on `/health` for visual
- * consistency.
- */
-function criterionStatusToneClass(status: CriterionStatusValue | null): string {
-  if (status === 'green') return 'tone-good';
-  if (status === 'amber') return 'tone-warn';
-  if (status === 'red') return 'tone-danger';
-  return 'tone-muted';
-}
-
-function criterionStatusLabel(status: CriterionStatusValue | null): string {
-  if (status === null) return 'unsure';
-  return status;
-}
-
-/**
- * Trend glyphs for the per-criterion strip. We map the four enum values onto
- * the existing block-glyph palette used by the memory / escalations sparklines
- * elsewhere on `/health` — green pulls the fullest bar, red the thinnest non-
- * zero, amber sits in the middle, and `unsure` drops to the dot. Each glyph
- * also carries a tone class so the colour mirrors the latest-status badge.
- */
-function trendGlyphFor(status: CriterionStatusValue): string {
-  if (status === 'green') return '▇';
-  if (status === 'amber') return '▅';
-  if (status === 'red') return '▃';
-  return '·';
-}
-
+// --- Memory panel --------------------------------------------------------------
+// Headline = total live memory entries. Sparkline = writes/week over 4 weeks.
+// Breakdown rows: this week · last week · 4-week median · longest gap (days).
 const memoryWeeklyCounts = health?.memory.weekly.map((b) => b.count) ?? [];
-const filedWeeklyCounts = health?.escalations.weekly_filed.map((b) => b.count) ?? [];
-const resolvedWeeklyCounts = health?.escalations.weekly_resolved.map((b) => b.count) ?? [];
-const declinedWeeklyCounts = health?.escalations.weekly_declined.map((b) => b.count) ?? [];
-const memoryBars = sparkline(memoryWeeklyCounts);
-const filedBars = sparkline(filedWeeklyCounts);
-const resolvedBars = sparkline(resolvedWeeklyCounts);
-const declinedBars = sparkline(declinedWeeklyCounts);
-const toolCounts = health?.activity.by_tool.map((t) => t.count) ?? [];
-const toolBars = sparkline(toolCounts);
+const memorySpark = renderSparkline(memoryWeeklyCounts);
+const memoryThisWeek = memoryWeeklyCounts[memoryWeeklyCounts.length - 1] ?? 0;
+const memoryLastWeek = memoryWeeklyCounts[memoryWeeklyCounts.length - 2] ?? 0;
+function median(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 1) return sorted[mid] ?? 0;
+  return ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2;
+}
+const memoryWeeklyMedian = median(memoryWeeklyCounts);
+/** Longest gap in days between consecutive memory writes within the last 28
+ *  days. Reads as "the role went N days without writing" — a stale-cadence
+ *  signal complementing the headline count. */
+function longestGapDays(entries: MemoryEntry[], windowDays: number, ref: number): number {
+  const windowStart = ref - windowDays * 24 * 60 * 60 * 1000;
+  const stamps = entries
+    .map((e) => Date.parse(e.updated ?? e.created ?? ''))
+    .filter((t) => Number.isFinite(t) && t >= windowStart && t <= ref)
+    .sort((a, b) => a - b);
+  if (stamps.length === 0) return windowDays;
+  let maxGap = (stamps[0]! - windowStart) / (24 * 60 * 60 * 1000);
+  for (let i = 1; i < stamps.length; i++) {
+    const gap = (stamps[i]! - stamps[i - 1]!) / (24 * 60 * 60 * 1000);
+    if (gap > maxGap) maxGap = gap;
+  }
+  const trailing = (ref - stamps[stamps.length - 1]!) / (24 * 60 * 60 * 1000);
+  if (trailing > maxGap) maxGap = trailing;
+  return maxGap;
+}
+const memoryLongestGap = longestGapDays(memoryEntries, 28, now);
+
+// --- Escalations panel ---------------------------------------------------------
+// Headline = total filed lifetime. Sparkline = filed/week over 4 weeks.
+// Breakdown: open · median time-to-triage (28d) · filed last week · resolved
+// last week. Each breakdown value derives from the existing health report.
+const escFiledCounts = health?.escalations.weekly_filed.map((b) => b.count) ?? [];
+const escResolvedCounts = health?.escalations.weekly_resolved.map((b) => b.count) ?? [];
+const escSpark = renderSparkline(escFiledCounts);
+const escFiledLastWeek = escFiledCounts[escFiledCounts.length - 1] ?? 0;
+const escResolvedLastWeek = escResolvedCounts[escResolvedCounts.length - 1] ?? 0;
+
+// --- Activity panel ------------------------------------------------------------
+// Headline = total tool calls in last 30d (== `health.activity.total`).
+// Sparkline = weekly bucket of activity timestamps over the 4 weeks ending
+// now — we go back to the raw entries since the loader only surfaces the
+// flat 30-day total + per-tool breakdown.
+// Breakdown rows: decisions · tool_call · verb_started · verb_completed (30d).
+function actionCount(name: string): number {
+  if (!health) return 0;
+  return health.activity.by_tool.find((t) => t.tool === name)?.count ?? 0;
+}
+const activityWeekly = bucketByWeek(
+  activityEntries.map((e) => e.timestamp ?? null),
+  now,
+  WEEK_COUNT,
+);
+const activitySpark = renderSparkline(activityWeekly.map((b) => b.count));
+const activityTotal = health?.activity.total ?? 0;
+
+// --- Autonomous edits panel ----------------------------------------------------
+// Headline = total role-authored commits in last 30d (== `health.autonomy.role_commits`).
+// Sparkline = commits/week over 4 weeks (derived from `recentAutonomousEdits`).
+// Breakdown: surfaces touched · edits to lib/ · memory/ · verbs/.
+const autonomyWeekly = bucketByWeek(
+  recentEdits.map((c) => c.date || null),
+  now,
+  WEEK_COUNT,
+);
+const autonomySpark = renderSparkline(autonomyWeekly.map((b) => b.count));
+const autonomyTotal = health?.autonomy.role_commits ?? recentEdits.length;
+function editsTouching(prefix: string): number {
+  return recentEdits.filter((edit) => edit.files.some((f) => f.startsWith(prefix))).length;
+}
+const surfacesTouched = (() => {
+  const seen = new Set<string>();
+  for (const edit of recentEdits) {
+    for (const f of edit.files) {
+      // Top-level surface = first path segment (lib, memory, verbs, output, …).
+      const segment = f.split('/')[0];
+      if (segment) seen.add(segment);
+    }
+  }
+  return seen.size;
+})();
+
+// --- Criteria panel ------------------------------------------------------------
+// One row per declared success criterion. Latest status drives the pip + badge
+// colour; trend strip shows the last 4 statuses oldest→newest, or hides when
+// no history exists. We compute the strip independent of `health.criteria` so
+// `trend_length` can be controlled here without a loader-shape change.
+const declaredCriteria = persona?.success_criteria ?? [];
+const byCriterion = getLatestSelfAssessmentsByCriterion(memoryEntries);
+const TREND_LENGTH = 4;
+const criteriaRows = declaredCriteria.map((criterion) => {
+  const history = byCriterion.get(criterion) ?? [];
+  const latest = history[0] ?? null;
+  const trend = history.slice(0, TREND_LENGTH).map((h) => h.status).reverse();
+  return { criterion, latest, trend };
+});
+const assessedCount = criteriaRows.filter((c) => c.latest !== null).length;
+
+interface PipShape {
+  glyph: string;
+  cls: 'green' | 'amber' | 'red' | 'unsure';
+}
+function pipFor(status: CriterionStatusValue | null): PipShape {
+  if (status === 'green') return { glyph: '●', cls: 'green' };
+  if (status === 'amber') return { glyph: '◐', cls: 'amber' };
+  if (status === 'red') return { glyph: '○', cls: 'red' };
+  return { glyph: '◌', cls: 'unsure' };
+}
+function statusLabel(status: CriterionStatusValue | null): string {
+  if (status === null) return 'UNSURE';
+  if (status === 'green') return 'GOOD';
+  if (status === 'amber') return 'WARN';
+  if (status === 'red') return 'DANGER';
+  return 'UNSURE';
+}
+function trendGlyph(status: CriterionStatusValue): string {
+  if (status === 'green') return '█';
+  if (status === 'amber') return '▆';
+  if (status === 'red') return '▄';
+  return '▁';
+}
+function trendCls(status: CriterionStatusValue): string {
+  if (status === 'green') return 'green';
+  if (status === 'amber') return 'amber';
+  if (status === 'red') return 'red';
+  return 'unsure';
+}
+
+// First-name handle for hero copy. Falls back to "the role" when no persona.
+function firstNameOf(p: Persona | null): string {
+  const full = (p?.identity['full_name'] ?? p?.identity['name'] ?? '').trim();
+  if (full.length === 0) return 'the role';
+  const idx = full.indexOf(' ');
+  return idx < 0 ? full : full.slice(0, idx);
+}
+const firstName = firstNameOf(persona);
+const heroTitle = persona ? "How I'm doing" : 'How the role is doing';
+const heroSub = `Read-only observability. Aggregations across ${firstName}'s writes, escalations, activity logs, and autonomous edits — the firehose, summarised.`;
+const criteriaTitle = persona ? 'How I measure myself' : 'How the role measures themselves';
+const windowMeta = `4-WEEK WINDOWS · 30-DAY ACTIVITY & AUTONOMY · GENERATED ${updatedAt}`;
 ---
 
 <BaseLayout title={fullName ? `Health · ${fullName}` : 'Health · Praxis'}>
   <main class="container">
-    <RouteHeader
-      current="health"
-      personaName={fullName}
-      updatedAt={updatedAt}
-    />
+    <RouteHeader current="health" personaName={fullName} updatedAt={updatedAt} />
 
     <div class="page-body">
-      <div class="group-head">
-        <span class="group-counter">
-          {health
-            ? `4-week windows · 30-day activity & autonomy windows`
-            : 'unable to assemble report'}
-        </span>
-      </div>
-      <p class="page-lede">
-        Read-only observability. Aggregations across the role's writes, escalations, activity logs, and autonomous edits — the firehose, summarised.
-      </p>
-
       {hasMcpWarnings && (
         <section class="sec mcp-drift">
           <SectionPill
@@ -161,7 +304,9 @@ const toolBars = sparkline(toolCounts);
             ))}
             {mcpWarnings.unreachable.map((server) => (
               <li class="mcp-drift-row">
-                <span class="mcp-drift-kind unreachable">{server.status === 'unreachable' ? 'UNREACHABLE' : 'ERROR'}</span>
+                <span class="mcp-drift-kind unreachable">
+                  {server.status === 'unreachable' ? 'UNREACHABLE' : 'ERROR'}
+                </span>
                 <code class="mcp-drift-name">{server.name}</code>
                 <span class="mcp-drift-text">
                   configured in <code>PRAXIS_MCPS</code> but the dashboard could not reach it{server.message ? ` — ${server.message}` : ''}.
@@ -172,280 +317,123 @@ const toolBars = sparkline(toolCounts);
         </section>
       )}
 
+      <section class="vh-hero">
+        <div class="hero-left">
+          <div class="pill">VITAL SIGNS</div>
+          <h1>{heroTitle}</h1>
+          <div class="sub">{heroSub}</div>
+        </div>
+        <div class="windows">{windowMeta}</div>
+      </section>
+
       {healthError && (
         <EmptyState>Failed to load health report: {healthError}</EmptyState>
       )}
 
       {health && (
         <>
-          <div class="group">
-            <div class="group-head">
-              <span class="group-title">Memory</span>
-              <span class="group-counter">
-                {health.memory.total} {health.memory.total === 1 ? 'entry' : 'entries'} · from <code>memory/</code>
-              </span>
-            </div>
-            {health.memory.total === 0 ? (
-              <EmptyState>
-                No memory entries yet. As the role works, observations land in <code>memory/&lt;category&gt;/</code>.
-              </EmptyState>
-            ) : (
-              <div class="health-panel">
-                <div class="health-stat">
-                  Last update: <strong>{health.memory.last_update ?? '—'}</strong>
-                </div>
-                <div class="health-table-wrap">
-                  <div class="health-table-title">Writes by week</div>
-                  <table class="health-table">
-                    <thead>
-                      <tr>
-                        <th>week ending</th>
-                        <th class="num">count</th>
-                        <th class="bar">·</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {health.memory.weekly.map((b, i) => (
-                        <tr>
-                          <td>{b.label}</td>
-                          <td class="num">{b.count}</td>
-                          <td class="bar">{memoryBars[i]}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <div class="health-table-wrap">
-                  <div class="health-table-title">By category</div>
-                  <table class="health-table">
-                    <thead>
-                      <tr>
-                        <th>category</th>
-                        <th class="num">count</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {health.memory.by_category.map((c) => (
-                        <tr>
-                          <td>{c.category}</td>
-                          <td class="num">{c.count}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-          </div>
+          <section class="vitals">
+            <article class="vital-panel">
+              <header class="vp-head">
+                <span class="vp-pill peach">MEMORY</span>
+                <span class="vp-num">{compact(health.memory.total)}</span>
+              </header>
+              <div class="vp-spark peach">{memorySpark}</div>
+              <dl class="vp-break">
+                <div class="vp-row"><dt>this week</dt><dd>{memoryThisWeek}</dd></div>
+                <div class="vp-row"><dt>last week</dt><dd>{memoryLastWeek}</dd></div>
+                <div class="vp-row"><dt>4-week median</dt><dd>{memoryWeeklyMedian.toFixed(memoryWeeklyMedian % 1 === 0 ? 0 : 1)}</dd></div>
+                <div class="vp-row"><dt>longest gap</dt><dd>{memoryLongestGap.toFixed(1)}d</dd></div>
+              </dl>
+            </article>
 
-          <div class="group">
-            <div class="group-head">
-              <span class="group-title">Escalations</span>
-              <span class="group-counter">
-                {health.escalations.total} total · {health.escalations.counts_by_status.open} open · from <code>escalations/</code>
-              </span>
-            </div>
-            {health.escalations.total === 0 ? (
-              <EmptyState>
-                No escalations on file. Help requests, improvements, and proposed skills will surface here.
-              </EmptyState>
-            ) : (
-              <div class="health-panel">
-                <div class="health-stat">
-                  Median time-to-triage (28d):{' '}
-                  <strong>{formatDays(health.escalations.median_time_to_triage_days)}</strong>
-                  {health.escalations.triage_sample_size > 0 && (
-                    <span class="health-stat-aside">
-                      · n={health.escalations.triage_sample_size}
-                    </span>
-                  )}
-                </div>
-                <div class="health-table-wrap">
-                  <div class="health-table-title">Filed / resolved / declined by week</div>
-                  <table class="health-table esc-weekly">
-                    <thead>
-                      <tr>
-                        <th>week ending</th>
-                        <th class="num">filed</th>
-                        <th class="num">resolved</th>
-                        <th class="num">declined</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {health.escalations.weekly_filed.map((b, i) => (
-                        <tr>
-                          <td>{b.label}</td>
-                          <td class="num">
-                            <span class="bar-inline">{filedBars[i]}</span>
-                            {b.count}
-                          </td>
-                          <td class="num">
-                            <span class="bar-inline">{resolvedBars[i]}</span>
-                            {health.escalations.weekly_resolved[i]?.count ?? 0}
-                          </td>
-                          <td class="num">
-                            <span class="bar-inline">{declinedBars[i]}</span>
-                            {health.escalations.weekly_declined[i]?.count ?? 0}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <div class="health-stat-row">
-                  <span>
-                    open: <strong>{health.escalations.counts_by_status.open}</strong>
-                  </span>
-                  <span>
-                    resolved: <strong>{health.escalations.counts_by_status.resolved}</strong>
-                  </span>
-                  <span>
-                    accepted: <strong>{health.escalations.counts_by_status.accepted}</strong>
-                  </span>
-                  <span>
-                    declined: <strong>{health.escalations.counts_by_status.declined}</strong>
-                  </span>
-                </div>
-              </div>
-            )}
-          </div>
+            <article class="vital-panel">
+              <header class="vp-head">
+                <span class="vp-pill pink">ESCALATIONS</span>
+                <span class="vp-num">{health.escalations.total}</span>
+              </header>
+              <div class="vp-spark pink">{escSpark}</div>
+              <dl class="vp-break">
+                <div class="vp-row"><dt>open</dt><dd>{health.escalations.counts_by_status.open}</dd></div>
+                <div class="vp-row"><dt>median time-to-triage (28d)</dt><dd>{formatDays(health.escalations.median_time_to_triage_days)}</dd></div>
+                <div class="vp-row"><dt>filed last week</dt><dd>{escFiledLastWeek}</dd></div>
+                <div class="vp-row"><dt>resolved last week</dt><dd>{escResolvedLastWeek}</dd></div>
+              </dl>
+            </article>
 
-          <div class="group">
-            <div class="group-head">
-              <span class="group-title">Activity</span>
-              <span class="group-counter">
-                {health.activity.total} {health.activity.total === 1 ? 'call' : 'calls'} in last {health.activity.window_days}d · from <code>logs/</code>
-              </span>
-            </div>
-            {health.activity.total === 0 ? (
-              <EmptyState>
-                No activity in the last {health.activity.window_days} days. Chat tool calls and decision logs feed this surface.
-              </EmptyState>
-            ) : (
-              <div class="health-panel">
-                <div class="health-table-wrap">
-                  <div class="health-table-title">Tool-call distribution (30d)</div>
-                  <table class="health-table">
-                    <thead>
-                      <tr>
-                        <th>tool</th>
-                        <th class="num">count</th>
-                        <th class="bar">·</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {health.activity.by_tool.map((t, i) => (
-                        <tr>
-                          <td><code>{t.tool}</code></td>
-                          <td class="num">{t.count}</td>
-                          <td class="bar">{toolBars[i]}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-          </div>
+            <article class="vital-panel">
+              <header class="vp-head">
+                <span class="vp-pill purple">ACTIVITY</span>
+                <span class="vp-num">{compact(activityTotal)}</span>
+              </header>
+              <div class="vp-spark purple">{activitySpark}</div>
+              <dl class="vp-break">
+                <div class="vp-row"><dt>decisions</dt><dd>{actionCount('decision')}</dd></div>
+                <div class="vp-row"><dt>tool_call</dt><dd>{actionCount('tool_call')}</dd></div>
+                <div class="vp-row"><dt>verb_started</dt><dd>{actionCount('verb_started')}</dd></div>
+                <div class="vp-row"><dt>verb_completed</dt><dd>{actionCount('verb_completed')}</dd></div>
+              </dl>
+            </article>
 
-          <div class="group">
-            <div class="group-head">
-              <span class="group-title">Performance against criteria</span>
-              <span class="group-counter">
-                {health.criteria.criteria.length === 0
-                  ? 'no criteria declared'
-                  : `${health.criteria.criteria.length} ${health.criteria.criteria.length === 1 ? 'criterion' : 'criteria'} · from persona.md + memory/`}
-              </span>
-            </div>
-            {health.criteria.criteria.length === 0 ? (
-              <EmptyState>
-                No success criteria declared. Add them to <code>persona.md</code> under <code>## Success criteria</code> to enable self-assessment tracking.
-              </EmptyState>
-            ) : (
-              <div class="health-panel">
-                <p class="health-prose">
-                  Latest self-assessment per criterion. The role writes these as memory entries titled <code>Criteria self-assessment YYYY-MM-DD</code> during reflection. Trend strip reads oldest → newest, capped at {health.criteria.trend_length}.
-                </p>
-                <ul class="criteria-list">
-                  {health.criteria.criteria.map((c) => {
-                    const latest = c.latest;
-                    const tone = criterionStatusToneClass(latest?.status ?? null);
-                    const age = latest ? daysSince(latest.assessedAt) : null;
-                    const ageLabel = age !== null ? formatAgeLabel(age) : '';
-                    return (
-                      <li class="criteria-row">
-                        <div class="criteria-head">
-                          <span class="criteria-text">{c.criterion}</span>
-                          <span class:list={['criteria-badge', tone]}>
-                            {criterionStatusLabel(latest?.status ?? null)}
-                          </span>
-                        </div>
-                        <div class="criteria-meta">
-                          {latest ? (
-                            <>
-                              <span>Last assessed {ageLabel || 'today'}</span>
-                              <span class="dot">·</span>
-                              <span class="criteria-when">{latest.assessedAt}</span>
-                            </>
-                          ) : (
-                            <span class="criteria-empty">No assessment yet</span>
-                          )}
-                          {c.trend.length > 0 && (
-                            <>
-                              <span class="dot">·</span>
-                              <span class="trend-strip" aria-label="status trend, oldest to newest">
-                                {c.trend.map((s) => (
-                                  <span class:list={['trend-pip', criterionStatusToneClass(s)]}>
-                                    {trendGlyphFor(s)}
-                                  </span>
-                                ))}
-                              </span>
-                            </>
-                          )}
-                        </div>
-                        {latest && latest.reasoning.length > 0 && (
-                          <blockquote class="criteria-reasoning">{latest.reasoning}</blockquote>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            )}
-          </div>
+            <article class="vital-panel">
+              <header class="vp-head">
+                <span class="vp-pill lavender">AUTONOMOUS EDITS</span>
+                <span class="vp-num">{compact(autonomyTotal)}</span>
+              </header>
+              <div class="vp-spark lavender">{autonomySpark}</div>
+              {health.autonomy.git_unavailable ? (
+                <p class="vp-empty">Git history isn't available for this role.</p>
+              ) : (
+                <dl class="vp-break">
+                  <div class="vp-row"><dt>surfaces touched</dt><dd>{surfacesTouched}</dd></div>
+                  <div class="vp-row"><dt>edits to lib/</dt><dd>{editsTouching('lib/')}</dd></div>
+                  <div class="vp-row"><dt>edits to memory/</dt><dd>{editsTouching('memory/')}</dd></div>
+                  <div class="vp-row"><dt>edits to verbs/</dt><dd>{editsTouching('verbs/')}</dd></div>
+                </dl>
+              )}
+            </article>
+          </section>
 
-          <div class="group">
-            <div class="group-head">
-              <span class="group-title">Autonomous edits</span>
-              <span class="group-counter">
-                {health.autonomy.git_unavailable
-                  ? 'git unavailable'
-                  : `${health.autonomy.role_commits} role ${health.autonomy.role_commits === 1 ? 'commit' : 'commits'} · ${health.autonomy.revert_commits} ${health.autonomy.revert_commits === 1 ? 'revert' : 'reverts'} (30d) · from git`}
-              </span>
-            </div>
-            {health.autonomy.git_unavailable ? (
-              <EmptyState>
-                Git history isn't available for this role. Initialise a repo to surface autonomous edits + revert ratio.
-              </EmptyState>
-            ) : health.autonomy.role_commits === 0 ? (
-              <EmptyState>
-                No role-authored commits in the last {health.autonomy.window_days} days.
-              </EmptyState>
+          <section class="criteria-panel">
+            <SectionPill
+              colour="lavender"
+              label="SUCCESS CRITERIA"
+              title={criteriaTitle}
+              counter={
+                declaredCriteria.length === 0
+                  ? 'none declared'
+                  : `against ${declaredCriteria.length} declared ${declaredCriteria.length === 1 ? 'criterion' : 'criteria'} · ${assessedCount} assessed`
+              }
+            />
+            {declaredCriteria.length === 0 ? (
+              <p class="crit-empty">No success criteria declared in <code>persona.md</code>.</p>
             ) : (
-              <div class="health-panel">
-                <div class="health-stat">
-                  Revert ratio:{' '}
-                  <strong>{formatRatio(health.autonomy.revert_ratio)}</strong>
-                  <span class="health-stat-aside">
-                    · {health.autonomy.revert_commits} / {health.autonomy.role_commits}
-                  </span>
-                </div>
-                <p class="health-prose">
-                  Reverts of <code>role(…)</code> commits over the same {health.autonomy.window_days}-day window. A rising ratio is the supervisor's signal that autonomous edits are drifting.
-                </p>
-              </div>
+              <ol class="crit-list">
+                {criteriaRows.map(({ criterion, latest, trend }) => {
+                  const pip = pipFor(latest?.status ?? null);
+                  return (
+                    <li class="crit">
+                      <span class:list={['crit-pip', pip.cls]}>{pip.glyph}</span>
+                      <div class="crit-text">
+                        {criterion}
+                        {latest?.reasoning ? <em>{latest.reasoning}</em> : null}
+                      </div>
+                      <div class="crit-trend" aria-hidden={trend.length === 0}>
+                        {trend.length === 0
+                          ? null
+                          : trend.map((s) => (
+                              <span class:list={['crit-pixel', trendCls(s)]}>{trendGlyph(s)}</span>
+                            ))}
+                      </div>
+                      <span class:list={['crit-badge', pip.cls]}>
+                        {statusLabel(latest?.status ?? null)}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ol>
             )}
-          </div>
+          </section>
         </>
       )}
     </div>
@@ -509,193 +497,232 @@ const toolBars = sparkline(toolCounts);
       color: var(--ink);
     }
 
-    .health-panel {
-      display: flex;
-      flex-direction: column;
-      gap: 1.2rem;
+    /* === Hero ============================================================ */
+    .vh-hero {
+      margin-bottom: 3rem;
+      padding-bottom: 2rem;
+      border-bottom: 1px solid var(--rule);
     }
-    .health-stat {
-      font-size: 13px;
-      color: var(--ink);
+    .vh-hero .hero-left .pill {
+      font-family: var(--pixel);
+      font-size: 11px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--surface);
+      background: var(--teal);
+      padding: 0.3em 0.7em;
+      display: inline-block;
+      margin-bottom: 1em;
     }
-    .health-stat strong {
-      font-family: ui-monospace, monospace;
+    .vh-hero .hero-left h1 {
+      font-family: var(--display);
       font-weight: 600;
-    }
-    .health-stat-aside {
-      color: var(--ink-muted);
-      font-family: ui-monospace, monospace;
-      font-size: 12px;
-      margin-left: 0.4rem;
-    }
-    .health-stat-row {
-      display: flex;
-      gap: 1.5rem;
-      flex-wrap: wrap;
-      font-size: 12.5px;
-      color: var(--ink-muted);
-    }
-    .health-stat-row strong {
+      font-size: 44px;
+      line-height: 1.05;
+      letter-spacing: -0.02em;
       color: var(--ink);
-      font-family: ui-monospace, monospace;
-      font-weight: 600;
+      margin-bottom: 0.3em;
+      font-variation-settings: 'opsz' 144;
     }
-    .health-table-wrap {
-      display: flex;
-      flex-direction: column;
-      gap: 0.4rem;
+    .vh-hero .hero-left .sub {
+      font-family: var(--display);
+      font-style: italic;
+      font-weight: 500;
+      font-size: 18px;
+      color: var(--ink-soft);
+      max-width: 62ch;
+      margin-bottom: 1.4em;
     }
-    .health-table-title {
+    .vh-hero .windows {
+      font-family: var(--mono);
       font-size: 11px;
       letter-spacing: 0.06em;
-      text-transform: uppercase;
       color: var(--ink-muted);
+      text-transform: uppercase;
     }
-    .health-table {
-      border-collapse: collapse;
-      font-size: 12.5px;
-      font-family: ui-monospace, monospace;
-      min-width: 320px;
+
+    /* === Vital signs 2×2 grid =========================================== */
+    .vitals {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 2.2rem;
+      margin-bottom: 3rem;
     }
-    .health-table th,
-    .health-table td {
-      text-align: left;
-      padding: 0.3rem 0.9rem 0.3rem 0;
-      border-bottom: 1px solid var(--rule);
-      vertical-align: baseline;
+    /* Each panel = bordered card, white surface, 2rem padding. Reads calm. */
+    .vital-panel {
+      background: var(--surface);
+      border: 1.5px solid var(--ink);
+      padding: 2rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
     }
-    .health-table th {
+    .vp-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+    .vp-pill {
+      font-family: var(--pixel);
+      font-size: 10.5px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      padding: 0.3em 0.6em;
+      align-self: flex-start;
+    }
+    .vp-pill.peach {
+      background: var(--peach);
+      color: var(--ink);
+    }
+    .vp-pill.pink {
+      background: var(--pink);
+      color: var(--ink);
+    }
+    .vp-pill.purple {
+      background: var(--purple);
+      color: var(--surface);
+    }
+    .vp-pill.lavender {
+      background: var(--lavender);
+      color: var(--surface);
+    }
+    .vp-num {
+      font-family: var(--display);
       font-weight: 600;
-      color: var(--ink-muted);
-      font-size: 11px;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-    }
-    .health-table td.num,
-    .health-table th.num {
-      text-align: right;
+      font-size: 56px;
+      line-height: 1;
+      letter-spacing: -0.025em;
+      color: var(--ink);
+      font-variation-settings: 'opsz' 144;
       font-variant-numeric: tabular-nums;
     }
-    .health-table td.bar,
-    .health-table th.bar {
-      text-align: left;
-      color: var(--ink-soft);
-      padding-left: 0.4rem;
+    .vp-spark {
+      font-family: var(--pixel);
+      font-size: 28px;
+      letter-spacing: 0.08em;
+      line-height: 1;
+      margin-top: -0.1rem;
     }
-    .health-table .bar-inline {
-      display: inline-block;
-      width: 1ch;
-      color: var(--ink-soft);
-      margin-right: 0.4rem;
-    }
-    .health-table code {
-      font-family: ui-monospace, monospace;
+    .vp-spark.peach { color: var(--peach); }
+    .vp-spark.pink { color: var(--pink); }
+    .vp-spark.purple { color: var(--purple); }
+    .vp-spark.lavender { color: var(--lavender); }
+    .vp-break {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      font-family: var(--mono);
       font-size: 12.5px;
+      margin: 0;
     }
-    .health-prose {
-      font-size: 12.5px;
+    .vp-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 1rem;
+    }
+    .vp-row dt {
+      color: var(--ink-muted);
+      text-transform: lowercase;
+    }
+    .vp-row dd {
+      color: var(--ink);
+      font-weight: 500;
+      font-variant-numeric: tabular-nums;
+      margin: 0;
+    }
+    .vp-empty {
+      font-family: var(--prose);
+      font-style: italic;
+      font-size: 13px;
       color: var(--ink-muted);
       margin: 0;
-      max-width: 56ch;
     }
-    .criteria-list {
+
+    /* === Criteria panel ================================================== */
+    .criteria-panel {
+      background: var(--surface);
+      border: 1.5px solid var(--ink);
+      padding: 2rem 2.1rem;
+    }
+    .criteria-panel :global(.sec-head) {
+      margin-bottom: 1.4rem;
+    }
+    .crit-empty {
+      font-family: var(--prose);
+      font-style: italic;
+      color: var(--ink-muted);
+      font-size: 14px;
+      margin: 0;
+    }
+    .crit-list {
       list-style: none;
       padding: 0;
       margin: 0;
       display: flex;
       flex-direction: column;
-      gap: 1rem;
     }
-    .criteria-row {
-      padding: 0.9rem 0;
+    .crit {
+      display: grid;
+      grid-template-columns: 2.3em 1fr 7em 6.5em;
+      gap: 1.1rem;
+      padding: 1rem 0;
       border-top: 1px solid var(--rule);
+      align-items: center;
     }
-    .criteria-row:last-child {
+    .crit:last-child {
       border-bottom: 1px solid var(--rule);
     }
-    .criteria-head {
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      gap: 1rem;
-      flex-wrap: wrap;
-      margin-bottom: 0.35rem;
+    .crit-pip {
+      font-family: var(--pixel);
+      font-size: 22px;
+      line-height: 1;
+      text-align: center;
     }
-    .criteria-text {
-      font-size: 13.5px;
+    .crit-pip.green { color: var(--good); }
+    .crit-pip.amber { color: var(--warn); }
+    .crit-pip.red { color: var(--danger); }
+    .crit-pip.unsure { color: var(--ink-faint); }
+
+    .crit-text {
+      font-family: var(--prose);
+      font-size: 14.5px;
+      line-height: 1.5;
       color: var(--ink);
-      font-weight: 500;
     }
-    .criteria-badge {
-      font-family: ui-monospace, monospace;
+    .crit-text em {
+      display: block;
+      font-style: italic;
+      font-family: var(--prose);
+      color: var(--ink-muted);
+      font-size: 13px;
+      margin-top: 0.25em;
+      font-weight: 400;
+    }
+    .crit-trend {
+      font-family: var(--pixel);
+      font-size: 18px;
+      letter-spacing: 0.08em;
+      text-align: center;
+      line-height: 1;
+    }
+    .crit-pixel.green { color: var(--good); }
+    .crit-pixel.amber { color: var(--warn); }
+    .crit-pixel.red { color: var(--danger); }
+    .crit-pixel.unsure { color: var(--ink-faint); }
+
+    .crit-badge {
+      font-family: var(--pixel);
       font-size: 11px;
-      letter-spacing: 0.06em;
+      letter-spacing: 0.1em;
       text-transform: uppercase;
-      padding: 1px 6px;
-      border-radius: 2px;
-      flex-shrink: 0;
+      text-align: right;
+      justify-self: end;
     }
-    .criteria-badge.tone-good {
-      background: #dcefe2;
-      color: var(--good);
-    }
-    .criteria-badge.tone-warn {
-      background: #fbeed4;
-      color: var(--warn);
-    }
-    .criteria-badge.tone-danger {
-      background: #fbe2dc;
-      color: var(--danger);
-    }
-    .criteria-badge.tone-muted {
-      background: var(--surface-mute);
-      color: var(--ink-muted);
-    }
-    .criteria-meta {
-      font-family: ui-monospace, monospace;
-      font-size: 11.5px;
-      color: var(--ink-muted);
-      display: flex;
-      gap: 0.35rem;
-      flex-wrap: wrap;
-      align-items: baseline;
-      margin-bottom: 0.4rem;
-    }
-    .criteria-meta .dot {
-      color: var(--ink-faint);
-    }
-    .criteria-when {
-      font-variant-numeric: tabular-nums;
-    }
-    .criteria-empty {
-      color: var(--ink-muted);
-      font-style: italic;
-    }
-    .trend-strip {
-      display: inline-flex;
-      gap: 1px;
-      font-family: ui-monospace, monospace;
-    }
-    .trend-pip.tone-good {
-      color: var(--good);
-    }
-    .trend-pip.tone-warn {
-      color: var(--warn);
-    }
-    .trend-pip.tone-danger {
-      color: var(--danger);
-    }
-    .trend-pip.tone-muted {
-      color: var(--ink-faint);
-    }
-    .criteria-reasoning {
-      margin: 0;
-      padding: 0.3rem 0 0 0.9rem;
-      border-left: 2px solid var(--rule);
-      font-size: 12.5px;
-      color: var(--ink-soft);
-      font-style: italic;
-      max-width: 64ch;
-    }
+    .crit-badge.green { color: var(--good); }
+    .crit-badge.amber { color: var(--warn); }
+    .crit-badge.red { color: var(--danger); }
+    .crit-badge.unsure { color: var(--ink-faint); }
   </style>
 </BaseLayout>
