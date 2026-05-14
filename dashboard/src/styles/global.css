@@ -1994,3 +1994,661 @@ a.verb-row:hover {
     grid-template-columns: 1fr;
   }
 }
+
+/* ============================================================================
+ * /chat — chat-as-home, character-sheet aesthetic
+ *
+ * The page is a narrow editorial column (max-width 880px). Top: warm greeting
+ * hero with a pixel-font `WHO · BUCKET · STATUS` preamble and a 34px Fraunces
+ * salutation. Below: a horizontal row of pending chips (only when there's
+ * actually pending work), a "recent threads" bordered section, then the
+ * sticky composer with a peach offset block-shadow.
+ * ========================================================================== */
+.chat-stage {
+  max-width: 880px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 1rem 0 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2.2rem;
+}
+
+/* Greeting block */
+.chat-stage .greeting {
+  position: relative;
+}
+.chat-stage .who {
+  font-family: var(--pixel);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--teal);
+  margin-bottom: 1.2em;
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+}
+.chat-stage .who .dot {
+  width: 7px;
+  height: 7px;
+  background: var(--teal);
+  display: inline-block;
+}
+.chat-stage .greeting-text {
+  font-family: var(--display);
+  font-weight: 500;
+  font-size: 34px;
+  line-height: 1.25;
+  color: var(--ink);
+  letter-spacing: -0.012em;
+  max-width: 26ch;
+  font-variation-settings: 'opsz' 60;
+}
+.chat-stage .greeting-text a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--peach);
+  text-decoration-thickness: 3px;
+  text-underline-offset: 2px;
+}
+.chat-stage .greeting-text a:hover {
+  background: var(--peach-soft);
+  text-decoration-color: var(--peach);
+}
+
+/* Pending chip row (only rendered when there are pending items) */
+.pending-row {
+  display: flex;
+  gap: 0.9em;
+  flex-wrap: wrap;
+  padding-top: 1rem;
+  border-top: 1px dashed var(--rule);
+  margin-top: 1.6em;
+  align-items: baseline;
+}
+.pending-row .label-pre {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--ink-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-right: 0.4em;
+}
+.pending-chip {
+  background: var(--surface);
+  border: 1.5px solid var(--pink);
+  padding: 0.4em 0.85em;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.5em;
+  color: var(--ink);
+  text-decoration: none;
+  font-size: 13.5px;
+  border-radius: 0;
+}
+.pending-chip:hover {
+  background: var(--pink-soft);
+  text-decoration: none;
+}
+.pending-chip .num {
+  font-family: var(--pixel);
+  font-size: 14px;
+  color: var(--pink);
+  font-weight: 600;
+}
+.pending-chip .label {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--ink-muted);
+  text-transform: lowercase;
+}
+.pending-chip.purple {
+  border-color: var(--purple);
+}
+.pending-chip.purple:hover {
+  background: var(--purple-soft);
+}
+.pending-chip.purple .num {
+  color: var(--purple);
+}
+.pending-chip.muted {
+  border-color: var(--rule-strong);
+}
+.pending-chip.muted .num {
+  color: var(--ink-muted);
+}
+
+/* Recent threads list */
+.threads {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+}
+.threads-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 0.8em 1.2em;
+  border-bottom: 1px solid var(--rule);
+  background: var(--bg);
+}
+.threads-head .h {
+  font-family: var(--pixel);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink);
+  background: var(--teal);
+  padding: 0.25em 0.6em;
+}
+.threads-head .a {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--teal);
+  text-decoration: none;
+}
+.threads-head .a:hover {
+  text-decoration: underline;
+}
+.threads .thread-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 1.2em;
+  padding: 0.75em 1.2em;
+  border-bottom: 1px solid var(--rule);
+  color: var(--ink);
+  text-decoration: none;
+  align-items: center;
+}
+.threads .thread-row:last-child {
+  border-bottom: none;
+}
+.threads .thread-row:hover {
+  background: var(--teal-soft);
+  text-decoration: none;
+}
+.threads .thread-row .title {
+  font-family: var(--prose);
+  font-size: 14.5px;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.threads .thread-row .when {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-muted);
+}
+.threads .thread-empty {
+  padding: 1rem 1.2em;
+  font-style: italic;
+  color: var(--ink-muted);
+  font-size: 13px;
+}
+
+/* Composer — sticky-bottom, peach offset shadow, square corners */
+.chat-stage .composer {
+  position: sticky;
+  bottom: 0;
+  background: var(--bg);
+  padding-bottom: 1.5rem;
+  padding-top: 1rem;
+  margin-top: 1rem;
+  /* Make the composer reach above any z-stacked elements that
+     accidentally bleed through (e.g. the prose's media). */
+  z-index: 2;
+}
+.chat-stage .composer-shell {
+  background: var(--surface);
+  border: 2px solid var(--ink);
+  padding: 0.8rem 1rem;
+  box-shadow: 4px 4px 0 var(--peach);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5em;
+}
+.chat-stage .composer textarea {
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-family: var(--ui);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ink);
+  resize: none;
+  min-height: 3em;
+  padding: 0;
+  border-radius: 0;
+}
+.chat-stage .composer textarea::placeholder {
+  color: var(--ink-muted);
+  font-style: italic;
+}
+.chat-stage .composer textarea:disabled {
+  cursor: not-allowed;
+  color: var(--ink-faint);
+}
+.chat-stage .composer-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px dashed var(--rule);
+  padding-top: 0.5em;
+  margin-top: 0.4em;
+  gap: 0.8em;
+}
+.chat-stage .composer-foot .hint {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--ink-muted);
+  letter-spacing: 0.04em;
+}
+.chat-stage .composer-foot .hint code {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  padding: 0 0.25em;
+  background: var(--surface-mute);
+  border-radius: 0;
+}
+.chat-stage .composer-foot .send {
+  font-family: var(--pixel);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  background: var(--ink);
+  color: var(--peach);
+  border: none;
+  padding: 0.5em 1em;
+  cursor: pointer;
+  border-radius: 0;
+}
+.chat-stage .composer-foot .send:hover:not(:disabled) {
+  background: var(--peach);
+  color: var(--ink);
+}
+.chat-stage .composer-foot .send:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Chat transcript (active conversation) — sits above the composer.
+   Lighter editorial treatment to coexist with the greeting hero. */
+.chat-stage .chat-transcript {
+  display: flex;
+  flex-direction: column;
+  gap: 2.4rem;
+  padding: 0.5rem 0;
+}
+.chat-stage .chat-turn {
+  max-width: 100%;
+  padding: 0 0 0 1.1rem;
+  border-left: 3px solid var(--rule);
+}
+.chat-stage .chat-turn.role-user {
+  border-left-color: var(--rule-strong);
+}
+.chat-stage .chat-turn.role-assistant {
+  border-left-color: var(--teal);
+}
+.chat-stage .chat-turn-head {
+  display: flex;
+  gap: 0.7rem;
+  align-items: baseline;
+  margin-bottom: 0.5rem;
+}
+.chat-stage .chat-turn-role {
+  font-family: var(--pixel);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.chat-stage .role-assistant .chat-turn-role {
+  color: var(--teal);
+}
+.chat-stage .chat-turn-time {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+
+.chat-stage .chat-empty-hint {
+  font-style: italic;
+  color: var(--ink-muted);
+  padding: 1rem 0;
+  font-size: 13.5px;
+}
+
+.chat-stage .chat-error {
+  background: var(--oxblood-soft);
+  color: var(--oxblood);
+  padding: 0.7rem 1.1rem;
+  font-size: 13px;
+  margin-top: 0.6rem;
+  border-left: 3px solid var(--oxblood);
+}
+
+/* MCP-warning banner — keep the legacy styling but make sure it slots in. */
+.chat-stage .mcp-warning-banner {
+  margin-top: 0;
+  padding: 0.7rem 1rem;
+  background: var(--surface-mute);
+  border-left: 3px solid var(--warn, var(--danger));
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  line-height: 1.5;
+}
+.chat-stage .mcp-warning-banner ul {
+  margin: 0.35rem 0 0;
+  padding-left: 1.1rem;
+}
+.chat-stage .mcp-warning-banner li + li {
+  margin-top: 0.25rem;
+}
+.chat-stage .mcp-warning-banner code {
+  font-family: var(--mono);
+  font-size: 12px;
+  background: var(--surface);
+  padding: 0 0.25rem;
+}
+
+/* ============================================================================
+ * /notebook — journal-shaped redesign
+ *
+ * Hero: peach pill + 48px Fraunces title + italic sub on the left; 4-stat
+ * strip with peach offset shadow + 2px ink border on the right. Below:
+ * three-row filter (category × age × visibility) using anchor chips
+ * (progressively-enhanced query-param navigation, no JS). Below: entries
+ * with a 14em gutter rail (palette-coloured category pill + date + slug)
+ * and a body column (Fraunces H2 + Source Serif 4 prose). Hairline rule
+ * between entries; no card chrome.
+ * ========================================================================== */
+.nb-hero {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 3rem;
+  margin-bottom: 3rem;
+  padding-bottom: 2.5rem;
+  border-bottom: 1px solid var(--rule);
+  align-items: end;
+}
+.nb-hero .hero-left .pill {
+  font-family: var(--pixel);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink);
+  background: var(--peach);
+  padding: 0.3em 0.7em;
+  display: inline-block;
+  margin-bottom: 1em;
+}
+.nb-hero .hero-left h1 {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 48px;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  margin-bottom: 0.3em;
+  font-variation-settings: 'opsz' 144;
+}
+.nb-hero .hero-left .sub {
+  font-family: var(--display);
+  font-style: italic;
+  font-weight: 500;
+  font-size: 19px;
+  color: var(--ink-soft);
+}
+
+/* Stats strip (anchor card) */
+.stats {
+  display: flex;
+  gap: 1.6em;
+  align-items: stretch;
+  background: var(--surface);
+  border: 2px solid var(--ink);
+  padding: 0.9em 1.1em;
+  box-shadow: 4px 4px 0 var(--peach);
+}
+.stats .stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15em;
+  min-width: 6em;
+}
+.stats .stat .n {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 26px;
+  color: var(--ink);
+  line-height: 1;
+  font-variation-settings: 'opsz' 60;
+}
+.stats .stat .l {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--ink-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.stats .stat.accent .n {
+  color: var(--peach);
+}
+
+/* Filter rows on /notebook (anchor-chip variant — distinct from the legacy
+   `.filter-row` shape used elsewhere). */
+.nb-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6em;
+  margin-bottom: 2.5rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid var(--rule);
+}
+.nb-filters .filter-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  flex-wrap: wrap;
+  margin-bottom: 0;
+}
+.nb-filters .filter-label {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-muted);
+  width: 5em;
+  text-align: right;
+  margin-right: 0.4em;
+}
+.nb-filters .chip {
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 0.3em 0.7em;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  text-decoration: none;
+  border-radius: 0;
+}
+.nb-filters .chip:hover {
+  border-color: var(--rule-strong);
+  text-decoration: none;
+}
+.nb-filters .chip.active {
+  background: var(--ink);
+  color: var(--bg);
+  border-color: var(--ink);
+}
+.nb-filters .chip .ct {
+  font-size: 10.5px;
+  color: var(--ink-muted);
+  padding: 0 0.35em;
+  border-radius: 0;
+  background: none;
+}
+.nb-filters .chip.active .ct {
+  color: var(--bg);
+  opacity: 0.7;
+}
+
+/* Entries — gutter rail + body, hairline separators only */
+.entries {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.entry {
+  display: grid;
+  grid-template-columns: 14em 1fr;
+  gap: 2.5em;
+  padding: 2rem 0;
+  border-top: 1px solid var(--rule);
+}
+.entry:last-child {
+  border-bottom: 1px solid var(--rule);
+}
+.entry .gutter {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7em;
+}
+.entry .gutter .cat {
+  font-family: var(--pixel);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  padding: 0.3em 0.6em;
+  color: var(--ink);
+  align-self: start;
+}
+.entry .gutter .cat.peach {
+  background: var(--peach);
+  color: var(--ink);
+}
+.entry .gutter .cat.purple {
+  background: var(--purple);
+  color: var(--surface);
+}
+.entry .gutter .cat.pink {
+  background: var(--pink);
+  color: var(--ink);
+}
+.entry .gutter .cat.lavender {
+  background: var(--lavender);
+  color: var(--surface);
+}
+.entry .gutter .when {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--ink-muted);
+}
+.entry .gutter .when .age {
+  color: var(--ink-soft);
+  font-weight: 500;
+}
+.entry .gutter .slug {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-faint);
+  word-break: break-all;
+}
+.entry .gutter .archived-tag {
+  font-family: var(--pixel);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  background: var(--surface-mute);
+  padding: 0.15em 0.4em;
+  align-self: start;
+}
+.entry .body {
+  font-family: var(--prose);
+  font-size: 16px;
+  line-height: 1.65;
+  color: var(--ink);
+}
+.entry .body h2 {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 24px;
+  line-height: 1.2;
+  color: var(--ink);
+  margin-bottom: 0.5em;
+  letter-spacing: -0.01em;
+  font-variation-settings: 'opsz' 60;
+}
+.entry .body .prose {
+  font-family: var(--prose);
+  font-size: 16px;
+  line-height: 1.65;
+}
+.entry .body .prose h2 {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 18px;
+  margin-top: 1rem;
+}
+.entry .body .prose code {
+  font-family: var(--mono);
+  font-size: 13.5px;
+  background: var(--peach-soft);
+  padding: 1px 4px;
+  border-radius: 0;
+  color: var(--ink-soft);
+}
+
+/* Archived entries dim to 55% */
+.entry[data-archived='true'] {
+  opacity: 0.55;
+}
+
+/* /notebook empty state */
+.nb-empty {
+  padding: 3em 2em;
+  text-align: center;
+  background: var(--surface);
+  border: 1px dashed var(--rule-strong);
+  color: var(--ink-muted);
+  font-style: italic;
+}
+
+@media (max-width: 900px) {
+  .nb-hero {
+    grid-template-columns: 1fr;
+    align-items: start;
+    gap: 1.5rem;
+  }
+  .nb-hero .hero-left h1 {
+    font-size: 38px;
+  }
+  .stats {
+    flex-wrap: wrap;
+  }
+  .stats .stat {
+    min-width: 5em;
+  }
+  .entry {
+    grid-template-columns: 1fr;
+    gap: 1em;
+  }
+  .nb-filters .filter-label {
+    width: auto;
+    text-align: left;
+  }
+  .chat-stage .greeting-text {
+    font-size: 28px;
+  }
+}

@@ -1,11 +1,31 @@
 ---
-import EmptyState from '@/components/EmptyState.astro';
-import MemoEntry from '@/components/MemoEntry.astro';
+import NotebookEntry from '@/components/notebook/NotebookEntry.astro';
+import NotebookFilters, {
+  type FilterOption,
+} from '@/components/notebook/NotebookFilters.astro';
+import StatsStrip from '@/components/notebook/StatsStrip.astro';
 import RouteHeader from '@/components/RouteHeader.astro';
 import BaseLayout from '@/layouts/BaseLayout.astro';
 import { assembleMemory, type MemoryEntry } from '@/lib/memory-loader';
 import { parsePersona, type Persona } from '@/lib/persona-parser';
+import { recentMemoryCount } from '@/lib/recent-stats';
 import { detectMode, getRoleHome, nowIso } from '@/lib/role-home';
+import { daysSince } from '@/lib/ui/time';
+
+/**
+ * /notebook — journal-shaped redesign. Three sections:
+ *
+ *   1. Hero: peach pill + 48px Fraunces title + italic sub + 4-stat strip.
+ *   2. Filters: category × age × visibility (anchor-chip navigation, no JS).
+ *      The active filter state is encoded in `?cat=&age=&vis=` query params.
+ *   3. Entries: 14em gutter (category pill + date + slug) + body. Hairline
+ *      rule between entries; no card chrome.
+ *
+ * Filtering is server-side via query params — `?cat=conversations` returns a
+ * page where only conversation entries pass through the filter. The page-
+ * level script that powered the previous filter chips is gone; the new chips
+ * are anchors and progressive-enhancement-friendly.
+ */
 
 export const prerender = false;
 
@@ -27,8 +47,6 @@ const memoryError = memoryRes.status === 'rejected' ? String(memoryRes.reason) :
 const fullName = persona?.identity['full_name'] ?? persona?.identity['name'] ?? '';
 const updatedAt = nowIso();
 
-// Counts are taken across *live* entries only — archived entries are hidden
-// by default, so surfacing their counts on the category chips would mislead.
 const liveEntries = memoryEntries.filter((e) => !e.archived);
 const archivedEntries = memoryEntries.filter((e) => e.archived);
 
@@ -37,34 +55,95 @@ for (const e of liveEntries) {
   categoryCounts[e.category] = (categoryCounts[e.category] ?? 0) + 1;
 }
 const categoryKeys = Object.keys(categoryCounts).sort();
-const categoryFilters: Array<{ key: string; label: string; count: number }> = [
-  { key: 'all', label: 'all', count: liveEntries.length },
-  ...categoryKeys.map((k) => ({ key: k, label: k, count: categoryCounts[k] ?? 0 })),
-];
+
+// Filter parsing — accept any value but normalise to the known keyset; an
+// unknown filter falls through to the "show everything" default for that
+// axis so a stale link doesn't paint an empty page.
+const KNOWN_CATS = new Set(['all', ...categoryKeys]);
+const KNOWN_AGES = new Set(['any', 'week', 'month', 'stale']);
+const KNOWN_VIS = new Set(['live', 'archived', 'both']);
+
+const rawCat = Astro.url.searchParams.get('cat') ?? 'all';
+const rawAge = Astro.url.searchParams.get('age') ?? 'any';
+const rawVis = Astro.url.searchParams.get('vis') ?? 'live';
+
+const activeCat = KNOWN_CATS.has(rawCat) ? rawCat : 'all';
+const activeAge = KNOWN_AGES.has(rawAge) ? rawAge : 'any';
+const activeVis = KNOWN_VIS.has(rawVis) ? rawVis : 'live';
 
 const ageCounts = { week: 0, month: 0, stale: 0 };
 for (const e of liveEntries) {
-  const touchedAt = e.updated ?? e.created;
-  const days = touchedAt ? Math.floor((Date.now() - Date.parse(touchedAt)) / 86_400_000) : null;
-  if (days === null || Number.isNaN(days)) continue;
+  const days = daysSince(e.updated ?? e.created);
+  if (days === null) continue;
   if (days <= 7) ageCounts.week += 1;
   if (days <= 30) ageCounts.month += 1;
   if (days >= 60) ageCounts.stale += 1;
 }
-const ageFilters: Array<{ key: string; label: string; count: number | null }> = [
+
+const categoryFilters: FilterOption[] = [
+  { key: 'all', label: 'all', count: liveEntries.length },
+  ...categoryKeys.map((k) => ({ key: k, label: k, count: categoryCounts[k] ?? 0 })),
+];
+const ageFilters: FilterOption[] = [
   { key: 'any', label: 'any age', count: null },
   { key: 'week', label: '≤7d', count: ageCounts.week },
   { key: 'month', label: '≤30d', count: ageCounts.month },
   { key: 'stale', label: '60d+ stale', count: ageCounts.stale },
 ];
-
-const visibilityFilters: Array<{ key: string; label: string; count: number | null }> = [
+const visibilityFilters: FilterOption[] = [
   { key: 'live', label: 'live', count: liveEntries.length },
   { key: 'archived', label: 'archived', count: archivedEntries.length },
   { key: 'both', label: 'both', count: memoryEntries.length },
 ];
 
-const lastUpdate = memoryEntries[0]?.updated ?? memoryEntries[0]?.created ?? 'never';
+// Apply filters server-side. The entries surfaced are whatever survives all
+// three filters ANDed together.
+function ageMatches(entry: MemoryEntry, axis: string): boolean {
+  if (axis === 'any') return true;
+  const days = daysSince(entry.updated ?? entry.created);
+  if (days === null) return false;
+  if (axis === 'week') return days <= 7;
+  if (axis === 'month') return days <= 30;
+  if (axis === 'stale') return days >= 60;
+  return true;
+}
+function visMatches(entry: MemoryEntry, axis: string): boolean {
+  if (axis === 'both') return true;
+  if (axis === 'archived') return entry.archived;
+  return !entry.archived; // 'live'
+}
+
+const filteredEntries = memoryEntries.filter((e) => {
+  if (activeCat !== 'all' && e.category !== activeCat) return false;
+  if (!ageMatches(e, activeAge)) return false;
+  if (!visMatches(e, activeVis)) return false;
+  return true;
+});
+
+// Stats strip values
+const thisWeek = recentMemoryCount(liveEntries, 7);
+const total = liveEntries.length;
+const sinceLastDays = (() => {
+  const latest = liveEntries[0]?.updated ?? liveEntries[0]?.created;
+  const d = daysSince(latest);
+  if (d === null) return '—';
+  if (d <= 0) return 'today';
+  if (d === 1) return '1d';
+  return `${d}d`;
+})();
+
+const sub = persona
+  ? `${personaShort(persona)}'s persona-shaped memory feed — entries the role wrote, sorted by recency.`
+  : 'Persona-shaped memory feed — entries the role wrote, sorted by recency.';
+
+function personaShort(p: Persona): string {
+  const ident = p.identity;
+  const full = (ident['full_name'] ?? ident['name'] ?? '').trim();
+  const idx = full.indexOf(' ');
+  return idx < 0 ? (full || 'The role') : full.slice(0, idx);
+}
+
+const title = persona ? `What ${personaShort(persona)} has noticed` : "What I've remembered";
 ---
 
 <BaseLayout title={fullName ? `Notebook · ${fullName}` : 'Notebook · Praxis'}>
@@ -75,120 +154,44 @@ const lastUpdate = memoryEntries[0]?.updated ?? memoryEntries[0]?.created ?? 'ne
       updatedAt={updatedAt}
     />
 
-    <div class="page-body">
-      <div class="group-head">
-        <span class="group-counter">
-          {memoryEntries.length} {memoryEntries.length === 1 ? 'entry' : 'entries'} · last update {lastUpdate}
-        </span>
+    <section class="nb-hero">
+      <div class="hero-left">
+        <div class="pill">NOTEBOOK</div>
+        <h1>{title}</h1>
+        <div class="sub">{sub}</div>
       </div>
+      <StatsStrip
+        thisWeek={thisWeek}
+        total={total}
+        sinceLastLabel={sinceLastDays}
+        archived={archivedEntries.length}
+      />
+    </section>
 
-      {memoryError ? (
-        <EmptyState>Failed to load notebook: {memoryError}</EmptyState>
-      ) : memoryEntries.length === 0 ? (
-        <EmptyState>
-          Notebook is empty. As the role works, observations about people, accounts, and patterns will land here.
-        </EmptyState>
-      ) : (
-        <>
-          <div class="filter-row spaced" data-filter-group="category">
-            {categoryFilters.map((f) => (
-              <span
-                class:list={['filter', f.key === 'all' && 'active']}
-                data-filter={f.key}
-              >
-                {f.label}<span class="ct">{f.count}</span>
-              </span>
-            ))}
-          </div>
-          <div class="filter-row" data-filter-group="age">
-            {ageFilters.map((f) => (
-              <span
-                class:list={['filter', f.key === 'any' && 'active']}
-                data-filter={f.key}
-              >
-                {f.label}{f.count !== null && <span class="ct">{f.count}</span>}
-              </span>
-            ))}
-          </div>
-          <div class="filter-row" data-filter-group="visibility">
-            {visibilityFilters.map((f) => (
-              <span
-                class:list={['filter', f.key === 'live' && 'active']}
-                data-filter={f.key}
-              >
-                {f.label}{f.count !== null && <span class="ct">{f.count}</span>}
-              </span>
-            ))}
-          </div>
+    {memoryError ? (
+      <div class="nb-empty">Failed to load notebook: {memoryError}</div>
+    ) : memoryEntries.length === 0 ? (
+      <div class="nb-empty">
+        Notebook is empty. As the role works, observations about people,
+        accounts, and patterns will land here.
+      </div>
+    ) : (
+      <>
+        <NotebookFilters
+          categories={categoryFilters}
+          ages={ageFilters}
+          visibilities={visibilityFilters}
+          active={{ cat: activeCat, age: activeAge, vis: activeVis }}
+        />
 
-          <div data-filter-feed>
-            {memoryEntries.map((entry) => <MemoEntry entry={entry} />)}
-          </div>
-        </>
-      )}
-    </div>
+        {filteredEntries.length === 0 ? (
+          <div class="nb-empty">No entries match the current filter.</div>
+        ) : (
+          <section class="entries">
+            {filteredEntries.map((entry) => <NotebookEntry entry={entry} />)}
+          </section>
+        )}
+      </>
+    )}
   </main>
-
-  <script is:inline>
-    (function () {
-      const feed = document.querySelector('[data-filter-feed]');
-      if (!(feed instanceof HTMLElement)) return;
-      const groups = document.querySelectorAll('[data-filter-group]');
-      // Default chip state mirrors the `.active` markers in the SSR output:
-      // all categories, any age, live-only visibility.
-      const active = { category: 'all', age: 'any', visibility: 'live' };
-
-      function ageBucketMatches(card) {
-        if (active.age === 'any') return true;
-        const bucket = card.dataset.ageBucket ?? '';
-        if (active.age === 'week') return bucket === 'week';
-        if (active.age === 'month') return bucket === 'week' || bucket === 'month';
-        if (active.age === 'stale') return bucket === 'stale';
-        return true;
-      }
-
-      function visibilityMatches(card) {
-        const archived = card.dataset.archived === 'true';
-        if (active.visibility === 'both') return true;
-        if (active.visibility === 'archived') return archived;
-        return !archived; // live
-      }
-
-      function apply() {
-        for (const card of feed.children) {
-          if (!(card instanceof HTMLElement)) continue;
-          const category = card.dataset.category ?? '';
-          const matchCategory = active.category === 'all' || category === active.category;
-          const matchAge = ageBucketMatches(card);
-          const matchVisibility = visibilityMatches(card);
-          card.style.display = matchCategory && matchAge && matchVisibility ? '' : 'none';
-        }
-      }
-
-      groups.forEach((group) => {
-        if (!(group instanceof HTMLElement)) return;
-        const groupName = group.dataset.filterGroup;
-        if (!groupName) return;
-        group.addEventListener('click', (event) => {
-          const target = event.target;
-          if (!(target instanceof HTMLElement)) return;
-          const filter = target.closest('[data-filter]');
-          if (!(filter instanceof HTMLElement)) return;
-          const value = filter.dataset.filter;
-          if (!value) return;
-          group.querySelectorAll('[data-filter]').forEach((b) => b.classList.remove('active'));
-          filter.classList.add('active');
-          if (groupName === 'category' || groupName === 'age' || groupName === 'visibility') {
-            active[groupName] = value;
-            apply();
-          }
-        });
-      });
-
-      // Apply the SSR defaults once on mount so archived entries (which the
-      // server renders into the feed) are hidden until the operator toggles
-      // visibility.
-      apply();
-    })();
-  </script>
 </BaseLayout>

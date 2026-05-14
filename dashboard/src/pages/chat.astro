@@ -2,17 +2,36 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-import EmptyState from '@/components/EmptyState.astro';
+import ChatComposer from '@/components/chat/ChatComposer.astro';
+import GreetingHero from '@/components/chat/GreetingHero.astro';
+import PendingChip from '@/components/chat/PendingChip.astro';
+import RecentThread from '@/components/chat/RecentThread.astro';
 import RouteHeader from '@/components/RouteHeader.astro';
 import BaseLayout from '@/layouts/BaseLayout.astro';
 import { hasApiKey } from '@/lib/chat/anthropic.js';
 import { listThreads, type ThreadSummary } from '@/lib/chat/conversation.js';
+import { buildGreeting } from '@/lib/chat/greeting.js';
 import { findMissingMcpDeclarations, getMcpCatalog } from '@/lib/chat/mcp-catalog.js';
 import { personaNameFrom } from '@/lib/chat/persona-name.js';
 import { buildSystemPrompt, parseToolsYaml } from '@/lib/chat/system-prompt.js';
 import { estimateTokens } from '@/lib/chat/tokens.js';
+import { assembleEscalations } from '@/lib/escalations-loader.js';
+import { assembleMemory } from '@/lib/memory-loader.js';
 import { parsePersona } from '@/lib/persona-parser.js';
 import { detectMode, getRoleHome, nowIso } from '@/lib/role-home.js';
+
+/**
+ * /chat — chat-as-home. Greeting hero + pending chips + recent threads +
+ * sticky composer. Honours the existing conversation flow (`praxisChat()`
+ * Alpine island wiring through `/api/chat/*`) — when there's an active
+ * thread the transcript appears between the hero and the composer.
+ *
+ * Disabled state: when `ANTHROPIC_API_KEY` is absent we still render the
+ * greeting + composer chrome, but the composer textarea is disabled and the
+ * hint explains how to enable. Recent threads still surface from disk
+ * because they're just `memory/conversations/` files — the user can still
+ * read prior conversations even when sending is off.
+ */
 
 export const prerender = false;
 
@@ -22,12 +41,14 @@ if (mode === 'seed') {
   return Astro.redirect('/setup');
 }
 
-const [personaRes, threadsRes, systemPromptRes, mcpWarningsRes] =
+const [personaRes, threadsRes, systemPromptRes, mcpWarningsRes, escalationsRes, memoryRes] =
   await Promise.allSettled([
     parsePersona(roleHome),
     listThreads(roleHome),
     buildSystemPrompt(roleHome),
     assembleMcpWarnings(roleHome),
+    assembleEscalations(roleHome),
+    assembleMemory(roleHome),
   ]);
 
 const persona = personaRes.status === 'fulfilled' ? personaRes.value : null;
@@ -37,18 +58,50 @@ const mcpWarnings: McpWarnings =
     ? mcpWarningsRes.value
     : { missingDeclared: [], unreachable: [] };
 
-// Per-thread token budget. We measure the system prompt once server-side and
-// ship the estimate down to the Alpine island; the client adds each turn's
-// content length / 4 to get the live `tokens.total` displayed in the header.
 const systemPromptText =
   systemPromptRes.status === 'fulfilled' ? systemPromptRes.value : '';
 const systemPromptTokens = estimateTokens(systemPromptText);
 
 const personaName = personaNameFrom(persona);
 const initialThreadId =
-  (Astro.url.searchParams.get('thread') ?? '').trim() || threads[0]?.thread_id || '';
+  (Astro.url.searchParams.get('thread') ?? '').trim() || '';
 const apiKeyConfigured = hasApiKey();
 const updatedAt = nowIso();
+
+// Greeting input. Counts come from the escalations loader; `localHour` is the
+// dashboard process's local hour (the dashboard runs alongside the role, so
+// the server clock is the right one to greet by — there's no "operator
+// timezone" abstraction yet).
+const escalations = escalationsRes.status === 'fulfilled' ? escalationsRes.value : null;
+const escalationOpenCount = escalations?.countsByStatus.open ?? 0;
+
+// Count escalations by kind so we can render colour-coded chips ("IMPROVEMENT 2"
+// etc.). Only open ones — closed escalations aren't "on the desk".
+const openKindCounts: Record<string, number> = {};
+for (const e of escalations?.entries ?? []) {
+  if (e.status !== 'open') continue;
+  openKindCounts[e.kind] = (openKindCounts[e.kind] ?? 0) + 1;
+}
+
+// `PRAXIS_OPERATOR_NAME` lets the host harness inject the operator's name
+// without hardcoding "Steve" in the dashboard.
+const operatorName = (process.env['PRAXIS_OPERATOR_NAME'] ?? '').trim() || undefined;
+
+const greeting = buildGreeting({
+  personaShort: personaName.short,
+  localHour: new Date().getHours(),
+  escalationOpenCount,
+  ...(operatorName ? { operatorName } : {}),
+});
+
+// Recent threads — pull the 5 most-recent `conversations` memory entries.
+// These are the markdown files chat conversations land in as they happen, so
+// the list reads as "your last few conversations" without needing a separate
+// loader.
+const memoryEntries = memoryRes.status === 'fulfilled' ? memoryRes.value : [];
+const recentConversationEntries = memoryEntries
+  .filter((e) => e.category === 'conversations' && !e.archived)
+  .slice(0, 5);
 
 const bootstrap = {
   threads,
@@ -56,9 +109,6 @@ const bootstrap = {
   apiKeyConfigured,
   personaName,
   systemPromptTokens,
-  // Context window cap for the budget surface. Sonnet 4.6 ships with a 200K
-  // window; this is the "of 200K" denominator. Threshold for the banner is
-  // 50K (configurable here so it tracks the doc'd number from issue #16).
   contextWindowTokens: 200_000,
   banner50kThreshold: 50_000,
 };
@@ -92,6 +142,32 @@ async function assembleMcpWarnings(home: string): Promise<McpWarnings> {
     }));
   return { missingDeclared, unreachable };
 }
+
+// Build the chip set: one chip per kind that has at least one open card,
+// plus the catch-all "open escalations" chip when there's any open at all.
+// Kinds map to the colour-coded variants in the mockup. Only `proposed_skill`
+// uses purple — everything else (improvement / help / criterion_drift) is pink
+// because they're all read on `/escalations`.
+const KIND_LABELS: Record<string, string> = {
+  improvement: 'improvement',
+  help: 'help',
+  proposed_skill: 'proposed skill',
+  criterion_drift: 'criterion drift',
+};
+const PURPLE_KINDS = new Set(['proposed_skill']);
+const kindChips = Object.entries(openKindCounts)
+  .filter(([, count]) => count > 0)
+  .sort((a, b) => b[1] - a[1])
+  .map(([kind, count]) => ({
+    kind,
+    count,
+    label: KIND_LABELS[kind] ?? kind,
+    variant: (PURPLE_KINDS.has(kind) ? 'purple' : 'pink') as 'pink' | 'purple',
+    // `/escalations` doesn't yet support a `kind` query param (Phase 2 step 4
+    // will add it). Until then every chip lands on the open filter.
+    href: '/escalations?status=open',
+  }));
+const hasPending = kindChips.length > 0;
 ---
 
 <BaseLayout title={persona ? `Chat · ${personaName.full}` : 'Chat · Praxis'}>
@@ -102,704 +178,105 @@ async function assembleMcpWarnings(home: string): Promise<McpWarnings> {
       updatedAt={updatedAt}
     />
 
-    {(mcpWarnings.missingDeclared.length > 0 || mcpWarnings.unreachable.length > 0) && (
-      <div class="mcp-warning-banner" role="status">
-        <strong>MCP configuration issues:</strong>
-        <ul>
-          {mcpWarnings.missingDeclared.map((name) => (
-            <li>
-              <code>mcp:{name}</code> declared in <code>lib/tools.yaml</code> but not in
-              <code>PRAXIS_MCPS</code>. Add a service to <code>docker-compose.yml</code>
-              or remove the declaration.
-            </li>
-          ))}
-          {mcpWarnings.unreachable.map((server) => (
-            <li>
-              <code>{server.name}</code> is {server.status}
-              {server.message ? <span> — {server.message}</span> : null}.
-            </li>
-          ))}
-        </ul>
-      </div>
-    )}
+    <div class="chat-stage" x-data="praxisChat()" x-init="init()">
+      {(mcpWarnings.missingDeclared.length > 0 || mcpWarnings.unreachable.length > 0) && (
+        <div class="mcp-warning-banner" role="status">
+          <strong>MCP configuration issues:</strong>
+          <ul>
+            {mcpWarnings.missingDeclared.map((name) => (
+              <li>
+                <code>mcp:{name}</code> declared in <code>lib/tools.yaml</code> but not in
+                <code>PRAXIS_MCPS</code>. Add a service to <code>docker-compose.yml</code>
+                or remove the declaration.
+              </li>
+            ))}
+            {mcpWarnings.unreachable.map((server) => (
+              <li>
+                <code>{server.name}</code> is {server.status}
+                {server.message ? <span> — {server.message}</span> : null}.
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
-    {!apiKeyConfigured ? (
-      <div class="chat-shell-missing">
-        <EmptyState>
-          <h2>Chat is disabled</h2>
-          <p>
-            The chat surface requires <code>ANTHROPIC_API_KEY</code> to be set in the
-            dashboard's environment. Set it and restart the dashboard to enable
-            conversations with {personaName.full}.
-          </p>
-          <p>
-            Optionally set <code>PRAXIS_CHAT_MODEL</code> to override the default
-            (<code>claude-sonnet-4-6</code>).
-          </p>
-        </EmptyState>
-      </div>
-    ) : (
-      <div class="chat-shell" x-data="praxisChat()" x-init="init()">
-        <aside class="chat-sidebar">
-          <button type="button" class="btn new-chat" @click="newChat()">
-            + New conversation
-          </button>
-          <div class="thread-list">
-            <template x-if="threads.length === 0">
-              <div class="empty-sub">No conversations yet.</div>
-            </template>
-            <template x-for="thread in threads" :key="thread.thread_id">
-              <div
-                class="thread-row"
-                :class="{ active: thread.thread_id === activeThreadId }"
-                @click="selectThread(thread.thread_id)"
-              >
-                <div class="thread-row-main">
-                  <div class="thread-title" x-text="thread.title"></div>
-                  <div class="thread-meta">
-                    <span x-text="relativeTime(thread.updated)"></span>
-                    <span class="dot">·</span>
-                    <span x-text="`${thread.message_count} msg`"></span>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  class="icon-btn"
-                  title="Delete conversation"
-                  @click.stop="deleteThread(thread.thread_id)"
-                >×</button>
-              </div>
-            </template>
+      {/* Hero block — only shown when no thread is active. Once the operator
+          starts a conversation it gives way to the transcript above the
+          composer. The transcript is conditionally rendered by Alpine
+          ("when activeThreadId" via x-show below); the static hero is
+          rendered server-side and hidden client-side when a thread is
+          loaded — that keeps a meaningful first paint for unauthenticated /
+          API-key-less visits. */}
+      <div x-show="!activeThreadId" x-cloak>
+        <GreetingHero greeting={greeting} />
+
+        {hasPending && (
+          <div class="pending-row">
+            <span class="label-pre">on your desk</span>
+            {kindChips.map((chip) => (
+              <PendingChip
+                count={chip.count}
+                label={chip.label}
+                href={chip.href}
+                variant={chip.variant}
+              />
+            ))}
           </div>
-        </aside>
+        )}
 
-        <section class="chat-main">
-          <div class="chat-pane">
-            <div class="chat-pane-head">
-              <div class="chat-pane-title" x-text="activeThreadId ? (activeTitle || 'New conversation') : 'New conversation'"></div>
-              <div class="chat-pane-meta">
-                <span
-                  class="chat-budget"
-                  x-show="activeThreadId"
-                  :title="`System prompt ~${formatTokens(systemPromptTokens)} + history ~${formatTokens(tokenBudget.history)} tokens`"
-                  x-text="`~${formatTokens(tokenBudget.total)} of ${formatTokens(contextWindowTokens)}`"
-                ></span>
-                <span x-text="activeThreadId && activeUpdated ? `updated ${relativeTime(activeUpdated)}` : ''"></span>
-                <button
-                  type="button"
-                  class="reflect-btn"
-                  :disabled="!activeThreadId || sending || reflecting || summarising || turns.length === 0"
-                  @click="reflect()"
-                  :title="`Ask ${personaShort} to reflect on this conversation`"
-                >
-                  <span x-show="!reflecting">Reflect</span>
-                  <span x-show="reflecting">Reflecting…</span>
-                </button>
-              </div>
-            </div>
-
-            <div class="chat-error" x-show="error" x-text="error"></div>
-
-            <div
-              class="chat-budget-banner"
-              x-show="activeThreadId && !budgetBannerDismissed && tokenBudget.total > banner50kThreshold && turns.length >= 4 && !summarising"
-              x-cloak
-            >
-              <span class="chat-budget-banner-text">
-                This thread is getting long (~<span x-text="formatTokens(tokenBudget.total)"></span> tokens). Want to fold older turns into a summary?
-              </span>
-              <span class="chat-budget-banner-actions">
-                <button type="button" class="link-btn" @click="summarise()">Summarise older turns →</button>
-                <button type="button" class="link-btn link-btn-quiet" @click="budgetBannerDismissed = true">dismiss</button>
-              </span>
-            </div>
-            <div class="chat-summarising" x-show="summarising" x-cloak>
-              Summarising older turns…
-            </div>
-
-            <div class="chat-transcript" x-ref="transcript">
-              <template x-if="!activeThreadId">
-                <div class="chat-empty-hint">
-                  <p class="chat-empty-lede">
-                    A correspondence with <strong x-text="personaFull"></strong>.
-                  </p>
-                  <p class="chat-empty-sub">
-                    Each exchange is saved as markdown under <code>memory/conversations/</code>,
-                    <span x-text="`like every other entry in ${personaShort}'s notebook.`"></span>
-                  </p>
-                </div>
-              </template>
-              <template x-if="activeThreadId && loadingTurns">
-                <div class="empty-sub">Loading…</div>
-              </template>
-              <template x-for="(turn, idx) in turns" :key="`${activeThreadId}-${idx}`">
-                <article class="chat-turn" :class="`role-${turn.role}`">
-                  <header class="chat-turn-head">
-                    <span
-                      class="chat-turn-role"
-                      x-text="turn.role === 'summary' ? summaryHeading(turn) : (turn.role === 'user' ? 'You' : personaShort)"
-                    ></span>
-                    <span class="chat-turn-time" x-text="formatTimestamp(turn.timestamp)"></span>
-                  </header>
-                  <template x-if="Array.isArray(turn.toolCalls) && turn.toolCalls.length > 0">
-                    <ul class="chat-tool-calls">
-                      <template x-for="(tc, j) in turn.toolCalls" :key="j">
-                        <li class="chat-tool-call" :class="{ 'is-error': !tc.result || !tc.result.ok }">
-                          <span class="chat-tool-arrow">→</span>
-                          <span class="chat-tool-text" x-text="renderToolCall(tc)"></span>
-                          <template x-if="toolCallSha(tc)">
-                            <span class="chat-tool-sha" :title="'commit ' + toolCallSha(tc)" x-text="toolCallShortSha(tc)"></span>
-                          </template>
-                        </li>
-                      </template>
-                    </ul>
-                  </template>
-                  <div class="prose" x-html="turn.content_html"></div>
-                </article>
-              </template>
-              <template x-if="pendingAssistant">
-                <article class="chat-turn role-assistant pending">
-                  <header class="chat-turn-head">
-                    <span class="chat-turn-role" x-text="personaShort"></span>
-                    <span class="chat-turn-time">thinking…</span>
-                  </header>
-                  <div class="prose"><span class="dot-pulse">·  ·  ·</span></div>
-                </article>
-              </template>
-              <template x-if="reflecting">
-                <article class="chat-turn role-assistant pending">
-                  <header class="chat-turn-head">
-                    <span class="chat-turn-role" x-text="personaShort"></span>
-                    <span class="chat-turn-time">reflecting…</span>
-                  </header>
-                  <div class="prose"><span class="dot-pulse">·  ·  ·</span></div>
-                </article>
-              </template>
-            </div>
-
-            <div class="chat-composer">
-              <template x-if="attachments.length > 0">
-                <div class="chat-attachments">
-                  <template x-for="(att, idx) in attachments" :key="att.path">
-                    <span class="chat-attachment">
-                      <span x-text="att.filename"></span>
-                      <button type="button" class="icon-btn small" @click="attachments.splice(idx, 1)">×</button>
-                    </span>
-                  </template>
-                </div>
-              </template>
-              <div class="chat-composer-row">
-                <textarea
-                  x-model="composer"
-                  x-ref="composer"
-                  :placeholder="`Message ${personaShort}…`"
-                  @keydown.cmd.enter="send()"
-                  @keydown.ctrl.enter="send()"
-                  rows="1"
-                ></textarea>
-                <div class="chat-composer-actions">
-                  <label class="composer-attach">
-                    <input type="file" hidden @change="onPickFile($event)" />
-                    Attach
-                  </label>
-                  <button
-                    type="button"
-                    class="btn btn-primary composer-send"
-                    :disabled="!canSend"
-                    @click="send()"
-                  >
-                    <span x-show="!sending">Send</span>
-                    <span x-show="sending">Sending…</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
+        <section class="threads" style="margin-top: 2rem;">
+          <header class="threads-head">
+            <span class="h">recent threads</span>
+            <a class="a" href="/notebook?cat=conversations">all threads →</a>
+          </header>
+          {recentConversationEntries.length === 0 ? (
+            <div class="thread-empty">No conversations yet.</div>
+          ) : (
+            recentConversationEntries.map((entry) => <RecentThread entry={entry} />)
+          )}
         </section>
       </div>
-    )}
+
+      {/* Chat transcript — only when there's an active thread. The Alpine
+          island manages turns, sending, summarising, etc. — markup mirrors
+          the previous /chat surface but uses the new chat-stage classes. */}
+      <div class="chat-transcript" x-show="activeThreadId" x-ref="transcript" x-cloak>
+        <div class="chat-error" x-show="error" x-text="error"></div>
+
+        <template x-if="loadingTurns">
+          <div class="chat-empty-hint">Loading…</div>
+        </template>
+        <template x-for="(turn, idx) in turns" :key="`${activeThreadId}-${idx}`">
+          <article class="chat-turn" :class="`role-${turn.role}`">
+            <header class="chat-turn-head">
+              <span
+                class="chat-turn-role"
+                x-text="turn.role === 'summary' ? summaryHeading(turn) : (turn.role === 'user' ? 'YOU' : personaShort.toUpperCase())"
+              ></span>
+              <span class="chat-turn-time" x-text="formatTimestamp(turn.timestamp)"></span>
+            </header>
+            <div class="prose" x-html="turn.content_html"></div>
+          </article>
+        </template>
+        <template x-if="pendingAssistant">
+          <article class="chat-turn role-assistant">
+            <header class="chat-turn-head">
+              <span class="chat-turn-role" x-text="personaShort.toUpperCase()"></span>
+              <span class="chat-turn-time">thinking…</span>
+            </header>
+            <div class="prose"><span>·  ·  ·</span></div>
+          </article>
+        </template>
+      </div>
+
+      <ChatComposer apiKeyConfigured={apiKeyConfigured} personaShort={personaName.short} />
+    </div>
   </main>
 
-  <style>
-    /* /chat — an editorial correspondence aesthetic. Each turn is a
-       paragraph-flush "letter": a speaker label heading, a muted timestamp,
-       prose body — no bubbles, no cards, generous vertical rhythm. */
-    .chat-shell {
-      display: grid;
-      grid-template-columns: 240px 1fr;
-      gap: 2rem;
-      align-items: start;
-      margin-top: 1.2rem;
-      min-height: calc(100vh - 220px);
-    }
-    .chat-shell-missing {
-      margin-top: 2rem;
-    }
-
-    .mcp-warning-banner {
-      margin-top: 1rem;
-      padding: 0.7rem 1rem;
-      background: var(--surface-mute);
-      border-left: 3px solid var(--warn, var(--danger));
-      border-radius: 0 3px 3px 0;
-      font-size: 12.5px;
-      color: var(--ink-soft);
-      line-height: 1.5;
-    }
-    .mcp-warning-banner ul {
-      margin: 0.35rem 0 0;
-      padding-left: 1.1rem;
-    }
-    .mcp-warning-banner li + li {
-      margin-top: 0.25rem;
-    }
-    .mcp-warning-banner code {
-      font-family: ui-monospace, monospace;
-      font-size: 12px;
-      background: var(--surface);
-      padding: 0 0.25rem;
-      border-radius: 2px;
-    }
-
-    /* ---- sidebar -------------------------------------------------------- */
-    .chat-sidebar {
-      border-right: 1px solid var(--rule);
-      padding-right: 1.25rem;
-      position: sticky;
-      top: 1.5rem;
-    }
-    .new-chat {
-      width: 100%;
-      margin-bottom: 1.25rem;
-      font-size: 13px;
-      padding: 0.5rem 0.9rem;
-    }
-    .thread-list {
-      display: flex;
-      flex-direction: column;
-    }
-    .thread-row {
-      display: grid;
-      grid-template-columns: 1fr auto;
-      align-items: center;
-      gap: 0.4rem;
-      padding: 0.6rem 0.7rem 0.6rem 0.85rem;
-      cursor: pointer;
-      border-left: 2px solid transparent;
-      border-radius: 0;
-    }
-    .thread-row:hover .thread-title {
-      color: var(--link);
-    }
-    .thread-row.active {
-      border-left-color: var(--ink);
-    }
-    .thread-row.active .thread-title {
-      font-weight: 600;
-      color: var(--ink);
-    }
-    .thread-row-main {
-      min-width: 0;
-    }
-    .thread-title {
-      font-size: 13.5px;
-      font-weight: 500;
-      color: var(--ink-soft);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      line-height: 1.35;
-    }
-    .thread-meta {
-      font-size: 11px;
-      color: var(--ink-faint);
-      font-family: ui-monospace, monospace;
-      margin-top: 0.2rem;
-    }
-    .thread-meta .dot {
-      margin: 0 0.3rem;
-    }
-
-    /* The shared sidebar/composer × button. Scoped override of the
-       global `.icon-btn` (which is a bordered 32×32 square in global.css)
-       — here it's a quiet inline glyph that becomes danger-coloured on hover. */
-    .chat-sidebar .icon-btn,
-    .chat-attachment .icon-btn {
-      background: none;
-      border: none;
-      width: auto;
-      height: auto;
-      cursor: pointer;
-      color: var(--ink-faint);
-      font-size: 16px;
-      line-height: 1;
-      padding: 0.1rem 0.3rem;
-      border-radius: 2px;
-    }
-    .chat-sidebar .icon-btn:hover,
-    .chat-attachment .icon-btn:hover {
-      color: var(--danger);
-      background: var(--surface-mute);
-    }
-    .chat-attachment .icon-btn.small {
-      font-size: 14px;
-    }
-
-    /* ---- pane ----------------------------------------------------------- */
-    .chat-main {
-      min-width: 0;
-    }
-    .chat-pane {
-      display: flex;
-      flex-direction: column;
-      height: calc(100vh - 220px);
-      min-height: 480px;
-    }
-    .chat-pane-head {
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      padding: 0 0 0.6rem;
-      border-bottom: 1px solid var(--rule);
-      gap: 0.6rem;
-    }
-    .chat-pane-title {
-      font-size: 15px;
-      font-weight: 600;
-      color: var(--ink);
-      letter-spacing: -0.005em;
-    }
-    .chat-pane-meta {
-      font-size: 11px;
-      color: var(--ink-muted);
-      font-family: ui-monospace, monospace;
-    }
-    .chat-error {
-      background: #fbe2dc;
-      color: var(--danger);
-      padding: 0.7rem 1.1rem;
-      font-size: 13px;
-      border-bottom: 1px solid var(--rule);
-    }
-
-    /* ---- transcript: block flow, not flex, so children sit at the top
-            and stack via margin. No "flex-end empty space" failure mode. -- */
-    .chat-transcript {
-      flex: 1;
-      overflow-y: auto;
-      padding: 1.4rem 1.5rem 1.6rem;
-    }
-    .chat-empty-hint {
-      padding: 1.5rem 0;
-      max-width: 540px;
-    }
-    .chat-empty-lede {
-      font-size: 16px;
-      color: var(--ink);
-      margin-bottom: 0.6rem;
-      line-height: 1.5;
-    }
-    .chat-empty-sub {
-      font-size: 13.5px;
-      color: var(--ink-muted);
-      line-height: 1.6;
-    }
-
-    /* Both speakers share the same shape — distinguished by label only. */
-    .chat-turn {
-      display: block;
-      max-width: 720px;
-      margin: 0;
-      padding: 0.2rem 0 0.2rem 1.1rem;
-      border-left: 3px solid var(--rule);
-    }
-    .chat-turn.role-user {
-      border-left-color: var(--rule-strong);
-    }
-    .chat-turn.role-assistant {
-      border-left-color: var(--info);
-    }
-    .chat-turn + .chat-turn {
-      margin-top: 2.4rem;
-    }
-    .chat-turn-head {
-      display: flex;
-      gap: 0.7rem;
-      align-items: baseline;
-      margin-bottom: 0.5rem;
-    }
-    .chat-turn-role {
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      color: var(--ink-soft);
-    }
-    .role-user .chat-turn-role {
-      color: var(--ink);
-    }
-    .role-assistant .chat-turn-role {
-      color: var(--info);
-    }
-    .chat-turn-time {
-      font-size: 11px;
-      color: var(--ink-faint);
-      font-family: ui-monospace, monospace;
-    }
-    /* Markdown prose styling lives in global.css under `.prose` — the body
-       div on each turn wears that class. The pending placeholder (the dot
-       pulse animation) reuses the same class but the surrounding turn
-       muteness is applied below. */
-    .chat-turn.pending .prose {
-      color: var(--ink-muted);
-    }
-    .dot-pulse {
-      letter-spacing: 0.4em;
-    }
-
-    /* ---- composer: single row, textarea grows, actions sit right -------- */
-    .chat-composer {
-      border-top: 1px solid var(--rule);
-      padding: 0.85rem 0 0;
-      display: flex;
-      flex-direction: column;
-      gap: 0.5rem;
-    }
-    .chat-composer-row {
-      display: grid;
-      grid-template-columns: 1fr auto;
-      gap: 0.7rem;
-      align-items: end;
-    }
-    .chat-composer textarea {
-      resize: none;
-      min-height: 42px;
-      max-height: 220px;
-      width: 100%;
-      padding: 0.6rem 0.8rem;
-      font-family: inherit;
-      font-size: 14px;
-      line-height: 1.5;
-      border: 1px solid var(--rule);
-      border-radius: 4px;
-      background: var(--surface);
-      color: var(--ink);
-    }
-    .chat-composer textarea:focus {
-      outline: none;
-      border-color: var(--rule-strong);
-    }
-    .chat-composer-actions {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-    }
-    .composer-attach {
-      font-size: 12.5px;
-      color: var(--ink-muted);
-      cursor: pointer;
-      padding: 0.4rem 0.5rem;
-      border-radius: 3px;
-    }
-    .composer-attach:hover {
-      color: var(--link);
-    }
-    .composer-send {
-      padding: 0.5rem 1.1rem;
-      font-size: 13px;
-    }
-    .chat-attachments {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.4rem;
-    }
-    .chat-attachment {
-      display: inline-flex;
-      gap: 0.3rem;
-      align-items: center;
-      background: var(--surface-mute);
-      border: 1px solid var(--rule);
-      border-radius: 4px;
-      padding: 0.25rem 0.6rem;
-      font-size: 12px;
-      color: var(--ink-soft);
-      font-family: ui-monospace, monospace;
-    }
-    .empty-sub {
-      color: var(--ink-muted);
-      font-size: 13px;
-      padding: 0.6rem 0;
-    }
-
-    /* ---- budget surface + soft banner --------------------------------- */
-    .chat-budget {
-      font-family: ui-monospace, monospace;
-      font-size: 11px;
-      color: var(--ink-muted);
-      cursor: help;
-      letter-spacing: 0.02em;
-    }
-    .chat-budget-banner {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 0.8rem;
-      padding: 0.55rem 1rem;
-      margin: 0.5rem 0 0;
-      font-size: 12.5px;
-      color: var(--ink-soft);
-      background: var(--surface-mute);
-      border-left: 2px solid var(--info);
-      border-radius: 0 3px 3px 0;
-    }
-    .chat-budget-banner-text {
-      line-height: 1.5;
-    }
-    .chat-budget-banner-actions {
-      display: inline-flex;
-      gap: 0.7rem;
-      flex-shrink: 0;
-    }
-    .link-btn {
-      background: none;
-      border: none;
-      padding: 0;
-      color: var(--link);
-      cursor: pointer;
-      font-size: 12.5px;
-      font-family: inherit;
-    }
-    .link-btn:hover {
-      text-decoration: underline;
-    }
-    .link-btn-quiet {
-      color: var(--ink-faint);
-    }
-    .chat-summarising {
-      padding: 0.55rem 1rem;
-      margin: 0.5rem 0 0;
-      font-size: 12.5px;
-      color: var(--ink-muted);
-      background: var(--surface-mute);
-      border-left: 2px solid var(--rule-strong);
-      border-radius: 0 3px 3px 0;
-    }
-
-    /* Summary turns sit in the transcript with the same shape as a normal
-       turn, but in muted ink and with a distinct border colour so the
-       operator can see at a glance that this region is compressed history,
-       not a live exchange. */
-    .chat-turn.role-summary {
-      border-left-color: var(--ink-faint);
-    }
-    .role-summary .chat-turn-role {
-      color: var(--ink-faint);
-      font-style: italic;
-      text-transform: none;
-      letter-spacing: 0;
-    }
-    .role-summary .prose {
-      color: var(--ink-muted);
-    }
-
-    /* ---- reflect button + tool calls ----------------------------------- */
-    .chat-pane-meta {
-      display: flex;
-      gap: 0.8rem;
-      align-items: baseline;
-    }
-    .reflect-btn {
-      background: none;
-      border: 1px solid var(--rule);
-      border-radius: 3px;
-      padding: 0.2rem 0.55rem;
-      font-size: 11px;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      color: var(--ink-soft);
-      cursor: pointer;
-      font-family: inherit;
-    }
-    .reflect-btn:hover:not(:disabled) {
-      color: var(--ink);
-      border-color: var(--rule-strong);
-      background: var(--surface-mute);
-    }
-    .reflect-btn:disabled {
-      opacity: 0.45;
-      cursor: not-allowed;
-    }
-    .chat-tool-calls {
-      list-style: none;
-      margin: 0 0 0.7rem 0;
-      padding: 0.4rem 0.7rem;
-      border-left: 2px solid var(--rule);
-      background: var(--surface-mute);
-      border-radius: 0 3px 3px 0;
-    }
-    .chat-tool-call {
-      display: flex;
-      gap: 0.45rem;
-      align-items: baseline;
-      font-size: 12.5px;
-      line-height: 1.5;
-      color: var(--ink-muted);
-      font-family: ui-monospace, monospace;
-    }
-    .chat-tool-call + .chat-tool-call {
-      margin-top: 0.2rem;
-    }
-    .chat-tool-call.is-error {
-      color: var(--warn, var(--danger));
-    }
-    .chat-tool-arrow {
-      flex-shrink: 0;
-      color: var(--ink-faint);
-    }
-    .chat-tool-call.is-error .chat-tool-arrow {
-      color: var(--warn, var(--danger));
-    }
-    .chat-tool-text {
-      word-break: break-word;
-    }
-    .chat-tool-sha {
-      flex-shrink: 0;
-      margin-left: 0.45rem;
-      padding: 1px 6px;
-      border-radius: 3px;
-      background: var(--rule);
-      color: var(--ink-faint);
-      font-size: 11.5px;
-      font-family: ui-monospace, monospace;
-      letter-spacing: 0.02em;
-    }
-
-    @media (max-width: 900px) {
-      .chat-shell {
-        grid-template-columns: 1fr;
-        gap: 1.5rem;
-      }
-      .chat-sidebar {
-        border-right: none;
-        padding-right: 0;
-        border-bottom: 1px solid var(--rule);
-        padding-bottom: 1rem;
-        position: static;
-      }
-      .chat-pane {
-        height: auto;
-        min-height: 520px;
-      }
-      .chat-turn {
-        max-width: 100%;
-      }
-      .chat-composer-row {
-        grid-template-columns: 1fr;
-      }
-      .chat-composer-actions {
-        justify-content: flex-end;
-      }
-    }
+  <style is:global>
+    /* x-cloak: hide elements until Alpine evaluates the show/if condition,
+       avoiding a flash of both hero + transcript on first paint. */
+    [x-cloak] { display: none !important; }
   </style>
 
   <script
@@ -808,9 +285,6 @@ async function assembleMcpWarnings(home: string): Promise<McpWarnings> {
   >
     window.__praxisChatBootstrap = bootstrap;
   </script>
-  {/* Markdown is rendered server-side: the API routes return each turn with a
-      pre-rendered `content_html` field, and the Alpine transcript binds via
-      `x-html="turn.content_html"`. No markdown renderer ships to the client. */}
   <script is:inline src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
   <script is:inline>
     function praxisChat() {
@@ -829,17 +303,10 @@ async function assembleMcpWarnings(home: string): Promise<McpWarnings> {
         attachments: [],
         sending: false,
         pendingAssistant: false,
-        reflecting: false,
         loadingTurns: false,
         error: '',
-        // Token budget surface (issue #16): we mirror the server-side
-        // `estimateTokens` helper (ceil(len/4)) so the header number lines
-        // up with what the next turn will actually send to Anthropic.
         systemPromptTokens: boot.systemPromptTokens || 0,
         contextWindowTokens: boot.contextWindowTokens || 200000,
-        banner50kThreshold: boot.banner50kThreshold || 50000,
-        budgetBannerDismissed: false,
-        summarising: false,
 
         init() {
           const initialThread = this.threads.find((t) => t.thread_id === this.activeThreadId);
@@ -851,24 +318,7 @@ async function assembleMcpWarnings(home: string): Promise<McpWarnings> {
         },
 
         get canSend() {
-          return !this.sending && !this.summarising && this.composer.trim().length > 0;
-        },
-
-        // Live token estimate for the active thread. Mirrors the server-side
-        // `estimateTokens` (ceil(content.length / 4)) so the header number
-        // is consistent with the threshold the server-side summariser
-        // refuses below.
-        get tokenBudget() {
-          let history = 0;
-          for (const turn of this.turns) {
-            const content = typeof turn.content === 'string' ? turn.content : '';
-            history += content.length === 0 ? 0 : Math.ceil(content.length / 4);
-          }
-          return {
-            systemPrompt: this.systemPromptTokens,
-            history,
-            total: this.systemPromptTokens + history,
-          };
+          return !this.sending && this.composer.trim().length > 0;
         },
 
         async loadActiveThread() {
@@ -885,7 +335,6 @@ async function assembleMcpWarnings(home: string): Promise<McpWarnings> {
             this.activeTitle = body.thread.title;
             this.activeUpdated = body.thread.updated;
             this.turns = body.turns || [];
-            this.$nextTick(() => this.scrollTranscriptToBottom());
           } catch (e) {
             this.error = `Could not load conversation: ${e instanceof Error ? e.message : String(e)}`;
             this.turns = [];
@@ -905,53 +354,12 @@ async function assembleMcpWarnings(home: string): Promise<McpWarnings> {
           }
         },
 
-        async selectThread(id) {
-          if (id === this.activeThreadId) return;
-          this.activeThreadId = id;
-          this.composer = '';
-          this.attachments = [];
-          this.error = '';
-          this.updateUrl();
-          await this.loadActiveThread();
-        },
-
-        async newChat() {
-          this.activeThreadId = '';
-          this.activeTitle = '';
-          this.activeUpdated = '';
-          this.turns = [];
-          this.composer = '';
-          this.attachments = [];
-          this.error = '';
-          this.updateUrl();
-          this.$nextTick(() => {
-            if (this.$refs.composer) this.$refs.composer.focus();
-          });
-        },
-
-        async deleteThread(id) {
-          if (!confirm('Delete this conversation?')) return;
-          try {
-            const res = await fetch(`/api/chat/threads/${encodeURIComponent(id)}`, {
-              method: 'DELETE',
-            });
-            if (!res.ok) throw new Error(`Delete failed (${res.status})`);
-            this.threads = this.threads.filter((t) => t.thread_id !== id);
-            if (id === this.activeThreadId) {
-              await this.newChat();
-            }
-          } catch (e) {
-            this.error = `Delete failed: ${e instanceof Error ? e.message : String(e)}`;
-          }
-        },
-
         async send() {
           const content = this.composer.trim();
           if (!content || this.sending) return;
           this.sending = true;
           this.error = '';
 
-          // If no active thread, create one with this content as the first message.
           if (!this.activeThreadId) {
             try {
               const res = await fetch('/api/chat/threads', {
@@ -968,14 +376,9 @@ async function assembleMcpWarnings(home: string): Promise<McpWarnings> {
               this.activeTitle = body.title;
               this.composer = '';
               this.updateUrl();
-              // Show the user turn immediately while the assistant call is in flight.
-              // The body's `content_html` is generated locally with a plain-text
-              // escape so we never paint markdown syntax; the canonical
-              // server-rendered HTML replaces it after the assistant reply lands.
               const now = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
               this.turns = [{ role: 'user', timestamp: now, content, content_html: this.escapeAsHtml(content) }];
               this.pendingAssistant = true;
-              this.$nextTick(() => this.scrollTranscriptToBottom());
               await this.runMessage(content);
             } catch (e) {
               this.error = e instanceof Error ? e.message : String(e);
@@ -985,21 +388,16 @@ async function assembleMcpWarnings(home: string): Promise<McpWarnings> {
             return;
           }
 
-          // Existing thread — optimistically push user turn, fire request.
           const optimisticNow = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
           this.turns.push({ role: 'user', timestamp: optimisticNow, content, content_html: this.escapeAsHtml(content) });
           this.composer = '';
           this.pendingAssistant = true;
-          this.$nextTick(() => this.scrollTranscriptToBottom());
           await this.runMessage(content);
         },
 
         async runMessage(content) {
           try {
             const body = { thread_id: this.activeThreadId, content };
-            if (this.attachments.length > 0) {
-              body.attachments = this.attachments.map((a) => a.path);
-            }
             const res = await fetch('/api/chat/message', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -1016,144 +414,13 @@ async function assembleMcpWarnings(home: string): Promise<McpWarnings> {
               content: replyBody.content,
               content_html: replyBody.content_html || this.escapeAsHtml(replyBody.content || ''),
             };
-            if (Array.isArray(replyBody.toolCalls) && replyBody.toolCalls.length > 0) {
-              assistantTurn.toolCalls = replyBody.toolCalls;
-            }
             this.turns.push(assistantTurn);
-            this.attachments = [];
             await this.refreshThreadList();
-            const refreshed = this.threads.find((t) => t.thread_id === this.activeThreadId);
-            if (refreshed) {
-              this.activeTitle = refreshed.title;
-              this.activeUpdated = refreshed.updated;
-            }
-            this.$nextTick(() => this.scrollTranscriptToBottom());
           } catch (e) {
             this.error = e instanceof Error ? e.message : String(e);
           } finally {
             this.sending = false;
             this.pendingAssistant = false;
-          }
-        },
-
-        async summarise() {
-          if (!this.activeThreadId || this.summarising || this.sending || this.reflecting) return;
-          if (this.turns.length < 4) {
-            this.error = 'Thread needs at least 4 turns before summarisation.';
-            return;
-          }
-          this.summarising = true;
-          this.error = '';
-          try {
-            const res = await fetch(
-              `/api/chat/threads/${encodeURIComponent(this.activeThreadId)}/summarise`,
-              { method: 'POST' },
-            );
-            if (!res.ok) {
-              const errBody = await res.json().catch(() => ({}));
-              throw new Error(errBody.error || `Summarise failed (${res.status})`);
-            }
-            const body = await res.json();
-            if (body.thread) {
-              this.activeTitle = body.thread.title;
-              this.activeUpdated = body.thread.updated;
-            }
-            if (Array.isArray(body.turns)) {
-              this.turns = body.turns;
-            }
-            // Reset the dismiss flag so the banner can come back later if
-            // the thread crosses the threshold again.
-            this.budgetBannerDismissed = false;
-            await this.refreshThreadList();
-            this.$nextTick(() => this.scrollTranscriptToBottom());
-          } catch (e) {
-            this.error = e instanceof Error ? e.message : String(e);
-          } finally {
-            this.summarising = false;
-          }
-        },
-
-        async reflect() {
-          if (!this.activeThreadId || this.reflecting || this.sending) return;
-          if (this.turns.length === 0) return;
-          this.reflecting = true;
-          this.error = '';
-          this.$nextTick(() => this.scrollTranscriptToBottom());
-          try {
-            const res = await fetch('/api/chat/reflect', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ thread_id: this.activeThreadId }),
-            });
-            if (!res.ok) {
-              const errBody = await res.json().catch(() => ({}));
-              throw new Error(errBody.error || `Reflect failed (${res.status})`);
-            }
-            const replyBody = await res.json();
-            const turn = {
-              role: 'assistant',
-              timestamp: replyBody.timestamp || new Date().toISOString(),
-              content: replyBody.content,
-              content_html: replyBody.content_html || this.escapeAsHtml(replyBody.content || ''),
-            };
-            if (Array.isArray(replyBody.toolCalls) && replyBody.toolCalls.length > 0) {
-              turn.toolCalls = replyBody.toolCalls;
-            }
-            this.turns.push(turn);
-            await this.refreshThreadList();
-            const refreshed = this.threads.find((t) => t.thread_id === this.activeThreadId);
-            if (refreshed) {
-              this.activeTitle = refreshed.title;
-              this.activeUpdated = refreshed.updated;
-            }
-            this.$nextTick(() => this.scrollTranscriptToBottom());
-          } catch (e) {
-            this.error = e instanceof Error ? e.message : String(e);
-          } finally {
-            this.reflecting = false;
-          }
-        },
-
-        async onPickFile(event) {
-          const file = event.target.files && event.target.files[0];
-          if (!file) return;
-          if (!this.activeThreadId) {
-            // Need a thread first — create a placeholder so the upload can land.
-            try {
-              const res = await fetch('/api/chat/threads', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ first_message: `Uploaded ${file.name}` }),
-              });
-              if (!res.ok) throw new Error('Could not create thread');
-              const body = await res.json();
-              this.activeThreadId = body.thread_id;
-              this.activeTitle = body.title;
-              this.updateUrl();
-              await this.loadActiveThread();
-              await this.refreshThreadList();
-            } catch (e) {
-              this.error = e instanceof Error ? e.message : String(e);
-              event.target.value = '';
-              return;
-            }
-          }
-
-          try {
-            const form = new FormData();
-            form.set('thread_id', this.activeThreadId);
-            form.set('file', file);
-            const res = await fetch('/api/chat/upload', { method: 'POST', body: form });
-            if (!res.ok) {
-              const errBody = await res.json().catch(() => ({}));
-              throw new Error(errBody.error || `Upload failed (${res.status})`);
-            }
-            const body = await res.json();
-            this.attachments.push({ path: body.path, filename: body.filename, size: body.size });
-          } catch (e) {
-            this.error = e instanceof Error ? e.message : String(e);
-          } finally {
-            event.target.value = '';
           }
         },
 
@@ -1167,52 +434,7 @@ async function assembleMcpWarnings(home: string): Promise<McpWarnings> {
           window.history.replaceState({}, '', url.toString());
         },
 
-        scrollTranscriptToBottom() {
-          const el = this.$refs.transcript;
-          if (el) el.scrollTop = el.scrollHeight;
-        },
-
-        // ---- formatting helpers -------------------------------------------
-
-        renderToolCall(tc) {
-          // Each tool call renders as a one-liner. Success uses the
-          // executor's `summary`; failures lead with the tool name + error.
-          // The trailing ` · <short-sha>` segment the tool appends on a
-          // successful audit commit is rendered separately in its own span,
-          // so strip it here to avoid duplication.
-          if (!tc || typeof tc !== 'object') return '';
-          const result = tc.result || {};
-          if (result.ok) {
-            const summary = result.summary || '';
-            const stripped = summary.replace(/\s+·\s+[0-9a-f]{7,}\s*$/, '');
-            if (stripped) return stripped;
-            const path = result.data && result.data.path;
-            if (path) return `${tc.name}: ${path}`;
-            return tc.name;
-          }
-          const err = result.error || 'failed';
-          return `${tc.name} refused — ${err}`;
-        },
-        toolCallSha(tc) {
-          if (!tc || typeof tc !== 'object') return '';
-          const data = tc.result && tc.result.data;
-          if (!data) return '';
-          return data.commit_sha || '';
-        },
-        toolCallShortSha(tc) {
-          if (!tc || typeof tc !== 'object') return '';
-          const data = tc.result && tc.result.data;
-          if (!data) return '';
-          if (data.commit_short_sha) return data.commit_short_sha;
-          if (data.commit_sha) return data.commit_sha.slice(0, 7);
-          return '';
-        },
-
         escapeAsHtml(text) {
-          // Plain-text → safe HTML for optimistic user turns. The server-rendered
-          // `content_html` (produced by the shared markdown-it pipeline) is the
-          // canonical path for everything else; this helper only runs for the
-          // brief window between "user pressed send" and "assistant reply lands".
           if (!text) return '';
           const escaped = text
             .replace(/&/g, '&amp;')
@@ -1222,39 +444,13 @@ async function assembleMcpWarnings(home: string): Promise<McpWarnings> {
           return `<p>${escaped.replace(/\n/g, '<br>')}</p>`;
         },
 
-        formatTokens(n) {
-          if (!Number.isFinite(n) || n <= 0) return '0';
-          if (n < 1000) return String(n);
-          if (n < 1_000_000) {
-            // 12_345 → "12.3K"; 200_000 → "200K"
-            const k = n / 1000;
-            return k >= 100 ? `${Math.round(k)}K` : `${k.toFixed(1).replace(/\.0$/, '')}K`;
-          }
-          return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
-        },
-
         summaryHeading(turn) {
           if (!turn || typeof turn !== 'object') return 'Summary';
           const range = turn.summaryRange;
           if (range && range.from && range.to) {
-            return `Summary · turns ${range.from}–${range.to}`;
+            return `SUMMARY · turns ${range.from}–${range.to}`;
           }
-          return 'Summary';
-        },
-
-        relativeTime(iso) {
-          if (!iso) return '';
-          const then = new Date(iso).getTime();
-          if (Number.isNaN(then)) return iso;
-          const diff = Date.now() - then;
-          const min = Math.round(diff / 60000);
-          if (min < 1) return 'just now';
-          if (min < 60) return `${min}m ago`;
-          const hr = Math.round(min / 60);
-          if (hr < 24) return `${hr}h ago`;
-          const days = Math.round(hr / 24);
-          if (days < 7) return `${days}d ago`;
-          return iso.slice(0, 10);
+          return 'SUMMARY';
         },
 
         formatTimestamp(iso) {
