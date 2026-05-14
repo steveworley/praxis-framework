@@ -1,4 +1,5 @@
 ---
+import EmptyState from '@/components/EmptyState.astro';
 import RouteHeader from '@/components/RouteHeader.astro';
 import SectionPill from '@/components/SectionPill.astro';
 import BaseLayout from '@/layouts/BaseLayout.astro';
@@ -9,11 +10,16 @@ import {
   loadAutonomy,
   recentAutonomousEdits,
 } from '@/lib/autonomy-loader';
+import {
+  loadCapabilities,
+  type CapabilitiesReport,
+  type VerbOutcomeCounts,
+} from '@/lib/capabilities-loader';
 import { parsePersona, type Persona } from '@/lib/persona-parser';
 import { detectMode, getRoleHome, nowIso } from '@/lib/role-home';
 import { assembleMemory } from '@/lib/memory-loader';
 import { getLatestSelfAssessmentsByCriterion, type CriterionStatusValue } from '@/lib/self-assessment-parser';
-import { formatIsoDate } from '@/lib/ui/time';
+import { daysSince, formatAgeLabel, formatIsoDate } from '@/lib/ui/time';
 import { firstLine } from '@/lib/ui/text';
 
 export const prerender = false;
@@ -24,12 +30,13 @@ if (mode === 'seed') {
   return Astro.redirect('/setup');
 }
 
-const [personaRes, verbsRes, libRes, autonomyRes, memoryRes] = await Promise.allSettled([
+const [personaRes, verbsRes, libRes, autonomyRes, memoryRes, capabilitiesRes] = await Promise.allSettled([
   parsePersona(roleHome),
   loadVerbs(roleHome),
   listLibFiles(roleHome),
   loadAutonomy(roleHome),
   assembleMemory(roleHome),
+  loadCapabilities(roleHome),
 ]);
 
 const persona: Persona | null = personaRes.status === 'fulfilled' ? personaRes.value : null;
@@ -37,6 +44,10 @@ const personaError = personaRes.status === 'rejected' ? String(personaRes.reason
 const verbs: VerbsResult = verbsRes.status === 'fulfilled' ? verbsRes.value : { live: [], proposed: [] };
 const libFiles: string[] = libRes.status === 'fulfilled' ? libRes.value : [];
 const memoryEntries = memoryRes.status === 'fulfilled' ? memoryRes.value : [];
+const capabilities: CapabilitiesReport | null =
+  capabilitiesRes.status === 'fulfilled' ? capabilitiesRes.value : null;
+const capabilitiesError =
+  capabilitiesRes.status === 'rejected' ? String(capabilitiesRes.reason) : null;
 
 const autonomy: AutonomyConfig | null =
   autonomyRes.status === 'fulfilled' ? autonomyRes.value : null;
@@ -138,6 +149,24 @@ const editsCounter = autonomy
 function verbSlug(file: string): string {
   const base = file.replace(/^.*[\\/]/, '');
   return base.replace(/\.md$/i, '');
+}
+
+const now = new Date();
+
+/** Format an ISO timestamp as a relative-age label ("2d ago") for the
+ * capabilities deep section. Empty string when the timestamp is null so
+ * the row drops the trailing "last …" affordance cleanly. */
+function ageLabel(iso: string | null): string {
+  if (!iso) return '';
+  return formatAgeLabel(daysSince(iso, now));
+}
+
+/** Compact "Ns Np Nf Ns" verb-outcome badge — success, partial, failed,
+ * skipped. Renders an em-dash when the verb hasn't been invoked. */
+function outcomeBadge(o: VerbOutcomeCounts): string {
+  const total = o.success + o.partial + o.failed + o.skipped;
+  if (total === 0) return '—';
+  return `${o.success}s ${o.partial}p ${o.failed}f ${o.skipped}s`;
 }
 ---
 
@@ -292,6 +321,184 @@ function verbSlug(file: string): string {
             </section>
           </div>
 
+          <section class="sec deep-capabilities" id="capabilities" style="margin-top: 5rem;">
+            <SectionPill
+              colour="purple"
+              label="CAPABILITY DETAIL"
+              title="Tools at hand"
+              counter={capabilities
+                ? `${capabilities.chatTools.length} chat tools · ${capabilities.mcps.configured ? `${capabilities.mcps.servers.length} MCP ${capabilities.mcps.servers.length === 1 ? 'server' : 'servers'}` : 'no MCP'} · ${capabilities.verbs.length} verbs`
+                : 'unavailable'}
+            />
+            {capabilitiesError ? (
+              <EmptyState>Failed to load capabilities: {capabilitiesError}</EmptyState>
+            ) : !capabilities ? (
+              <EmptyState>No capabilities to show.</EmptyState>
+            ) : (
+              <>
+                <div class="cap-detail-block">
+                  <div class="cap-detail-head">
+                    <span class="cap-detail-label">Chat tools</span>
+                    <span class="cap-detail-count">{capabilities.chatTools.length} native</span>
+                  </div>
+                  <div class="cap-list">
+                    {capabilities.chatTools.map((t) => (
+                      <div class="cap-row">
+                        <div class="cap-row-head">
+                          <code class="cap-name">{t.name}</code>
+                          <span class="cap-mode">{t.autonomyMode}</span>
+                          <span class="cap-usage">
+                            {t.callCount30d === 0 ? (
+                              <em class="never">never invoked (30d)</em>
+                            ) : (
+                              <>
+                                <span class="ct">{t.callCount30d}</span>{' '}
+                                {t.callCount30d === 1 ? 'call' : 'calls'} (30d)
+                              </>
+                            )}
+                            {t.lastInvoked && (
+                              <span class="last"> · last {ageLabel(t.lastInvoked)}</span>
+                            )}
+                          </span>
+                        </div>
+                        <div class="cap-desc">{t.description}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div class="cap-detail-block">
+                  <div class="cap-detail-head">
+                    <span class="cap-detail-label">MCP servers</span>
+                    <span class="cap-detail-count">
+                      {capabilities.mcps.configured
+                        ? `${capabilities.mcps.servers.length} ${capabilities.mcps.servers.length === 1 ? 'server' : 'servers'}`
+                        : 'not configured'}
+                    </span>
+                  </div>
+                  {!capabilities.mcps.configured ? (
+                    <EmptyState>{capabilities.mcps.message}</EmptyState>
+                  ) : (
+                    <div class="cap-list">
+                      {capabilities.mcps.servers.map((s) => (
+                        <div class="cap-row mcp-server">
+                          <div class="cap-row-head">
+                            <code class="cap-name">{s.name}</code>
+                            <span class={`mcp-status mcp-status-${s.status}`}>{s.status}</span>
+                            <span class={`mcp-allow ${s.allowed ? 'mcp-allow-yes' : 'mcp-allow-no'}`}>
+                              {s.allowed ? 'allow' : 'deny'}
+                            </span>
+                            <span class="cap-usage">
+                              <span class="mcp-url">{s.url}</span>
+                            </span>
+                          </div>
+                          {s.status !== 'connected' && s.errorMessage && (
+                            <div class="cap-desc mcp-error">{s.errorMessage}</div>
+                          )}
+                          {s.status === 'connected' && s.methods.length === 0 ? (
+                            <div class="cap-desc"><em class="never">no methods exposed</em></div>
+                          ) : null}
+                          {s.methods.length > 0 && (
+                            <div class="mcp-methods">
+                              {s.methods.map((m) => (
+                                <div class="mcp-method">
+                                  <div class="cap-row-head">
+                                    <code class="cap-name">{m.methodName}</code>
+                                    <span class="cap-usage">
+                                      {m.callCount30d === 0 ? (
+                                        <em class="never">never invoked (30d)</em>
+                                      ) : (
+                                        <>
+                                          <span class="ct">{m.callCount30d}</span>{' '}
+                                          {m.callCount30d === 1 ? 'call' : 'calls'} (30d)
+                                        </>
+                                      )}
+                                      {m.lastInvoked && (
+                                        <span class="last"> · last {ageLabel(m.lastInvoked)}</span>
+                                      )}
+                                    </span>
+                                  </div>
+                                  {m.description && <div class="cap-desc">{m.description}</div>}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div class="cap-detail-block">
+                  <div class="cap-detail-head">
+                    <span class="cap-detail-label">Verbs</span>
+                    <span class="cap-detail-count">{capabilities.verbs.length} live</span>
+                  </div>
+                  {capabilities.verbs.length === 0 ? (
+                    <EmptyState>No live verbs. Add `.md` files under `verbs/` to give the role playbooks.</EmptyState>
+                  ) : (
+                    <div class="cap-list">
+                      {capabilities.verbs.map((v) => (
+                        <div class="cap-row">
+                          <div class="cap-row-head">
+                            <code class="cap-name">{v.slug}</code>
+                            <span class="cap-mode">{outcomeBadge(v.outcomes)}</span>
+                            <span class="cap-usage">
+                              {v.invocationCount30d === 0 ? (
+                                <em class="never">never invoked (30d)</em>
+                              ) : (
+                                <>
+                                  <span class="ct">{v.invocationCount30d}</span>{' '}
+                                  {v.invocationCount30d === 1 ? 'invocation' : 'invocations'} (30d)
+                                </>
+                              )}
+                              {v.lastInvoked && (
+                                <span class="last"> · last {ageLabel(v.lastInvoked)}</span>
+                              )}
+                            </span>
+                          </div>
+                          <div class="cap-desc">{v.description}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div class="cap-detail-block">
+                  <div class="cap-detail-head">
+                    <span class="cap-detail-label">Reference data</span>
+                    <span class="cap-detail-count">
+                      {capabilities.refData.length}{' '}
+                      {capabilities.refData.length === 1 ? 'file' : 'files'} · lib/
+                    </span>
+                  </div>
+                  {capabilities.refData.length === 0 ? (
+                    <EmptyState>No reference data. Add YAML files to `lib/` to anchor the role's facts.</EmptyState>
+                  ) : (
+                    <div class="cap-list">
+                      {capabilities.refData.map((r) => (
+                        <div class="cap-row">
+                          <div class="cap-row-head">
+                            <code class="cap-name">lib/{r.filename}</code>
+                            <span class="cap-mode">{r.autonomyMode ?? 'unopened'}</span>
+                            <span class="cap-usage">
+                              {r.lastEditIso ? (
+                                <>last edit {ageLabel(r.lastEditIso)}</>
+                              ) : (
+                                <em class="never">no role edits</em>
+                              )}
+                            </span>
+                          </div>
+                          {r.modeHint && <div class="cap-desc">{r.modeHint}</div>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </section>
+
           <section class="sec" style="margin-top: 5rem;">
             <SectionPill
               colour="teal"
@@ -377,4 +584,145 @@ function verbSlug(file: string): string {
       )}
     </div>
   </main>
+
+  <style>
+    /* Capability detail — the runtime tools the role can actually invoke.
+       Lives under #capabilities on /role, merged in from the now-redirected
+       /capabilities surface. Each sub-block (chat tools, MCP servers, verbs,
+       reference data) is introduced by a mono sub-heading rather than its own
+       SectionPill so the section reads as one coherent block under the
+       purple "CAPABILITY DETAIL" pill. */
+    .deep-capabilities .cap-detail-block + .cap-detail-block {
+      margin-top: 1.6rem;
+    }
+    .cap-detail-head {
+      display: flex;
+      align-items: baseline;
+      gap: 0.7rem;
+      margin-bottom: 0.55rem;
+      padding-bottom: 0.35rem;
+      border-bottom: 1px dashed var(--rule);
+    }
+    .cap-detail-label {
+      font-family: var(--mono);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--ink);
+    }
+    .cap-detail-count {
+      margin-left: auto;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--ink-muted);
+    }
+    .cap-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+    .cap-row {
+      padding: 0.55rem 0.7rem;
+      background: var(--surface);
+      border: 1px solid var(--rule);
+      border-radius: 3px;
+      font-size: 12.5px;
+    }
+    .cap-row-head {
+      display: flex;
+      align-items: baseline;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    .cap-name {
+      font-family: var(--mono);
+      font-size: 12.5px;
+      color: var(--ink);
+    }
+    .cap-mode {
+      font-family: var(--mono);
+      font-size: 10.5px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--ink-faint);
+    }
+    .cap-usage {
+      margin-left: auto;
+      font-size: 12px;
+      color: var(--ink-muted);
+    }
+    .cap-usage .ct {
+      color: var(--ink);
+      font-weight: 600;
+    }
+    .cap-usage .last {
+      color: var(--ink-faint);
+    }
+    .cap-usage .never {
+      font-style: italic;
+      color: var(--ink-faint);
+    }
+    .cap-desc {
+      margin-top: 0.3rem;
+      font-size: 12px;
+      color: var(--ink-soft);
+      line-height: 1.45;
+      font-family: var(--prose);
+    }
+    .mcp-status {
+      font-family: var(--mono);
+      font-size: 10.5px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.05rem 0.4rem;
+      border-radius: 2px;
+      border: 1px solid var(--rule);
+    }
+    .mcp-status-connected {
+      color: var(--ink);
+      border-color: var(--rule);
+    }
+    .mcp-status-unreachable,
+    .mcp-status-error {
+      color: var(--ink-muted);
+      font-style: italic;
+    }
+    .mcp-allow {
+      font-family: var(--mono);
+      font-size: 10.5px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.05rem 0.4rem;
+      border-radius: 2px;
+      border: 1px solid var(--rule);
+    }
+    .mcp-allow-yes {
+      color: var(--ink);
+    }
+    .mcp-allow-no {
+      color: var(--ink-faint);
+      font-style: italic;
+    }
+    .mcp-url {
+      font-family: var(--mono);
+      color: var(--ink-faint);
+      font-size: 11.5px;
+    }
+    .mcp-error {
+      font-style: italic;
+      color: var(--ink-muted);
+    }
+    .mcp-methods {
+      margin-top: 0.5rem;
+      margin-left: 0.9rem;
+      padding-left: 0.7rem;
+      border-left: 1px solid var(--rule);
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+    .mcp-method {
+      font-size: 12px;
+    }
+  </style>
 </BaseLayout>

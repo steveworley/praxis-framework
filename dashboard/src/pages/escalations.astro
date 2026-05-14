@@ -7,6 +7,14 @@ import { assembleEscalations, type EscalationsResult } from '@/lib/escalations-l
 import { parsePersona, type Persona } from '@/lib/persona-parser';
 import { detectMode, getRoleHome, nowIso } from '@/lib/role-home';
 
+/** /escalations — the unified triage + audit surface. Operators read the
+ * full body, filter by status/kind, and act on open cards directly (accept,
+ * decline, or jump to draft review for proposed_skill escalations).
+ *
+ * Honours `?status=open` to default the status filter; otherwise lands on
+ * `all`. The query param is the only one we read — kind defaults to `all`
+ * regardless. */
+
 export const prerender = false;
 
 const roleHome = getRoleHome();
@@ -37,6 +45,16 @@ for (const e of entries) {
   kindCounts[e.kind] = (kindCounts[e.kind] ?? 0) + 1;
 }
 
+/**
+ * Default the status filter from `?status=<value>` when it's one of the
+ * known status keys; otherwise show `all`. Anything else — including
+ * unrecognised values — falls through to `all` so we never present an
+ * empty board because of a stale link.
+ */
+const KNOWN_STATUSES = new Set(['all', 'open', 'resolved', 'accepted', 'declined']);
+const rawStatus = Astro.url.searchParams.get('status');
+const initialStatus = rawStatus && KNOWN_STATUSES.has(rawStatus) ? rawStatus : 'all';
+
 const statusFilters: Array<{ key: string; label: string; count: number }> = [
   { key: 'all', label: 'all', count: entries.length },
   { key: 'open', label: 'open', count: counts.open },
@@ -65,9 +83,6 @@ const kindFilters: Array<{ key: string; label: string; count: number | null }> =
       <div class="group-head">
         <span class="group-counter">{entries.length} total · {counts.open} open</span>
       </div>
-      <p class="page-lede">
-        Read-only view. To accept, decline, comment, or edit, head to <a href="/triage">/triage</a>.
-      </p>
 
       {escalationError ? (
         <EmptyState>Failed to load escalations: {escalationError}</EmptyState>
@@ -80,7 +95,7 @@ const kindFilters: Array<{ key: string; label: string; count: number | null }> =
           <div class="filter-row spaced" data-filter-group="status">
             {statusFilters.map((f) => (
               <span
-                class:list={['filter', f.key === 'all' && 'active']}
+                class:list={['filter', f.key === initialStatus && 'active']}
                 data-filter={f.key}
               >
                 {f.label}<span class="ct">{f.count}</span>
@@ -98,7 +113,7 @@ const kindFilters: Array<{ key: string; label: string; count: number | null }> =
             ))}
           </div>
 
-          <div data-filter-feed>
+          <div data-filter-feed data-initial-status={initialStatus}>
             {entries.map((e) => <FullEscalation escalation={e} />)}
           </div>
         </>
@@ -106,12 +121,14 @@ const kindFilters: Array<{ key: string; label: string; count: number | null }> =
     </div>
   </main>
 
+  <script is:inline src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
   <script is:inline>
     (function () {
       const feed = document.querySelector('[data-filter-feed]');
       if (!(feed instanceof HTMLElement)) return;
       const groups = document.querySelectorAll('[data-filter-group]');
-      const active = { status: 'all', kind: 'all' };
+      const initialStatus = feed.dataset.initialStatus || 'all';
+      const active = { status: initialStatus, kind: 'all' };
 
       function apply() {
         const cards = feed.children;
@@ -144,6 +161,10 @@ const kindFilters: Array<{ key: string; label: string; count: number | null }> =
           }
         });
       });
+
+      // Apply the initial filter on load so `?status=open` actually narrows
+      // the feed before the operator interacts with any chip.
+      apply();
     })();
   </script>
 </BaseLayout>

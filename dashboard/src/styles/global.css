@@ -213,6 +213,10 @@ button {
   letter-spacing: 0.15em;
   display: inline-flex;
   gap: 0.05em;
+  text-decoration: none;
+}
+.brand-strip a.px-logo:hover {
+  text-decoration: none;
 }
 .brand-strip .px-logo span:nth-child(1) {
   color: var(--peach);
