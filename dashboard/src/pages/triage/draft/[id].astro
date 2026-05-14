@@ -83,14 +83,14 @@ const bootstrap = {
 <BaseLayout title={escalation ? `Draft proposal · ${escalation.title}` : 'Draft proposal · Praxis'}>
   <main class="container">
     <RouteHeader
-      current="triage"
+      current="escalations"
       personaName={persona ? personaName.full : ''}
       updatedAt={updatedAt}
     />
 
     <Breadcrumb
       crumbs={[
-        { label: 'triage', href: '/triage' },
+        { label: 'escalations', href: '/escalations' },
         { label: 'draft proposal' },
         { label: escalation?.id ?? idParam },
       ]}

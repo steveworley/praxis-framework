@@ -21,7 +21,7 @@ import { listProposedVerbs } from '@/lib/triage';
  * — surfacing loader errors is the caller's concern via its own per-section
  * error handling.
  */
-export type RouteName = 'home' | 'chat' | 'escalations' | 'triage' | 'notebook' | 'activity' | 'output' | 'role' | 'capabilities' | 'health';
+export type RouteName = 'chat' | 'escalations' | 'notebook' | 'activity' | 'output' | 'role' | 'health';
 
 /**
  * Per-surface accent colour. Drives both the active-tab underline in this
@@ -31,15 +31,12 @@ export type RouteName = 'home' | 'chat' | 'escalations' | 'triage' | 'notebook' 
 type SurfaceColour = 'peach' | 'pink' | 'purple' | 'lavender' | 'teal';
 
 const ROUTE_COLOUR: Record<RouteName, SurfaceColour> = {
-  home: 'teal',
   chat: 'teal',
-  triage: 'pink',
   escalations: 'pink',
   notebook: 'peach',
   output: 'purple',
   activity: 'purple',
   role: 'teal',
-  capabilities: 'purple',
   health: 'teal',
 };
 
@@ -62,18 +59,18 @@ const escalationOpenCount =
   escalationsRes.status === 'fulfilled' ? escalationsRes.value.countsByStatus.open : 0;
 const proposedVerbCount =
   proposedRes.status === 'fulfilled' ? proposedRes.value.length : 0;
-const triageCount = escalationOpenCount + proposedVerbCount;
+// Merged badge: open escalations + proposed-verb drafts. The escalations
+// surface is now the single triage entry point — proposed_skill cards link
+// to /triage/draft/[id] for the full review UI.
+const escalationsBadgeCount = escalationOpenCount + proposedVerbCount;
 
 const tabs: { key: RouteName; href: string; label: string }[] = [
-  { key: 'home', href: '/', label: 'home' },
   { key: 'chat', href: '/chat', label: 'chat' },
-  { key: 'triage', href: '/triage', label: 'triage' },
   { key: 'escalations', href: '/escalations', label: 'escalations' },
   { key: 'notebook', href: '/notebook', label: 'notebook' },
   { key: 'output', href: '/output', label: 'output' },
   { key: 'activity', href: '/activity', label: 'activity' },
   { key: 'role', href: '/role', label: 'role' },
-  { key: 'capabilities', href: '/capabilities', label: 'capabilities' },
   { key: 'health', href: '/health', label: 'health' },
 ];
 
@@ -81,9 +78,9 @@ const personaTag = (personaName ?? '').trim().toUpperCase();
 ---
 
 <div class="brand-strip">
-  <span class="px-logo" aria-label="PRAXIS">
+  <a class="px-logo" aria-label="PRAXIS — home (chat)" href="/chat">
     <span>P</span><span>R</span><span>A</span><span>X</span><span>I</span><span>S</span>
-  </span>
+  </a>
   {personaTag.length > 0 && (
     <>
       <span class="sep">·</span>
@@ -103,11 +100,8 @@ const personaTag = (personaName ?? '').trim().toUpperCase();
       return (
         <a class:list={[isCurrent && 'current', isCurrent && `current-${colour}`]} href={t.href}>
           {t.label}
-          {t.key === 'escalations' && escalationOpenCount > 0 && (
-            <span class="count">{escalationOpenCount}</span>
-          )}
-          {t.key === 'triage' && triageCount > 0 && (
-            <span class="count">{triageCount}</span>
+          {t.key === 'escalations' && escalationsBadgeCount > 0 && (
+            <span class="count">{escalationsBadgeCount}</span>
           )}
         </a>
       );
