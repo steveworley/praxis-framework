@@ -1,19 +1,36 @@
 ---
+import { assembleEscalations } from '@/lib/escalations-loader';
+import { getRoleHome } from '@/lib/role-home';
+import { listProposedVerbs } from '@/lib/triage';
+
 /** Top app head + nav, rendered identically on every route. The `current`
- * prop drives the active-tab underline; `escalationOpenCount` (when > 0)
- * surfaces the red badge next to the escalations tab; `triageCount`
- * (when > 0) does the same for the triage tab. */
+ * prop drives the active-tab underline; badge counts (escalations / triage)
+ * are loaded inside this component so every page renders them consistently
+ * without having to pipe state through props. If either loader fails the
+ * affected badge silently falls back to 0 — surfacing loader errors is the
+ * caller's concern via its own per-section error handling. */
 export type RouteName = 'home' | 'chat' | 'escalations' | 'triage' | 'notebook' | 'activity' | 'output' | 'role' | 'capabilities' | 'health';
 
 interface Props {
   current: RouteName;
   personaName?: string;
-  escalationOpenCount?: number;
-  triageCount?: number;
   updatedAt?: string;
 }
 
-const { current, personaName, escalationOpenCount = 0, triageCount = 0, updatedAt } = Astro.props;
+const { current, personaName, updatedAt } = Astro.props;
+
+const roleHome = getRoleHome();
+
+const [escalationsRes, proposedRes] = await Promise.allSettled([
+  assembleEscalations(roleHome),
+  listProposedVerbs(roleHome),
+]);
+
+const escalationOpenCount =
+  escalationsRes.status === 'fulfilled' ? escalationsRes.value.countsByStatus.open : 0;
+const proposedVerbCount =
+  proposedRes.status === 'fulfilled' ? proposedRes.value.length : 0;
+const triageCount = escalationOpenCount + proposedVerbCount;
 
 const tabs: Array<{ key: RouteName; href: string; label: string }> = [
   { key: 'home', href: '/', label: 'home' },

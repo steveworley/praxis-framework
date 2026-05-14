@@ -11,7 +11,6 @@ import { findMissingMcpDeclarations, getMcpCatalog } from '@/lib/chat/mcp-catalo
 import { personaNameFrom } from '@/lib/chat/persona-name.js';
 import { buildSystemPrompt, parseToolsYaml } from '@/lib/chat/system-prompt.js';
 import { estimateTokens } from '@/lib/chat/tokens.js';
-import { assembleEscalations } from '@/lib/escalations-loader.js';
 import { parsePersona } from '@/lib/persona-parser.js';
 import { detectMode, getRoleHome, nowIso } from '@/lib/role-home.js';
 
@@ -23,19 +22,16 @@ if (mode === 'seed') {
   return Astro.redirect('/setup');
 }
 
-const [personaRes, threadsRes, escalationsRes, systemPromptRes, mcpWarningsRes] =
+const [personaRes, threadsRes, systemPromptRes, mcpWarningsRes] =
   await Promise.allSettled([
     parsePersona(roleHome),
     listThreads(roleHome),
-    assembleEscalations(roleHome),
     buildSystemPrompt(roleHome),
     assembleMcpWarnings(roleHome),
   ]);
 
 const persona = personaRes.status === 'fulfilled' ? personaRes.value : null;
 const threads: ThreadSummary[] = threadsRes.status === 'fulfilled' ? threadsRes.value : [];
-const openCount =
-  escalationsRes.status === 'fulfilled' ? escalationsRes.value.countsByStatus.open : 0;
 const mcpWarnings: McpWarnings =
   mcpWarningsRes.status === 'fulfilled'
     ? mcpWarningsRes.value
@@ -103,7 +99,6 @@ async function assembleMcpWarnings(home: string): Promise<McpWarnings> {
     <RouteHeader
       current="chat"
       personaName={persona ? personaName.full : ''}
-      escalationOpenCount={openCount}
       updatedAt={updatedAt}
     />
 

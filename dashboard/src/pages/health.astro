@@ -2,7 +2,6 @@
 import EmptyState from '@/components/EmptyState.astro';
 import RouteHeader from '@/components/RouteHeader.astro';
 import BaseLayout from '@/layouts/BaseLayout.astro';
-import { assembleEscalations } from '@/lib/escalations-loader';
 import { type HealthReport, loadHealth } from '@/lib/health-loader';
 import { parsePersona, type Persona } from '@/lib/persona-parser';
 import { detectMode, getRoleHome, nowIso } from '@/lib/role-home';
@@ -17,17 +16,14 @@ if (mode === 'seed') {
   return Astro.redirect('/setup');
 }
 
-const [personaRes, healthRes, escalationsRes] = await Promise.allSettled([
+const [personaRes, healthRes] = await Promise.allSettled([
   parsePersona(roleHome),
   loadHealth(roleHome),
-  assembleEscalations(roleHome),
 ]);
 
 const persona: Persona | null = personaRes.status === 'fulfilled' ? personaRes.value : null;
 const health: HealthReport | null = healthRes.status === 'fulfilled' ? healthRes.value : null;
 const healthError = healthRes.status === 'rejected' ? String(healthRes.reason) : null;
-const openCount =
-  escalationsRes.status === 'fulfilled' ? escalationsRes.value.countsByStatus.open : 0;
 
 const fullName = persona?.identity['full_name'] ?? persona?.identity['name'] ?? '';
 const updatedAt = nowIso();
@@ -117,7 +113,6 @@ const toolBars = sparkline(toolCounts);
     <RouteHeader
       current="health"
       personaName={fullName}
-      escalationOpenCount={openCount}
       updatedAt={updatedAt}
     />
 
