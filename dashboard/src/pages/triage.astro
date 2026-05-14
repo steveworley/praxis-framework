@@ -338,6 +338,10 @@ const bootstrap = {
       background: #ece1f3;
       color: var(--info);
     }
+    .kind-criterion_drift .kind-label {
+      background: #fbeed4;
+      color: var(--warn);
+    }
     .title {
       font-size: 15px;
       font-weight: 600;
@@ -552,6 +556,7 @@ const bootstrap = {
           if (kind === 'help') return 'HELP';
           if (kind === 'improvement') return 'IMPROVEMENT';
           if (kind === 'proposed_skill') return 'PROPOSED SKILL';
+          if (kind === 'criterion_drift') return 'CRITERION DRIFT';
           return (kind || '').toUpperCase();
         },
 

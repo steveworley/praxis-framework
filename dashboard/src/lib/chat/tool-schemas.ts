@@ -59,21 +59,24 @@ export const WRITE_MEMORY_TOOL: Anthropic.Tool = {
 export const CREATE_ESCALATION_TOOL: Anthropic.Tool = {
   name: 'create_escalation',
   description:
-    "File a structured ask for your operator. Three kinds: 'help' (stuck now, " +
+    "File a structured ask for your operator. Four kinds: 'help' (stuck now, " +
     "can't continue without input — blocking), 'improvement' (process friction or " +
     "gap noticed — not blocking), 'proposed_skill' (you've drafted a new verb and " +
-    "want it reviewed — pair this with a write to verbs/proposed/). Be specific in " +
-    "the body: 'What I was doing', 'What I tried', 'What I'm asking for'.",
+    "want it reviewed — pair this with a write to verbs/proposed/), 'criterion_drift' " +
+    '(a declared success criterion has been amber or red for ≥2 consecutive self-' +
+    'assessments — file with `criterion`, `trend`, and `runs`). Be specific in the ' +
+    "body: 'What I was doing', 'What I tried', 'What I'm asking for'.",
   input_schema: {
     type: 'object',
     properties: {
       kind: {
         type: 'string',
-        enum: ['help', 'improvement', 'proposed_skill'],
+        enum: ['help', 'improvement', 'proposed_skill', 'criterion_drift'],
         description:
           "Pick by the *ask*, not the observation. 'help' = work can't continue " +
           "without input. 'improvement' = file-and-forget. 'proposed_skill' = a " +
-          'drafted verb is awaiting review.',
+          "drafted verb is awaiting review. 'criterion_drift' = a declared success " +
+          'criterion has trended away from green across multiple self-assessments.',
       },
       summary: {
         type: 'string',
@@ -101,6 +104,24 @@ export const CREATE_ESCALATION_TOOL: Anthropic.Tool = {
         description:
           "Path to the draft in verbs/proposed/ when kind='proposed_skill'. Omit " +
           'otherwise.',
+      },
+      criterion: {
+        type: 'string',
+        description:
+          "Required when kind='criterion_drift'. The declared criterion text " +
+          '(verbatim from persona.md `## Success criteria`) that has drifted.',
+      },
+      trend: {
+        type: 'string',
+        description:
+          "Required when kind='criterion_drift'. Short `prev→current` trend, e.g. " +
+          '`green→amber` or `amber→red`.',
+      },
+      runs: {
+        type: 'number',
+        description:
+          "Required when kind='criterion_drift'. Consecutive non-green self-" +
+          'assessment count (integer ≥1).',
       },
     },
     required: ['kind', 'summary', 'body'],

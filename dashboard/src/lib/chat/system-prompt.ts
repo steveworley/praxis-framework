@@ -82,7 +82,7 @@ export async function buildSystemPrompt(roleHome: string): Promise<string> {
     '- `write_memory` — capture an observation worth remembering into your notebook',
     '- `archive_memory` — retire a memory entry that no longer informs current work (moves it under `memory/archived/`)',
     '- `consolidate_memory` — fold two or more overlapping memory entries into a single canonical entry (sources moved under `memory/archived/` with back-references)',
-    '- `create_escalation` — file a help / improvement / proposed_skill ask for your operator',
+    '- `create_escalation` — file a help / improvement / proposed_skill / criterion_drift ask for your operator. Use `criterion_drift` when a declared success criterion (from your persona) has been amber or red for ≥2 consecutive self-assessments — include `criterion`, `trend` (e.g. `green→amber`), and `runs` (consecutive non-green count).',
     '- `propose_verb` — draft a new playbook into verbs/proposed/ for operator review',
     '- `run_verb` — invoke one of your live verbs (returns the playbook prose as your next instructions and logs a `verb_started` activity event)',
     '- `complete_verb` — close the loop on a verb invocation by recording its outcome (`success` / `partial` / `failed` / `skipped`)',

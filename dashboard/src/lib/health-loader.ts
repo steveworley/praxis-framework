@@ -2,12 +2,19 @@ import { simpleGit } from 'simple-git';
 
 import { assembleActivity } from './activity-loader.ts';
 import { assembleEscalations } from './escalations-loader.ts';
-import { assembleMemory } from './memory-loader.ts';
+import { assembleMemory, type MemoryEntry } from './memory-loader.ts';
+import { parsePersona } from './persona-parser.ts';
+import {
+  type CriterionStatus,
+  type CriterionStatusValue,
+  getLatestSelfAssessmentsByCriterion,
+} from './self-assessment-parser.ts';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const DEFAULT_WEEK_COUNT = 4;
 const ACTIVITY_WINDOW_DAYS = 30;
 const REVERT_WINDOW_DAYS = 30;
+const DEFAULT_CRITERION_TREND_LENGTH = 4;
 const ROLE_AUTHOR_EMAIL = 'role@praxis.local';
 // Pull a generous slice — the page's last-30-days windows are smaller than
 // this, but `assembleActivity` returns its own slice and we'd rather discard
@@ -73,6 +80,30 @@ export interface AutonomyHealth {
   window_days: number;
 }
 
+/**
+ * Per-criterion status for the `/health` "Performance against criteria"
+ * panel. One row per declared success criterion; `latest` is null when the
+ * criterion has never been assessed and the UI should fall back to an
+ * "unsure / no assessment yet" placeholder.
+ */
+export interface CriterionHealth {
+  criterion: string;
+  latest: CriterionStatus | null;
+  /** Last N statuses oldest → newest. Empty when no assessments exist. */
+  trend: CriterionStatusValue[];
+}
+
+export interface CriteriaHealth {
+  /**
+   * One entry per declared criterion in `persona.md`. Empty when the persona
+   * declares no success criteria — the `/health` page renders a guidance
+   * empty state for that case.
+   */
+  criteria: CriterionHealth[];
+  /** How many trend values the loader was asked to emit per criterion. */
+  trend_length: number;
+}
+
 export interface HealthReport {
   generated_at: string;
   window: {
@@ -85,6 +116,7 @@ export interface HealthReport {
   escalations: EscalationsHealth;
   activity: ActivityHealth;
   autonomy: AutonomyHealth;
+  criteria: CriteriaHealth;
 }
 
 /**
@@ -100,12 +132,14 @@ export async function loadHealth(
   roleHome: string,
   now: number = Date.now(),
 ): Promise<HealthReport> {
-  const [memoryRes, escalationsRes, activityRes, autonomyRes] = await Promise.allSettled([
-    assembleMemory(roleHome),
-    assembleEscalations(roleHome),
-    assembleActivity(roleHome, DEFAULT_LOG_GLOB, ACTIVITY_FETCH_LIMIT),
-    loadAutonomyHealth(roleHome, now),
-  ]);
+  const [memoryRes, escalationsRes, activityRes, autonomyRes, personaRes] =
+    await Promise.allSettled([
+      assembleMemory(roleHome),
+      assembleEscalations(roleHome),
+      assembleActivity(roleHome, DEFAULT_LOG_GLOB, ACTIVITY_FETCH_LIMIT),
+      loadAutonomyHealth(roleHome, now),
+      parsePersona(roleHome),
+    ]);
 
   const memoryEntries = memoryRes.status === 'fulfilled' ? memoryRes.value : [];
   const escalations =
@@ -123,6 +157,8 @@ export async function loadHealth(
           git_unavailable: true,
           window_days: REVERT_WINDOW_DAYS,
         };
+  const declaredCriteria =
+    personaRes.status === 'fulfilled' ? personaRes.value.success_criteria : [];
 
   return {
     generated_at: new Date(now).toISOString().replace(/\.\d{3}Z$/, 'Z'),
@@ -136,7 +172,42 @@ export async function loadHealth(
     escalations: buildEscalationsHealth(escalations, now),
     activity: buildActivityHealth(activityEntries, now),
     autonomy,
+    criteria: buildCriteriaHealth(declaredCriteria, memoryEntries),
   };
+}
+
+/**
+ * Join the persona's declared `success_criteria` to the role's self-
+ * assessment memory entries. For each declared criterion we surface the most
+ * recent assessment plus the last N statuses oldest → newest for the trend
+ * strip. Criteria with no matching assessment show `latest: null` so the UI
+ * can render an "unsure / no assessment yet" placeholder.
+ *
+ * `trendLength` defaults to {@link DEFAULT_CRITERION_TREND_LENGTH}. When
+ * fewer than `trendLength` assessments exist for a criterion, the trend
+ * array just shortens — we don't pad with placeholders.
+ */
+export function buildCriteriaHealth(
+  declared: string[],
+  memoryEntries: MemoryEntry[],
+  trendLength: number = DEFAULT_CRITERION_TREND_LENGTH,
+): CriteriaHealth {
+  const byCriterion = getLatestSelfAssessmentsByCriterion(memoryEntries);
+  const criteria: CriterionHealth[] = declared.map((criterion) => {
+    const history = byCriterion.get(criterion) ?? [];
+    // `history` is newest-first; slice the most-recent `trendLength`, then
+    // reverse so the UI reads oldest → newest left → right.
+    const trend = history
+      .slice(0, trendLength)
+      .map((h) => h.status)
+      .reverse();
+    return {
+      criterion,
+      latest: history[0] ?? null,
+      trend,
+    };
+  });
+  return { criteria, trend_length: trendLength };
 }
 
 interface MemoryLike {

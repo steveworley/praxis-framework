@@ -6,6 +6,8 @@ import { assembleEscalations } from '@/lib/escalations-loader';
 import { type HealthReport, loadHealth } from '@/lib/health-loader';
 import { parsePersona, type Persona } from '@/lib/persona-parser';
 import { detectMode, getRoleHome, nowIso } from '@/lib/role-home';
+import type { CriterionStatusValue } from '@/lib/self-assessment-parser';
+import { daysSince, formatAgeLabel } from '@/lib/ui/time';
 
 export const prerender = false;
 
@@ -64,6 +66,38 @@ function formatDays(d: number | null): string {
     return hours <= 0 ? '<1h' : `${hours}h`;
   }
   return `${d.toFixed(1)}d`;
+}
+
+/**
+ * Map a self-assessment status to the dashboard's existing tone colour
+ * tokens. The criteria panel reuses the same `--good` / `--warn` / `--danger`
+ * / `--ink-muted` swatches used elsewhere on `/health` for visual
+ * consistency.
+ */
+function criterionStatusToneClass(status: CriterionStatusValue | null): string {
+  if (status === 'green') return 'tone-good';
+  if (status === 'amber') return 'tone-warn';
+  if (status === 'red') return 'tone-danger';
+  return 'tone-muted';
+}
+
+function criterionStatusLabel(status: CriterionStatusValue | null): string {
+  if (status === null) return 'unsure';
+  return status;
+}
+
+/**
+ * Trend glyphs for the per-criterion strip. We map the four enum values onto
+ * the existing block-glyph palette used by the memory / escalations sparklines
+ * elsewhere on `/health` — green pulls the fullest bar, red the thinnest non-
+ * zero, amber sits in the middle, and `unsure` drops to the dot. Each glyph
+ * also carries a tone class so the colour mirrors the latest-status badge.
+ */
+function trendGlyphFor(status: CriterionStatusValue): string {
+  if (status === 'green') return '▇';
+  if (status === 'amber') return '▅';
+  if (status === 'red') return '▃';
+  return '·';
 }
 
 const memoryWeeklyCounts = health?.memory.weekly.map((b) => b.count) ?? [];
@@ -277,6 +311,72 @@ const toolBars = sparkline(toolCounts);
 
           <div class="group">
             <div class="group-head">
+              <span class="group-title">Performance against criteria</span>
+              <span class="group-counter">
+                {health.criteria.criteria.length === 0
+                  ? 'no criteria declared'
+                  : `${health.criteria.criteria.length} ${health.criteria.criteria.length === 1 ? 'criterion' : 'criteria'} · from persona.md + memory/`}
+              </span>
+            </div>
+            {health.criteria.criteria.length === 0 ? (
+              <EmptyState>
+                No success criteria declared. Add them to <code>persona.md</code> under <code>## Success criteria</code> to enable self-assessment tracking.
+              </EmptyState>
+            ) : (
+              <div class="health-panel">
+                <p class="health-prose">
+                  Latest self-assessment per criterion. The role writes these as memory entries titled <code>Criteria self-assessment YYYY-MM-DD</code> during reflection. Trend strip reads oldest → newest, capped at {health.criteria.trend_length}.
+                </p>
+                <ul class="criteria-list">
+                  {health.criteria.criteria.map((c) => {
+                    const latest = c.latest;
+                    const tone = criterionStatusToneClass(latest?.status ?? null);
+                    const age = latest ? daysSince(latest.assessedAt) : null;
+                    const ageLabel = age !== null ? formatAgeLabel(age) : '';
+                    return (
+                      <li class="criteria-row">
+                        <div class="criteria-head">
+                          <span class="criteria-text">{c.criterion}</span>
+                          <span class:list={['criteria-badge', tone]}>
+                            {criterionStatusLabel(latest?.status ?? null)}
+                          </span>
+                        </div>
+                        <div class="criteria-meta">
+                          {latest ? (
+                            <>
+                              <span>Last assessed {ageLabel || 'today'}</span>
+                              <span class="dot">·</span>
+                              <span class="criteria-when">{latest.assessedAt}</span>
+                            </>
+                          ) : (
+                            <span class="criteria-empty">No assessment yet</span>
+                          )}
+                          {c.trend.length > 0 && (
+                            <>
+                              <span class="dot">·</span>
+                              <span class="trend-strip" aria-label="status trend, oldest to newest">
+                                {c.trend.map((s) => (
+                                  <span class:list={['trend-pip', criterionStatusToneClass(s)]}>
+                                    {trendGlyphFor(s)}
+                                  </span>
+                                ))}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                        {latest && latest.reasoning.length > 0 && (
+                          <blockquote class="criteria-reasoning">{latest.reasoning}</blockquote>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+          </div>
+
+          <div class="group">
+            <div class="group-head">
               <span class="group-title">Autonomous edits</span>
               <span class="group-counter">
                 {health.autonomy.git_unavailable
@@ -401,6 +501,105 @@ const toolBars = sparkline(toolCounts);
       color: var(--ink-muted);
       margin: 0;
       max-width: 56ch;
+    }
+    .criteria-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    .criteria-row {
+      padding: 0.9rem 0;
+      border-top: 1px solid var(--rule);
+    }
+    .criteria-row:last-child {
+      border-bottom: 1px solid var(--rule);
+    }
+    .criteria-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 1rem;
+      flex-wrap: wrap;
+      margin-bottom: 0.35rem;
+    }
+    .criteria-text {
+      font-size: 13.5px;
+      color: var(--ink);
+      font-weight: 500;
+    }
+    .criteria-badge {
+      font-family: ui-monospace, monospace;
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 1px 6px;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+    .criteria-badge.tone-good {
+      background: #dcefe2;
+      color: var(--good);
+    }
+    .criteria-badge.tone-warn {
+      background: #fbeed4;
+      color: var(--warn);
+    }
+    .criteria-badge.tone-danger {
+      background: #fbe2dc;
+      color: var(--danger);
+    }
+    .criteria-badge.tone-muted {
+      background: var(--surface-mute);
+      color: var(--ink-muted);
+    }
+    .criteria-meta {
+      font-family: ui-monospace, monospace;
+      font-size: 11.5px;
+      color: var(--ink-muted);
+      display: flex;
+      gap: 0.35rem;
+      flex-wrap: wrap;
+      align-items: baseline;
+      margin-bottom: 0.4rem;
+    }
+    .criteria-meta .dot {
+      color: var(--ink-faint);
+    }
+    .criteria-when {
+      font-variant-numeric: tabular-nums;
+    }
+    .criteria-empty {
+      color: var(--ink-muted);
+      font-style: italic;
+    }
+    .trend-strip {
+      display: inline-flex;
+      gap: 1px;
+      font-family: ui-monospace, monospace;
+    }
+    .trend-pip.tone-good {
+      color: var(--good);
+    }
+    .trend-pip.tone-warn {
+      color: var(--warn);
+    }
+    .trend-pip.tone-danger {
+      color: var(--danger);
+    }
+    .trend-pip.tone-muted {
+      color: var(--ink-faint);
+    }
+    .criteria-reasoning {
+      margin: 0;
+      padding: 0.3rem 0 0 0.9rem;
+      border-left: 2px solid var(--rule);
+      font-size: 12.5px;
+      color: var(--ink-soft);
+      font-style: italic;
+      max-width: 64ch;
     }
   </style>
 </BaseLayout>

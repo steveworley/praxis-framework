@@ -27,6 +27,9 @@ function escalation(overrides: Partial<EscalationEntry>): EscalationEntry {
     agent_context: null,
     proposed_skill_path: null,
     proposed_skill_body: null,
+    criterion: null,
+    trend: null,
+    runs: null,
     body: '',
     ...overrides,
   };

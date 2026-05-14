@@ -234,6 +234,10 @@ button {
   background: #ece1f3;
   color: var(--info);
 }
+.lab.criterion_drift {
+  background: #fbeed4;
+  color: var(--warn);
+}
 .lab.urg-high {
   background: #fbe2dc;
   color: var(--danger);

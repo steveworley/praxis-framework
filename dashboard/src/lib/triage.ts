@@ -31,7 +31,7 @@ export interface EscalationSummary {
   /** Path relative to the role home. */
   path: string;
   title: string;
-  kind: 'help' | 'improvement' | 'proposed_skill' | string;
+  kind: 'help' | 'improvement' | 'proposed_skill' | 'criterion_drift' | string;
   urgency: 'low' | 'normal' | 'high' | string;
   status: 'open' | 'accepted' | 'declined' | 'resolved' | string;
   created: string | null;

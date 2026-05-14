@@ -6,10 +6,12 @@ import { simpleGit } from 'simple-git';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import {
+  buildCriteriaHealth,
   bucketByWeek,
   extractOperatorNoteTimestamp,
   loadHealth,
 } from './health-loader.ts';
+import type { MemoryEntry } from './memory-loader.ts';
 
 let tempDir: string;
 
@@ -343,6 +345,165 @@ describe('loadHealth — autonomy / revert ratio', () => {
     expect(report.autonomy.role_commits).toBe(1);
     expect(report.autonomy.revert_commits).toBe(0);
     expect(report.autonomy.revert_ratio).toBe(0);
+  });
+});
+
+describe('buildCriteriaHealth', () => {
+  function entry(title: string, body: string, updated: string): MemoryEntry {
+    return {
+      category: 'notes',
+      slug: title.toLowerCase().replace(/\s+/g, '-'),
+      path: `memory/notes/${title}.md`,
+      title,
+      created: updated,
+      updated,
+      body,
+      frontmatter: {},
+      archived: false,
+    };
+  }
+
+  it('returns one row per declared criterion in declaration order', () => {
+    const out = buildCriteriaHealth(['Crit A', 'Crit B', 'Crit C'], []);
+    expect(out.criteria.map((c) => c.criterion)).toEqual(['Crit A', 'Crit B', 'Crit C']);
+    expect(out.criteria.every((c) => c.latest === null)).toBe(true);
+    expect(out.criteria.every((c) => c.trend.length === 0)).toBe(true);
+  });
+
+  it('surfaces the most recent assessment for each criterion', () => {
+    const entries: MemoryEntry[] = [
+      entry(
+        'Criteria self-assessment 2026-05-12',
+        ['## Crit A', '**Status**: amber', '**Reasoning**: drifting'].join('\n'),
+        '2026-05-12',
+      ),
+      entry(
+        'Criteria self-assessment 2026-05-05',
+        ['## Crit A', '**Status**: green', '**Reasoning**: ok'].join('\n'),
+        '2026-05-05',
+      ),
+    ];
+    const out = buildCriteriaHealth(['Crit A', 'Crit B'], entries);
+    expect(out.criteria[0]?.latest?.status).toBe('amber');
+    expect(out.criteria[0]?.latest?.reasoning).toBe('drifting');
+    // Trend oldest → newest.
+    expect(out.criteria[0]?.trend).toEqual(['green', 'amber']);
+    // Crit B has no assessment yet.
+    expect(out.criteria[1]?.latest).toBeNull();
+    expect(out.criteria[1]?.trend).toEqual([]);
+  });
+
+  it('caps the trend at trendLength (defaults to 4)', () => {
+    const entries: MemoryEntry[] = [
+      entry(
+        'Criteria self-assessment 2026-05-12',
+        ['## Crit A', '**Status**: red', '**Reasoning**: ...'].join('\n'),
+        '2026-05-12',
+      ),
+      entry(
+        'Criteria self-assessment 2026-05-05',
+        ['## Crit A', '**Status**: amber', '**Reasoning**: ...'].join('\n'),
+        '2026-05-05',
+      ),
+      entry(
+        'Criteria self-assessment 2026-04-28',
+        ['## Crit A', '**Status**: amber', '**Reasoning**: ...'].join('\n'),
+        '2026-04-28',
+      ),
+      entry(
+        'Criteria self-assessment 2026-04-21',
+        ['## Crit A', '**Status**: green', '**Reasoning**: ...'].join('\n'),
+        '2026-04-21',
+      ),
+      entry(
+        'Criteria self-assessment 2026-04-14',
+        ['## Crit A', '**Status**: green', '**Reasoning**: ...'].join('\n'),
+        '2026-04-14',
+      ),
+    ];
+    const out = buildCriteriaHealth(['Crit A'], entries);
+    expect(out.trend_length).toBe(4);
+    // Most recent 4, oldest → newest.
+    expect(out.criteria[0]?.trend).toEqual(['green', 'amber', 'amber', 'red']);
+  });
+
+  it('honours a custom trendLength', () => {
+    const entries: MemoryEntry[] = [
+      entry(
+        'Criteria self-assessment 2026-05-12',
+        ['## Crit A', '**Status**: red', '**Reasoning**: ...'].join('\n'),
+        '2026-05-12',
+      ),
+      entry(
+        'Criteria self-assessment 2026-05-05',
+        ['## Crit A', '**Status**: green', '**Reasoning**: ...'].join('\n'),
+        '2026-05-05',
+      ),
+    ];
+    const out = buildCriteriaHealth(['Crit A'], entries, 1);
+    expect(out.criteria[0]?.trend).toEqual(['red']);
+  });
+
+  it('returns empty criteria array when persona declares none', () => {
+    const out = buildCriteriaHealth([], []);
+    expect(out.criteria).toEqual([]);
+  });
+});
+
+describe('loadHealth — criteria aggregation', () => {
+  it('joins declared criteria to self-assessment memory entries', async () => {
+    // Persona with 3 declared criteria.
+    await fs.writeFile(
+      path.join(tempDir, 'persona.md'),
+      [
+        '# Persona',
+        '',
+        '## Success criteria',
+        '',
+        '- Drafts land in ≤2 review cycles',
+        '- Weekly account reads surface ≥1 actionable signal',
+        '- No opted-out prospect is ever re-touched',
+      ].join('\n'),
+      'utf-8',
+    );
+    // Memory with 1 assessment covering 2 of the 3 criteria.
+    const mem = path.join(tempDir, 'memory', 'self-assessment');
+    await fs.mkdir(mem, { recursive: true });
+    await fs.writeFile(
+      path.join(mem, 'assessment-2026-05-12.md'),
+      [
+        '---',
+        'title: Criteria self-assessment 2026-05-12',
+        'created: 2026-05-12',
+        'updated: 2026-05-12',
+        '---',
+        '',
+        '# Criteria self-assessment 2026-05-12',
+        '',
+        '## Drafts land in ≤2 review cycles',
+        '',
+        '**Status**: amber',
+        '**Reasoning**: Last 8 drafts averaged 2.4 cycles.',
+        '',
+        '## Weekly account reads surface ≥1 actionable signal',
+        '',
+        '**Status**: green',
+        '**Reasoning**: 7 signals across 5 reads.',
+      ].join('\n'),
+      'utf-8',
+    );
+
+    const report = await loadHealth(tempDir, NOW_MS);
+    expect(report.criteria.criteria).toHaveLength(3);
+    expect(report.criteria.criteria[0]?.latest?.status).toBe('amber');
+    expect(report.criteria.criteria[1]?.latest?.status).toBe('green');
+    // Third criterion has no assessment yet.
+    expect(report.criteria.criteria[2]?.latest).toBeNull();
+  });
+
+  it('returns an empty criteria list when persona declares none', async () => {
+    const report = await loadHealth(tempDir, NOW_MS);
+    expect(report.criteria.criteria).toEqual([]);
   });
 });
 
