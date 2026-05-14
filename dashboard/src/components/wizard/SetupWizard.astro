@@ -10,575 +10,859 @@
  *              8 Success criteria → 9 Inhibitions → 10 Initial verbs
  *   Research:  5 Handoff (writes brief, polls for draft) → review
  *   Both:      11 Review & edit (editable, seeding inline) → success
+ *
+ * ----------------------------------------------------------------------
+ * Design — character-sheet, anticipatory mood.
+ *
+ * Each step gets its own one-line Fraunces display title + Source Serif 4
+ * italic subtitle, and its own accent colour. The accent surfaces in:
+ *   - the step indicator's pixel-font label colour,
+ *   - the progress rule fill,
+ *   - the primary CTA's offset block-shadow,
+ *   - the input focus block-shadow.
+ *
+ * Accent map (per step, falls back to teal):
+ *   1–3 (basics)              → teal     identity / runtime
+ *   4   (path choice)         → purple   deciding the route
+ *   5m  (voice)               → peach    voice / memory
+ *   5r  (research handoff)    → purple   research / capability
+ *   6   (capabilities)        → purple   capability
+ *   7   (accountabilities)    → pink     accountability
+ *   8   (success criteria)    → lavender measure
+ *   9   (inhibitions)         → oxblood  hard limit
+ *  10   (initial verbs)       → teal     verbs (playbooks)
+ *  11   (review & seed)       → pink     commitment
+ *
+ * The accent is set via the `--accent` CSS custom property on the
+ * `.setup-stage` wrapper, computed by `accentForStep()` and reactive to
+ * the current step. Every styled affordance reads from `var(--accent)` so
+ * we don't repeat a switch in CSS.
  */
 ---
 
-<div
-  class="wizard"
-  x-data="setupWizard()"
-  x-init="init()"
->
-  <div class="wizard-progress">
-    <template x-for="i in totalSteps" :key="i">
-      <div
-        class="wizard-progress-step"
-        :class="{ active: i === progressIndex, done: i < progressIndex }"
-      ></div>
-    </template>
+<div class="setup-stage" x-data="setupWizard()" x-init="init()" :style="`--accent: ${accent}; --accent-soft: ${accentSoft};`">
+  <!-- Step indicator + progress rule. Hidden on the welcome step so the
+       welcome reads as the cover sheet, not as "step 1 of 11". -->
+  <div class="setup-step-meta" x-show="step > 1">
+    <div class="setup-step-label" x-text="stepLabel"></div>
+    <div class="setup-progress" role="progressbar" :aria-valuenow="progressIndex" :aria-valuemin="1" :aria-valuemax="totalSteps">
+      <div class="setup-progress-fill" :style="`width: ${(progressIndex / totalSteps) * 100}%`"></div>
+    </div>
   </div>
 
-  <div class="wizard-card">
-    <div class="wizard-step-label" x-text="`Step ${progressIndex} of ${totalSteps}`"></div>
+  <!-- Submit error -->
+  <template x-if="submitError">
+    <div class="setup-error" x-text="submitError"></div>
+  </template>
 
-    <!-- Submit error -->
-    <template x-if="submitError">
-      <div class="error-banner" x-text="submitError"></div>
-    </template>
+  <!-- ============================================================== -->
+  <!-- Step 1: Welcome                                                  -->
+  <!-- ============================================================== -->
+  <div class="setup-step" x-show="step === 1">
+    <div class="setup-step-label setup-step-label--cover">PRAXIS · ROLE SETUP</div>
+    <h1 class="setup-title">Building a Praxis role.</h1>
+    <p class="setup-subtitle">
+      A short, deliberate walk — six considered choices that decide how this
+      role sounds, what they can do, and what they refuse.
+    </p>
 
-    <!-- Step 1: Welcome -->
-    <div x-show="step === 1">
-      <h1>Build a Praxis role</h1>
+    <div class="setup-welcome-prose">
       <p>
-        Praxis builds <strong>role-based agents that fit your business</strong> — not agents that grow on their own. Every change to a populated role is gated behind your review.
+        Praxis builds <strong>role-based agents that fit your business</strong>
+        — not agents that grow on their own. Every change to a populated role
+        is gated behind your review.
       </p>
       <p>You'll work through:</p>
-      <ol class="welcome-checklist">
-        <li><strong>Organisation context</strong> — what your business is and what makes it different</li>
-        <li><strong>Role definition</strong> — what role you're trying to fill</li>
-        <li><strong>Path</strong> — let an agent research and design it for you, or hand-craft it yourself</li>
-        <li><strong>Position description</strong> — voice, capabilities, accountabilities, success criteria, hard inhibitions</li>
-        <li><strong>Review</strong> — edit anything before seeding</li>
+      <ol class="setup-checklist">
+        <li><strong>Organisation context</strong> — what your business is and what makes it different.</li>
+        <li><strong>Role definition</strong> — what role you're trying to fill.</li>
+        <li><strong>Path</strong> — let an agent research and design it for you, or hand-craft it yourself.</li>
+        <li><strong>Position description</strong> — voice, capabilities, accountabilities, success criteria, hard inhibitions.</li>
+        <li><strong>Review</strong> — edit anything before seeding.</li>
       </ol>
-      <p>
-        Seeding runs as <strong>two visible commits</strong> in this repository:
-      </p>
-      <ul style="margin: 0 0 1rem 1.2rem; color: var(--ink-soft); font-size: 13px;">
+      <p>Seeding runs as <strong>two visible commits</strong> in this repository:</p>
+      <ul class="setup-commit-list">
         <li><code>feat: seed role from praxis-framework template</code> — copies + populates the template files.</li>
         <li><code>chore: tidy framework-only files post-seed</code> — removes <code>template/</code>, <code>examples/</code>, the bootstrap script, and any research artefacts.</li>
       </ul>
       <p>
-        After seeding, the dashboard switches to the populated role view at <code>/</code> and Claude Code sessions in the repo will load the new persona.
+        After seeding, the dashboard switches to the populated role view at
+        <code>/</code> and Claude Code sessions in the repo will load the new
+        persona.
       </p>
     </div>
+  </div>
 
-    <!-- Step 2: Organisation -->
-    <div x-show="step === 2">
-      <h2>Organisation context</h2>
-      <p class="wizard-help">
-        The org the role serves. The persona we generate will be shaped by this — sector, size, moats, customer profile all feed into the voice and capabilities downstream.
-      </p>
-      <div class="example-block">
-        <div class="example-label">EXAMPLE</div>
-        <div class="example-pair">
-          <div class="ex-label">Aurora Health</div>
-          <div class="ex-detail">Mid-market clinical telephony platform — sells into hospital networks where reliability and HIPAA posture beat feature breadth.</div>
+  <!-- ============================================================== -->
+  <!-- Step 2: Organisation                                             -->
+  <!-- ============================================================== -->
+  <div class="setup-step" x-show="step === 2">
+    <h1 class="setup-title">Who do they work for?</h1>
+    <p class="setup-subtitle">
+      The org shapes everything downstream — sector, size, moats, customer
+      profile all feed into the voice and capabilities you'll define next.
+    </p>
+
+    <div class="setup-example">
+      <div class="setup-example-label">EXAMPLE</div>
+      <div class="setup-example-pair">
+        <div class="ex-label">Aurora Health</div>
+        <div class="ex-detail">
+          Mid-market clinical telephony platform — sells into hospital networks
+          where reliability and HIPAA posture beat feature breadth.
         </div>
       </div>
-      <div class="field">
-        <label for="org-name">Organisation name *</label>
-        <input id="org-name" type="text" x-model="form.organisation.name" placeholder="Quant" autocomplete="off" />
-      </div>
-      <div class="field">
-        <label for="org-website">Website</label>
-        <input id="org-website" type="text" x-model="form.organisation.website" placeholder="https://quantcdn.io" />
-      </div>
-      <div class="field">
-        <label for="org-sector">Sector</label>
-        <input id="org-sector" type="text" x-model="form.organisation.sector" placeholder="CDN / edge / hosting" />
-      </div>
-      <div class="field">
-        <label for="org-size">Size</label>
-        <select id="org-size" x-model="form.organisation.size">
-          <option value="">— select —</option>
-          <option value="solo">Solo</option>
-          <option value="small">Small (2–20)</option>
-          <option value="mid">Mid (21–250)</option>
-          <option value="large">Large (251–2000)</option>
-          <option value="enterprise">Enterprise (2000+)</option>
-        </select>
-      </div>
-      <div class="field">
-        <label for="org-desc">What the org does (1–3 sentences)</label>
-        <textarea id="org-desc" rows="3" x-model="form.organisation.description" placeholder="Sovereign CDN and edge platform for security-conscious teams. Public sector and regulated enterprise."></textarea>
-      </div>
-      <div class="field">
-        <label for="org-moats">What makes the org defensibly different</label>
-        <textarea id="org-moats" rows="3" x-model="form.organisation.moats" placeholder="IRAP-assessed Australian sovereign hosting. Australian-owned, no US parent. Direct support from engineering."></textarea>
-      </div>
-      <div class="field">
-        <label for="org-customer">Who the role engages with</label>
-        <textarea id="org-customer" rows="2" x-model="form.organisation.customer_profile" placeholder="Government and regulated enterprise procurement teams. Technical buyers, mostly."></textarea>
-      </div>
-      <div class="field-output-hint">
-        Saved to <code>persona.md</code> under <code>## Organisation</code>.
-      </div>
     </div>
 
-    <!-- Step 3: Role definition -->
-    <div x-show="step === 3">
-      <h2>Role definition</h2>
-      <p class="wizard-help">
-        What role are you trying to fill? Don't worry about voice or capabilities yet — that comes later. Right now we just need name, working title, and the role's reason for existing.
-      </p>
-      <div class="example-block">
-        <div class="example-label">EXAMPLE</div>
-        <div class="example-pair">
-          <div class="ex-label">Sam Parker · BD agent</div>
-          <div class="ex-detail">Owns sales-side outreach for Quant — cold campaigns, manual lead intake, weekly account reads on existing customers.</div>
+    <div class="setup-field">
+      <label class="setup-field-label" for="org-name">
+        Organisation name<span class="setup-required">·</span>
+      </label>
+      <p class="setup-field-help">The name your team uses for the org day-to-day.</p>
+      <input class="setup-input" id="org-name" type="text" x-model="form.organisation.name" placeholder="Quant" autocomplete="off" />
+    </div>
+
+    <div class="setup-field">
+      <label class="setup-field-label" for="org-website">Website</label>
+      <p class="setup-field-help">Optional. Used by the research agent as a starting point.</p>
+      <input class="setup-input" id="org-website" type="text" x-model="form.organisation.website" placeholder="https://quantcdn.io" />
+    </div>
+
+    <div class="setup-field">
+      <label class="setup-field-label" for="org-sector">Sector</label>
+      <p class="setup-field-help">Short — one or two terms the industry would recognise.</p>
+      <input class="setup-input" id="org-sector" type="text" x-model="form.organisation.sector" placeholder="CDN / edge / hosting" />
+    </div>
+
+    <div class="setup-field">
+      <label class="setup-field-label" for="org-size">Size</label>
+      <p class="setup-field-help">Headcount band — helps the persona pitch sound right for the scale.</p>
+      <select class="setup-input setup-input--select" id="org-size" x-model="form.organisation.size">
+        <option value="">— select —</option>
+        <option value="solo">Solo</option>
+        <option value="small">Small (2–20)</option>
+        <option value="mid">Mid (21–250)</option>
+        <option value="large">Large (251–2000)</option>
+        <option value="enterprise">Enterprise (2000+)</option>
+      </select>
+    </div>
+
+    <div class="setup-field">
+      <label class="setup-field-label" for="org-desc">What the org does</label>
+      <p class="setup-field-help">One to three sentences — what the org sells, who it sells to.</p>
+      <textarea class="setup-input setup-input--prose" id="org-desc" rows="3" x-model="form.organisation.description" placeholder="Sovereign CDN and edge platform for security-conscious teams. Public sector and regulated enterprise."></textarea>
+    </div>
+
+    <div class="setup-field">
+      <label class="setup-field-label" for="org-moats">Defensibly different</label>
+      <p class="setup-field-help">The moats — what makes the org hard to replace.</p>
+      <textarea class="setup-input setup-input--prose" id="org-moats" rows="3" x-model="form.organisation.moats" placeholder="IRAP-assessed Australian sovereign hosting. Australian-owned, no US parent. Direct support from engineering."></textarea>
+    </div>
+
+    <div class="setup-field">
+      <label class="setup-field-label" for="org-customer">Customer profile</label>
+      <p class="setup-field-help">Who the role talks to — buyer shape and posture.</p>
+      <textarea class="setup-input setup-input--prose" id="org-customer" rows="2" x-model="form.organisation.customer_profile" placeholder="Government and regulated enterprise procurement teams. Technical buyers, mostly."></textarea>
+    </div>
+
+    <div class="setup-field-output">
+      Saved to <code>persona.md</code> under <code>## Organisation</code>.
+    </div>
+  </div>
+
+  <!-- ============================================================== -->
+  <!-- Step 3: Role definition                                          -->
+  <!-- ============================================================== -->
+  <div class="setup-step" x-show="step === 3">
+    <h1 class="setup-title">Who is this role?</h1>
+    <p class="setup-subtitle">
+      Name them. State why they exist. Voice and capabilities come later — for
+      now, the working title and the one-sentence reason for being.
+    </p>
+
+    <div class="setup-example">
+      <div class="setup-example-label">EXAMPLE</div>
+      <div class="setup-example-pair">
+        <div class="ex-label">Sam Parker · BD agent</div>
+        <div class="ex-detail">
+          Owns sales-side outreach for Quant — cold campaigns, manual lead intake,
+          weekly account reads on existing customers.
         </div>
       </div>
-      <div class="field">
-        <label for="role-name">Role name *</label>
-        <input id="role-name" type="text" x-model="form.role_definition.role_name" placeholder="Sam Parker" autocomplete="off" />
-      </div>
-      <div class="field">
-        <label for="role-title">Working title</label>
-        <input id="role-title" type="text" x-model="form.role_definition.working_title" placeholder="BD agent" />
-      </div>
-      <div class="field">
-        <label for="role-purpose">One-sentence purpose *</label>
-        <input
-          id="role-purpose"
-          type="text"
-          x-model="form.role_definition.one_sentence_purpose"
-          placeholder="Owns sales-side outreach for Quant."
-        />
-      </div>
-      <div class="field">
-        <label for="role-day">Day-to-day (free text)</label>
-        <textarea id="role-day" rows="3" x-model="form.role_definition.day_to_day" placeholder="Cold campaigns, manual lead intake, weekly account reads on existing customers."></textarea>
-      </div>
-      <div class="field-output-hint">
-        Saved to <code>persona.md</code> under <code>## Identity</code> and <code>CLAUDE.md</code>.
-      </div>
     </div>
 
-    <!-- Step 4: Path choice -->
-    <div x-show="step === 4">
-      <h2>Choose a path</h2>
-      <p class="wizard-help">
-        From here you can either let an agent research the org and propose a fitting role, or define the persona yourself. Either way, the next-to-last step is an editable review — nothing seeds without your approval.
-      </p>
-      <div class="path-grid">
-        <button type="button" class="path-card" :class="{ active: form.path === 'research' }" @click="choosePath('research')">
-          <div class="path-card-head">Research and design it for me</div>
-          <div class="path-card-sub">An agent reads your brief, researches the org, and proposes a role shaped around your moats.</div>
-          <div class="path-card-note">You'll review and edit before seeding — nothing ships without your approval.</div>
-          <div class="path-card-chip">Beta · uses Claude Code</div>
-        </button>
-        <button type="button" class="path-card" :class="{ active: form.path === 'manual' }" @click="choosePath('manual')">
-          <div class="path-card-head">Define it yourself</div>
-          <div class="path-card-sub">Walk through voice, capabilities, and inhibitions yourself.</div>
-          <div class="path-card-note">Recommended if you've already drafted a persona elsewhere.</div>
-          <div class="path-card-chip">Hand-crafted</div>
-        </button>
-      </div>
+    <div class="setup-field">
+      <label class="setup-field-label" for="role-name">
+        Role name<span class="setup-required">·</span>
+      </label>
+      <p class="setup-field-help">A human name. Personas read better with one.</p>
+      <input class="setup-input" id="role-name" type="text" x-model="form.role_definition.role_name" placeholder="Sam Parker" autocomplete="off" />
     </div>
 
-    <!-- Step 5 (manual): Voice -->
-    <div x-show="step === 5 && form.path === 'manual'">
-      <h2>Voice & personality</h2>
-      <p class="wizard-help">
-        Pair a short trait name with a concrete behaviour that shows what it looks like in practice.
-        Aim for things you'd notice in a draft, not aspirational adjectives. 1–8 traits.
-      </p>
-      <div class="example-block">
-        <div class="example-label">EXAMPLE</div>
-        <div class="example-pair">
-          <div class="ex-label">Warm but not chatty</div>
-          <div class="ex-detail">drops articles in casual writing — "heading to lunch" not "I am heading to lunch"</div>
+    <div class="setup-field">
+      <label class="setup-field-label" for="role-title">Working title</label>
+      <p class="setup-field-help">What appears in the role's signature line.</p>
+      <input class="setup-input" id="role-title" type="text" x-model="form.role_definition.working_title" placeholder="BD agent" />
+    </div>
+
+    <div class="setup-field">
+      <label class="setup-field-label" for="role-purpose">
+        One-sentence purpose<span class="setup-required">·</span>
+      </label>
+      <p class="setup-field-help">Why this role exists. Verb-led, plain language.</p>
+      <input class="setup-input" id="role-purpose" type="text" x-model="form.role_definition.one_sentence_purpose" placeholder="Owns sales-side outreach for Quant." />
+    </div>
+
+    <div class="setup-field">
+      <label class="setup-field-label" for="role-day">Day-to-day</label>
+      <p class="setup-field-help">A loose paragraph on what their week looks like.</p>
+      <textarea class="setup-input setup-input--prose" id="role-day" rows="3" x-model="form.role_definition.day_to_day" placeholder="Cold campaigns, manual lead intake, weekly account reads on existing customers."></textarea>
+    </div>
+
+    <div class="setup-field-output">
+      Saved to <code>persona.md</code> under <code>## Identity</code> and
+      <code>CLAUDE.md</code>.
+    </div>
+  </div>
+
+  <!-- ============================================================== -->
+  <!-- Step 4: Path choice                                              -->
+  <!-- ============================================================== -->
+  <div class="setup-step" x-show="step === 4">
+    <h1 class="setup-title">How do we get there?</h1>
+    <p class="setup-subtitle">
+      Either let an agent research the org and propose a fitting role, or
+      define the persona yourself. Either way, the last step is an editable
+      review — nothing seeds without your approval.
+    </p>
+
+    <div class="setup-paths">
+      <button
+        type="button"
+        class="setup-path"
+        :class="{ active: form.path === 'research' }"
+        @click="choosePath('research')"
+      >
+        <div class="setup-path-marker">01</div>
+        <div class="setup-path-body">
+          <div class="setup-path-head">Research and design it for me</div>
+          <div class="setup-path-sub">
+            An agent reads your brief, researches the org, and proposes a role
+            shaped around your moats.
+          </div>
+          <div class="setup-path-note">
+            You'll review and edit before seeding — nothing ships without your
+            approval.
+          </div>
+          <div class="setup-path-chip">Beta · uses Claude Code</div>
         </div>
+      </button>
+
+      <button
+        type="button"
+        class="setup-path"
+        :class="{ active: form.path === 'manual' }"
+        @click="choosePath('manual')"
+      >
+        <div class="setup-path-marker">02</div>
+        <div class="setup-path-body">
+          <div class="setup-path-head">Define it yourself</div>
+          <div class="setup-path-sub">
+            Walk through voice, capabilities, and inhibitions yourself.
+          </div>
+          <div class="setup-path-note">
+            Recommended if you've already drafted a persona elsewhere.
+          </div>
+          <div class="setup-path-chip">Hand-crafted</div>
+        </div>
+      </button>
+    </div>
+  </div>
+
+  <!-- ============================================================== -->
+  <!-- Step 5 (manual): Voice                                           -->
+  <!-- ============================================================== -->
+  <div class="setup-step" x-show="step === 5 && form.path === 'manual'">
+    <h1 class="setup-title">How do they sound?</h1>
+    <p class="setup-subtitle">
+      Pair a short trait name with a concrete behaviour that shows what it
+      looks like in practice. Aim for things you'd notice in a draft, not
+      aspirational adjectives. One to eight traits.
+    </p>
+
+    <div class="setup-example">
+      <div class="setup-example-label">EXAMPLE</div>
+      <div class="setup-example-pair">
+        <div class="ex-label">Warm but not chatty</div>
+        <div class="ex-detail">drops articles in casual writing — "heading to lunch" not "I am heading to lunch"</div>
       </div>
-      <div class="field-row-labels">
-        <span>Trait (2–3 words)</span>
-        <span>How it shows up in writing</span>
-        <span></span>
-      </div>
+    </div>
+
+    <div class="setup-rows">
       <template x-for="(trait, idx) in form.voice_traits" :key="idx">
-        <div class="field-row">
-          <input type="text" x-model="trait.label" placeholder="Warm but not chatty" />
-          <input type="text" x-model="trait.detail" placeholder="drops articles, prefers single-sentence opens" />
+        <div class="setup-row">
+          <div class="setup-row-num" x-text="String(idx + 1).padStart(2, '0')"></div>
+          <div class="setup-row-fields setup-row-fields--pair">
+            <input class="setup-input setup-input--inline" type="text" x-model="trait.label" placeholder="Warm but not chatty" />
+            <input class="setup-input setup-input--inline" type="text" x-model="trait.detail" placeholder="drops articles, prefers single-sentence opens" />
+          </div>
           <button
             type="button"
-            class="icon-btn"
+            class="setup-row-remove"
+            aria-label="Remove trait"
             @click="form.voice_traits.splice(idx, 1)"
             :disabled="form.voice_traits.length <= 1"
           >×</button>
         </div>
       </template>
-      <button
-        type="button"
-        class="add-row"
-        @click="form.voice_traits.push({ label: '', detail: '' })"
-        :disabled="form.voice_traits.length >= 8"
-      >+ Add trait</button>
-      <div class="field-output-hint">
-        Each trait becomes a bullet under <code>## Voice &amp; Personality</code> in <code>persona.md</code>.
+    </div>
+
+    <button
+      type="button"
+      class="setup-add-row"
+      @click="form.voice_traits.push({ label: '', detail: '' })"
+      :disabled="form.voice_traits.length >= 8"
+    >+ Add trait</button>
+
+    <div class="setup-field-output">
+      Each trait becomes a bullet under <code>## Voice &amp; Personality</code>
+      in <code>persona.md</code>.
+    </div>
+  </div>
+
+  <!-- ============================================================== -->
+  <!-- Step 5 (research): Handoff & wait                                -->
+  <!-- ============================================================== -->
+  <div class="setup-step" x-show="step === 5 && form.path === 'research'">
+    <h1 class="setup-title">Hand off to Claude Code.</h1>
+    <p class="setup-subtitle">
+      A research brief has been written into your repo. Open Claude Code in
+      this directory and ask it to follow the brief — it'll research the org
+      and write a persona draft back to <code>.praxis/persona-draft.md</code>.
+      The wizard is watching for the file.
+    </p>
+
+    <template x-if="research.error">
+      <div class="setup-error" x-text="research.error"></div>
+    </template>
+
+    <template x-if="research.brief_path">
+      <div>
+        <ol class="setup-handoff-steps">
+          <li>Open a terminal.</li>
+          <li><code>cd</code> into this repo.</li>
+          <li>Run <code>claude</code>.</li>
+          <li>
+            Paste this prompt:
+            <div class="setup-handoff-prompt">
+              <code x-text="research.prompt"></code>
+              <button
+                type="button"
+                class="setup-add-row"
+                @click="copyPrompt()"
+                :disabled="research.copied"
+              >
+                <span x-show="!research.copied">Copy</span>
+                <span x-show="research.copied">Copied</span>
+              </button>
+            </div>
+          </li>
+          <li>
+            Wait for Claude to write <code x-text="research.expected_draft_path"></code>.
+            The wizard will detect it automatically.
+          </li>
+        </ol>
+
+        <div class="setup-handoff-status">
+          <span class="setup-handoff-pulse" :class="{ active: research.polling }"></span>
+          <span x-show="!research.draft_loaded">
+            Watching for <code x-text="research.expected_draft_path"></code>…
+            <span class="setup-handoff-meta" x-text="research.last_checked ? `(last checked: ${research.last_checked})` : ''"></span>
+          </span>
+          <span x-show="research.draft_loaded" class="setup-handoff-ok">
+            Draft loaded. Moving to review…
+          </span>
+        </div>
+
+        <div class="setup-handoff-overrides">
+          <button
+            type="button"
+            class="setup-add-row"
+            @click="loadDraftNow()"
+            :disabled="research.loading_now"
+          >
+            <span x-show="!research.loading_now">I've written it, load now</span>
+            <span x-show="research.loading_now">Loading…</span>
+          </button>
+          <button
+            type="button"
+            class="setup-add-row setup-add-row--danger"
+            @click="switchToManual()"
+          >Skip and define manually instead</button>
+        </div>
+      </div>
+    </template>
+
+    <template x-if="!research.brief_path && research.preparing">
+      <p class="setup-subtitle">Preparing the research brief…</p>
+    </template>
+  </div>
+
+  <!-- ============================================================== -->
+  <!-- Step 6 (manual): Capabilities                                    -->
+  <!-- ============================================================== -->
+  <div class="setup-step" x-show="step === 6 && form.path === 'manual'">
+    <h1 class="setup-title">What can they do?</h1>
+    <p class="setup-subtitle">
+      First-person statements — "I can …". What this role is qualified to do.
+      Optional, up to ten.
+    </p>
+
+    <div class="setup-example">
+      <div class="setup-example-label">EXAMPLE</div>
+      <div class="setup-example-single">
+        I can run cold-outreach campaigns end to end — research, draft, send,
+        monitor, escalate when stuck.
       </div>
     </div>
 
-    <!-- Step 6 (manual): Capabilities -->
-    <div x-show="step === 6 && form.path === 'manual'">
-      <h2>Capabilities</h2>
-      <p class="wizard-help">
-        First-person statements: "I can …". What this role is qualified to do. Optional, up to 10.
-      </p>
-      <div class="example-block">
-        <div class="example-label">EXAMPLE</div>
-        <div class="example-single">I can run cold-outreach campaigns end to end — research, draft, send, monitor, escalate when stuck.</div>
-      </div>
+    <div class="setup-rows">
       <template x-for="(item, idx) in form.capabilities" :key="idx">
-        <div class="field-row single">
-          <input type="text" x-model="form.capabilities[idx]" placeholder="I can run cold outreach end to end…" />
-          <button type="button" class="icon-btn" @click="form.capabilities.splice(idx, 1)">×</button>
+        <div class="setup-row">
+          <div class="setup-row-num" x-text="String(idx + 1).padStart(2, '0')"></div>
+          <div class="setup-row-fields">
+            <input class="setup-input setup-input--inline" type="text" x-model="form.capabilities[idx]" placeholder="I can run cold outreach end to end…" />
+          </div>
+          <button
+            type="button"
+            class="setup-row-remove"
+            aria-label="Remove capability"
+            @click="form.capabilities.splice(idx, 1)"
+          >×</button>
         </div>
       </template>
-      <button
-        type="button"
-        class="add-row"
-        @click="form.capabilities.push('')"
-        :disabled="form.capabilities.length >= 10"
-      >+ Add capability</button>
-      <div class="field-output-hint">
-        Each line becomes a bullet under <code>## Capabilities</code>.
+    </div>
+
+    <button
+      type="button"
+      class="setup-add-row"
+      @click="form.capabilities.push('')"
+      :disabled="form.capabilities.length >= 10"
+    >+ Add capability</button>
+
+    <div class="setup-field-output">
+      Each line becomes a bullet under <code>## Capabilities</code>.
+    </div>
+  </div>
+
+  <!-- ============================================================== -->
+  <!-- Step 7 (manual): Accountabilities                                -->
+  <!-- ============================================================== -->
+  <div class="setup-step" x-show="step === 7 && form.path === 'manual'">
+    <h1 class="setup-title">What do they own?</h1>
+    <p class="setup-subtitle">
+      First-person "I'm responsible for …" bullets. What the role drives
+      toward, not what it can do. Bridges capabilities and success criteria.
+      Optional, up to eight.
+    </p>
+
+    <div class="setup-example">
+      <div class="setup-example-label">EXAMPLE</div>
+      <div class="setup-example-single">
+        I'm responsible for the quality of cold outreach drafts before they
+        reach the operator.
       </div>
     </div>
 
-    <!-- Step 7 (manual): Accountabilities -->
-    <div x-show="step === 7 && form.path === 'manual'">
-      <h2>Accountabilities</h2>
-      <p class="wizard-help">
-        First-person "I'm responsible for…" bullets. What the role drives toward, not what it can do.
-        Bridges capabilities and success criteria. Optional, up to 8.
-      </p>
-      <div class="example-block">
-        <div class="example-label">EXAMPLE</div>
-        <div class="example-single">I'm responsible for the quality of cold outreach drafts before they reach the operator.</div>
-      </div>
+    <div class="setup-rows">
       <template x-for="(item, idx) in form.accountabilities" :key="idx">
-        <div class="field-row single">
-          <input type="text" x-model="form.accountabilities[idx]" placeholder="I'm responsible for …" />
-          <button type="button" class="icon-btn" @click="form.accountabilities.splice(idx, 1)">×</button>
+        <div class="setup-row">
+          <div class="setup-row-num" x-text="String(idx + 1).padStart(2, '0')"></div>
+          <div class="setup-row-fields">
+            <input class="setup-input setup-input--inline" type="text" x-model="form.accountabilities[idx]" placeholder="I'm responsible for …" />
+          </div>
+          <button
+            type="button"
+            class="setup-row-remove"
+            aria-label="Remove accountability"
+            @click="form.accountabilities.splice(idx, 1)"
+          >×</button>
         </div>
       </template>
-      <button
-        type="button"
-        class="add-row"
-        @click="form.accountabilities.push('')"
-        :disabled="form.accountabilities.length >= 8"
-      >+ Add accountability</button>
-      <div class="field-output-hint">
-        Each line becomes a bullet under <code>## Accountabilities</code>.
+    </div>
+
+    <button
+      type="button"
+      class="setup-add-row"
+      @click="form.accountabilities.push('')"
+      :disabled="form.accountabilities.length >= 8"
+    >+ Add accountability</button>
+
+    <div class="setup-field-output">
+      Each line becomes a bullet under <code>## Accountabilities</code>.
+    </div>
+  </div>
+
+  <!-- ============================================================== -->
+  <!-- Step 8 (manual): Success criteria                                -->
+  <!-- ============================================================== -->
+  <div class="setup-step" x-show="step === 8 && form.path === 'manual'">
+    <h1 class="setup-title">How will they be measured?</h1>
+    <p class="setup-subtitle">
+      Observable, falsifiable outcomes — "drafts land in ≤2 review cycles",
+      not "be helpful". The role uses these for end-of-run self-assessment.
+      Optional, up to ten.
+    </p>
+
+    <div class="setup-example">
+      <div class="setup-example-label">EXAMPLE</div>
+      <div class="setup-example-single">
+        Weekly account reads surface ≥1 actionable signal per watched account.
       </div>
     </div>
 
-    <!-- Step 8 (manual): Success criteria -->
-    <div x-show="step === 8 && form.path === 'manual'">
-      <h2>Success criteria</h2>
-      <p class="wizard-help">
-        Observable, falsifiable outcomes — "drafts land in ≤2 review cycles", not "be helpful".
-        The role will use these for end-of-run self-assessment. Optional, up to 10.
-      </p>
-      <div class="example-block">
-        <div class="example-label">EXAMPLE</div>
-        <div class="example-single">Weekly account reads surface ≥1 actionable signal per watched account.</div>
-      </div>
+    <div class="setup-rows">
       <template x-for="(item, idx) in form.success_criteria" :key="idx">
-        <div class="field-row single">
-          <input type="text" x-model="form.success_criteria[idx]" placeholder="Drafts land in ≤2 review cycles." />
-          <button type="button" class="icon-btn" @click="form.success_criteria.splice(idx, 1)">×</button>
+        <div class="setup-row">
+          <div class="setup-row-num" x-text="String(idx + 1).padStart(2, '0')"></div>
+          <div class="setup-row-fields">
+            <input class="setup-input setup-input--inline" type="text" x-model="form.success_criteria[idx]" placeholder="Drafts land in ≤2 review cycles." />
+          </div>
+          <button
+            type="button"
+            class="setup-row-remove"
+            aria-label="Remove criterion"
+            @click="form.success_criteria.splice(idx, 1)"
+          >×</button>
         </div>
       </template>
-      <button
-        type="button"
-        class="add-row"
-        @click="form.success_criteria.push('')"
-        :disabled="form.success_criteria.length >= 10"
-      >+ Add criterion</button>
-      <div class="field-output-hint">
-        Each line becomes a bullet under <code>## Success criteria</code>. The role checks itself against these at end-of-run and writes a self-assessment memory entry.
+    </div>
+
+    <button
+      type="button"
+      class="setup-add-row"
+      @click="form.success_criteria.push('')"
+      :disabled="form.success_criteria.length >= 10"
+    >+ Add criterion</button>
+
+    <div class="setup-field-output">
+      Each line becomes a bullet under <code>## Success criteria</code>. The
+      role checks itself against these at end-of-run and writes a
+      self-assessment memory entry.
+    </div>
+  </div>
+
+  <!-- ============================================================== -->
+  <!-- Step 9 (manual): Inhibitions                                     -->
+  <!-- ============================================================== -->
+  <div class="setup-step" x-show="step === 9 && form.path === 'manual'">
+    <h1 class="setup-title">What do they never do?</h1>
+    <p class="setup-subtitle">
+      First-person "I never …" statements. The constitution — what this role
+      refuses regardless of instruction. Optional, up to ten.
+    </p>
+
+    <div class="setup-example">
+      <div class="setup-example-label">EXAMPLE</div>
+      <div class="setup-example-single">
+        I never claim certifications the org does not hold (e.g.
+        "IRAP-assessed", "OFFICIAL: Sensitive").
       </div>
     </div>
 
-    <!-- Step 9 (manual): Inhibitions -->
-    <div x-show="step === 9 && form.path === 'manual'">
-      <h2>Hard inhibitions</h2>
-      <p class="wizard-help">
-        First-person "I never …" statements. The constitution — what this role refuses regardless of instruction.
-        Optional, up to 10.
-      </p>
-      <div class="example-block">
-        <div class="example-label">EXAMPLE</div>
-        <div class="example-single">I never claim certifications the org does not hold (e.g. "IRAP-assessed", "OFFICIAL: Sensitive").</div>
-      </div>
+    <div class="setup-rows">
       <template x-for="(item, idx) in form.inhibitions" :key="idx">
-        <div class="field-row single">
-          <input type="text" x-model="form.inhibitions[idx]" placeholder="I never send an email without operator approval." />
-          <button type="button" class="icon-btn" @click="form.inhibitions.splice(idx, 1)">×</button>
+        <div class="setup-row setup-row--oxblood">
+          <div class="setup-row-num" x-text="String(idx + 1).padStart(2, '0')"></div>
+          <div class="setup-row-fields">
+            <input class="setup-input setup-input--inline" type="text" x-model="form.inhibitions[idx]" placeholder="I never send an email without operator approval." />
+          </div>
+          <button
+            type="button"
+            class="setup-row-remove"
+            aria-label="Remove inhibition"
+            @click="form.inhibitions.splice(idx, 1)"
+          >×</button>
         </div>
       </template>
-      <button
-        type="button"
-        class="add-row"
-        @click="form.inhibitions.push('')"
-        :disabled="form.inhibitions.length >= 10"
-      >+ Add inhibition</button>
-      <div class="field-output-hint">
-        Each line becomes a bullet under <code>## Hard inhibitions</code>. Worth knowing: these are surfaced in the dashboard's red-accented constitution panel.
+    </div>
+
+    <button
+      type="button"
+      class="setup-add-row"
+      @click="form.inhibitions.push('')"
+      :disabled="form.inhibitions.length >= 10"
+    >+ Add inhibition</button>
+
+    <div class="setup-field-output">
+      Each line becomes a bullet under <code>## Hard inhibitions</code>. Worth
+      knowing: these are surfaced in the dashboard's red-accented constitution
+      panel.
+    </div>
+  </div>
+
+  <!-- ============================================================== -->
+  <!-- Step 10 (manual): Initial verbs                                  -->
+  <!-- ============================================================== -->
+  <div class="setup-step" x-show="step === 10 && form.path === 'manual'">
+    <h1 class="setup-title">What playbooks do they ship with?</h1>
+    <p class="setup-subtitle">
+      Verbs are markdown playbooks Claude Code reads when triggered. Stub a
+      few here if you already know the shape; you can also leave this empty
+      and write them by hand later. Slug plus a one-line purpose. Up to five.
+    </p>
+
+    <div class="setup-example">
+      <div class="setup-example-label">EXAMPLE</div>
+      <div class="setup-example-pair">
+        <div class="ex-label">account-read</div>
+        <div class="ex-detail">Weekly read of the customer portfolio — flags churn risk and upsell signals.</div>
       </div>
     </div>
 
-    <!-- Step 10 (manual): Initial verbs -->
-    <div x-show="step === 10 && form.path === 'manual'">
-      <h2>Initial verbs (optional)</h2>
-      <p class="wizard-help">
-        Verbs are markdown playbooks Claude Code reads when triggered. Stub a few here if you already know the
-        shape; you can also leave this empty and write them by hand later. Slug + one-line purpose. Up to 5.
-      </p>
-      <div class="example-block">
-        <div class="example-label">EXAMPLE</div>
-        <div class="example-pair">
-          <div class="ex-label">account-read</div>
-          <div class="ex-detail">Weekly read of the customer portfolio — flags churn risk and upsell signals.</div>
-        </div>
-      </div>
-      <div class="field-row-labels">
-        <span>File slug (kebab-case)</span>
-        <span>What this verb does</span>
-        <span></span>
-      </div>
+    <div class="setup-rows">
       <template x-for="(verb, idx) in form.initial_verbs" :key="idx">
-        <div class="field-row">
-          <input type="text" x-model="verb.slug" placeholder="account-read" />
-          <input type="text" x-model="verb.purpose" placeholder="Weekly read of the customer portfolio." />
-          <button type="button" class="icon-btn" @click="form.initial_verbs.splice(idx, 1)">×</button>
+        <div class="setup-row">
+          <div class="setup-row-num" x-text="String(idx + 1).padStart(2, '0')"></div>
+          <div class="setup-row-fields setup-row-fields--pair">
+            <input class="setup-input setup-input--inline setup-input--mono" type="text" x-model="verb.slug" placeholder="account-read" />
+            <input class="setup-input setup-input--inline" type="text" x-model="verb.purpose" placeholder="Weekly read of the customer portfolio." />
+          </div>
+          <button
+            type="button"
+            class="setup-row-remove"
+            aria-label="Remove verb"
+            @click="form.initial_verbs.splice(idx, 1)"
+          >×</button>
         </div>
       </template>
+    </div>
+
+    <button
+      type="button"
+      class="setup-add-row"
+      @click="form.initial_verbs.push({ slug: '', purpose: '' })"
+      :disabled="form.initial_verbs.length >= 5"
+    >+ Add verb</button>
+
+    <div class="setup-field-output">
+      One markdown file per verb under <code>{'verbs/{slug}.md'}</code>. The
+      dashboard lists these on the <code>/role</code> page once seeded.
+    </div>
+  </div>
+
+  <!-- ============================================================== -->
+  <!-- Step 11: Review & seed                                           -->
+  <!-- ============================================================== -->
+  <div class="setup-step" x-show="step === 11">
+    <h1 class="setup-title">Ready to plant?</h1>
+    <p class="setup-subtitle">
+      Confirm everything looks right. Sections are collapsible — open any
+      group to edit before seeding. Two visible commits will be made.
+    </p>
+
+    <div class="setup-review-summary">
+      <div class="setup-review-headline">
+        <strong x-text="form.organisation.name || '—'"></strong>
+        <span class="setup-review-dot">·</span>
+        <span x-text="form.role_definition.role_name || 'unnamed role'"></span>
+      </div>
+      <div class="setup-review-meta">
+        <span x-text="`${form.voice_traits.filter(t => t.label && t.detail).length} voice traits`"></span>
+        ·
+        <span x-text="`${form.capabilities.filter(Boolean).length} capabilities`"></span>
+        ·
+        <span x-text="`${form.accountabilities.filter(Boolean).length} accountabilities`"></span>
+        ·
+        <span x-text="`${form.success_criteria.filter(Boolean).length} success criteria`"></span>
+        ·
+        <span x-text="`${form.inhibitions.filter(Boolean).length} inhibitions`"></span>
+        ·
+        <span x-text="`${form.initial_verbs.filter(v => v.slug && v.purpose).length} initial verbs`"></span>
+      </div>
+      <div class="setup-review-jumps">
+        <a href="#" @click.prevent="step = 2">edit organisation</a>
+        ·
+        <a href="#" @click.prevent="step = 3">edit role</a>
+        <template x-if="form.path === 'research'">
+          <span> · <a href="#" @click.prevent="reopenHandoff()">re-run research</a></span>
+        </template>
+      </div>
+    </div>
+
+    <details class="setup-review-section" open>
+      <summary>Identity</summary>
+      <div class="setup-review-body">
+        <div class="setup-field">
+          <label class="setup-field-label">Email</label>
+          <input class="setup-input" type="text" x-model="form.identity.email" placeholder="iris@example.com" />
+        </div>
+        <div class="setup-field">
+          <label class="setup-field-label">Location</label>
+          <input class="setup-input" type="text" x-model="form.identity.location" placeholder="Brisbane, AU" />
+        </div>
+        <div class="setup-field">
+          <label class="setup-field-label">Reports to</label>
+          <input class="setup-input" type="text" x-model="form.identity.reports_to" placeholder="Steve" />
+        </div>
+      </div>
+    </details>
+
+    <details class="setup-review-section" open>
+      <summary x-text="`Voice (${form.voice_traits.filter(t => t.label && t.detail).length})`"></summary>
+      <div class="setup-review-body">
+        <div class="setup-rows">
+          <template x-for="(trait, idx) in form.voice_traits" :key="`v-${idx}`">
+            <div class="setup-row">
+              <div class="setup-row-num" x-text="String(idx + 1).padStart(2, '0')"></div>
+              <div class="setup-row-fields setup-row-fields--pair">
+                <input class="setup-input setup-input--inline" type="text" x-model="trait.label" placeholder="Warm but not chatty" />
+                <input class="setup-input setup-input--inline" type="text" x-model="trait.detail" placeholder="drops articles" />
+              </div>
+              <button type="button" class="setup-row-remove" @click="form.voice_traits.splice(idx, 1)" :disabled="form.voice_traits.length <= 1">×</button>
+            </div>
+          </template>
+        </div>
+        <button type="button" class="setup-add-row" @click="form.voice_traits.push({ label: '', detail: '' })" :disabled="form.voice_traits.length >= 8">+ Add trait</button>
+      </div>
+    </details>
+
+    <details class="setup-review-section">
+      <summary x-text="`Capabilities (${form.capabilities.filter(Boolean).length})`"></summary>
+      <div class="setup-review-body">
+        <div class="setup-rows">
+          <template x-for="(item, idx) in form.capabilities" :key="`c-${idx}`">
+            <div class="setup-row">
+              <div class="setup-row-num" x-text="String(idx + 1).padStart(2, '0')"></div>
+              <div class="setup-row-fields">
+                <input class="setup-input setup-input--inline" type="text" x-model="form.capabilities[idx]" placeholder="I can …" />
+              </div>
+              <button type="button" class="setup-row-remove" @click="form.capabilities.splice(idx, 1)">×</button>
+            </div>
+          </template>
+        </div>
+        <button type="button" class="setup-add-row" @click="form.capabilities.push('')" :disabled="form.capabilities.length >= 10">+ Add capability</button>
+      </div>
+    </details>
+
+    <details class="setup-review-section">
+      <summary x-text="`Accountabilities (${form.accountabilities.filter(Boolean).length})`"></summary>
+      <div class="setup-review-body">
+        <div class="setup-rows">
+          <template x-for="(item, idx) in form.accountabilities" :key="`a-${idx}`">
+            <div class="setup-row">
+              <div class="setup-row-num" x-text="String(idx + 1).padStart(2, '0')"></div>
+              <div class="setup-row-fields">
+                <input class="setup-input setup-input--inline" type="text" x-model="form.accountabilities[idx]" placeholder="I'm responsible for …" />
+              </div>
+              <button type="button" class="setup-row-remove" @click="form.accountabilities.splice(idx, 1)">×</button>
+            </div>
+          </template>
+        </div>
+        <button type="button" class="setup-add-row" @click="form.accountabilities.push('')" :disabled="form.accountabilities.length >= 8">+ Add accountability</button>
+      </div>
+    </details>
+
+    <details class="setup-review-section">
+      <summary x-text="`Success criteria (${form.success_criteria.filter(Boolean).length})`"></summary>
+      <div class="setup-review-body">
+        <div class="setup-rows">
+          <template x-for="(item, idx) in form.success_criteria" :key="`s-${idx}`">
+            <div class="setup-row">
+              <div class="setup-row-num" x-text="String(idx + 1).padStart(2, '0')"></div>
+              <div class="setup-row-fields">
+                <input class="setup-input setup-input--inline" type="text" x-model="form.success_criteria[idx]" placeholder="Drafts land in ≤2 review cycles." />
+              </div>
+              <button type="button" class="setup-row-remove" @click="form.success_criteria.splice(idx, 1)">×</button>
+            </div>
+          </template>
+        </div>
+        <button type="button" class="setup-add-row" @click="form.success_criteria.push('')" :disabled="form.success_criteria.length >= 10">+ Add criterion</button>
+      </div>
+    </details>
+
+    <details class="setup-review-section">
+      <summary x-text="`Hard inhibitions (${form.inhibitions.filter(Boolean).length})`"></summary>
+      <div class="setup-review-body">
+        <div class="setup-rows">
+          <template x-for="(item, idx) in form.inhibitions" :key="`i-${idx}`">
+            <div class="setup-row setup-row--oxblood">
+              <div class="setup-row-num" x-text="String(idx + 1).padStart(2, '0')"></div>
+              <div class="setup-row-fields">
+                <input class="setup-input setup-input--inline" type="text" x-model="form.inhibitions[idx]" placeholder="I never …" />
+              </div>
+              <button type="button" class="setup-row-remove" @click="form.inhibitions.splice(idx, 1)">×</button>
+            </div>
+          </template>
+        </div>
+        <button type="button" class="setup-add-row" @click="form.inhibitions.push('')" :disabled="form.inhibitions.length >= 10">+ Add inhibition</button>
+      </div>
+    </details>
+
+    <details class="setup-review-section">
+      <summary x-text="`Initial verbs (${form.initial_verbs.filter(v => v.slug && v.purpose).length})`"></summary>
+      <div class="setup-review-body">
+        <div class="setup-rows">
+          <template x-for="(verb, idx) in form.initial_verbs" :key="`v-${idx}`">
+            <div class="setup-row">
+              <div class="setup-row-num" x-text="String(idx + 1).padStart(2, '0')"></div>
+              <div class="setup-row-fields setup-row-fields--pair">
+                <input class="setup-input setup-input--inline setup-input--mono" type="text" x-model="verb.slug" placeholder="account-read" />
+                <input class="setup-input setup-input--inline" type="text" x-model="verb.purpose" placeholder="Weekly read…" />
+              </div>
+              <button type="button" class="setup-row-remove" @click="form.initial_verbs.splice(idx, 1)">×</button>
+            </div>
+          </template>
+        </div>
+        <button type="button" class="setup-add-row" @click="form.initial_verbs.push({ slug: '', purpose: '' })" :disabled="form.initial_verbs.length >= 5">+ Add verb</button>
+      </div>
+    </details>
+
+    <template x-if="submitting">
+      <div class="setup-commit-progress">
+        <div class="setup-commit-step" :class="commit1Status">
+          Commit 1: <code>feat: seed role from praxis-framework template</code>
+        </div>
+        <div class="setup-commit-step" :class="commit2Status">
+          Commit 2: <code>chore: tidy framework-only files post-seed</code>
+        </div>
+      </div>
+    </template>
+  </div>
+
+  <!-- ============================================================== -->
+  <!-- Navigation row                                                   -->
+  <!-- ============================================================== -->
+  <div class="setup-actions">
+    <button
+      type="button"
+      class="setup-back"
+      @click="prev()"
+      :disabled="!canGoBack || submitting"
+      x-show="canGoBack"
+    >← Back</button>
+    <span x-show="!canGoBack"></span>
+
+    <template x-if="!isReviewStep">
       <button
         type="button"
-        class="add-row"
-        @click="form.initial_verbs.push({ slug: '', purpose: '' })"
-        :disabled="form.initial_verbs.length >= 5"
-      >+ Add verb</button>
-      <div class="field-output-hint">
-        One markdown file per verb under <code>{'verbs/{slug}.md'}</code>. The dashboard lists these on the <code>/role</code> page once seeded.
-      </div>
-    </div>
-
-    <!-- Step 5 (research): Handoff & wait -->
-    <div x-show="step === 5 && form.path === 'research'">
-      <h2>Hand off to Claude Code</h2>
-      <p class="wizard-help">
-        We've written a research brief into your repo. Open Claude Code in this directory and ask it to follow the brief — it'll research the org and write a persona draft back to <code>.praxis/persona-draft.md</code>. The wizard is watching for the file.
-      </p>
-
-      <template x-if="research.error">
-        <div class="error-banner" x-text="research.error"></div>
-      </template>
-
-      <template x-if="research.brief_path">
-        <div>
-          <ol class="handoff-steps">
-            <li>Open a terminal.</li>
-            <li><code>cd</code> into this repo.</li>
-            <li>Run <code>claude</code>.</li>
-            <li>
-              Paste this prompt:
-              <div class="handoff-prompt">
-                <code x-text="research.prompt"></code>
-                <button type="button" class="add-row" @click="copyPrompt()" :disabled="research.copied">
-                  <span x-show="!research.copied">Copy</span>
-                  <span x-show="research.copied">Copied</span>
-                </button>
-              </div>
-            </li>
-            <li>
-              Wait for Claude to write <code x-text="research.expected_draft_path"></code>. The wizard will detect it automatically.
-            </li>
-          </ol>
-
-          <div class="handoff-status">
-            <span class="handoff-pulse" :class="{ active: research.polling }"></span>
-            <span x-show="!research.draft_loaded">
-              Watching for <code x-text="research.expected_draft_path"></code>…
-              <span class="handoff-status-meta" x-text="research.last_checked ? `(last checked: ${research.last_checked})` : ''"></span>
-            </span>
-            <span x-show="research.draft_loaded" class="handoff-status-ok">
-              Draft loaded. Moving to review…
-            </span>
-          </div>
-
-          <div class="handoff-overrides">
-            <button type="button" class="add-row" @click="loadDraftNow()" :disabled="research.loading_now">
-              <span x-show="!research.loading_now">I've written it, load now</span>
-              <span x-show="research.loading_now">Loading…</span>
-            </button>
-            <button type="button" class="add-row danger" @click="switchToManual()">
-              Skip and define manually instead
-            </button>
-          </div>
-        </div>
-      </template>
-
-      <template x-if="!research.brief_path && research.preparing">
-        <p class="wizard-help">Preparing the research brief…</p>
-      </template>
-    </div>
-
-    <!-- Step 11: Review & edit -->
-    <div x-show="step === 11">
-      <h2>Review &amp; edit</h2>
-      <p class="wizard-help">
-        Confirm everything looks right. Sections are collapsible — open any group to edit before seeding. Two visible commits will be made when you seed.
-      </p>
-
-      <div class="review-summary">
-        <div><strong x-text="form.organisation.name || '—'"></strong> · <span x-text="form.role_definition.role_name || 'unnamed role'"></span></div>
-        <div class="review-summary-meta">
-          <span x-text="`${form.voice_traits.filter(t => t.label && t.detail).length} voice traits`"></span> ·
-          <span x-text="`${form.capabilities.filter(Boolean).length} capabilities`"></span> ·
-          <span x-text="`${form.accountabilities.filter(Boolean).length} accountabilities`"></span> ·
-          <span x-text="`${form.success_criteria.filter(Boolean).length} success criteria`"></span> ·
-          <span x-text="`${form.inhibitions.filter(Boolean).length} inhibitions`"></span> ·
-          <span x-text="`${form.initial_verbs.filter(v => v.slug && v.purpose).length} initial verbs`"></span>
-        </div>
-        <div class="review-summary-jumps">
-          <a href="#" @click.prevent="step = 2">edit organisation</a> ·
-          <a href="#" @click.prevent="step = 3">edit role</a>
-          <template x-if="form.path === 'research'">
-            <span> · <a href="#" @click.prevent="reopenHandoff()">re-run research</a></span>
-          </template>
-        </div>
-      </div>
-
-      <details class="review-section" open>
-        <summary>Identity</summary>
-        <div class="review-section-body">
-          <div class="field">
-            <label>Email (optional)</label>
-            <input type="text" x-model="form.identity.email" placeholder="iris@example.com" />
-          </div>
-          <div class="field">
-            <label>Location (optional)</label>
-            <input type="text" x-model="form.identity.location" placeholder="Brisbane, AU" />
-          </div>
-          <div class="field">
-            <label>Reports to (optional)</label>
-            <input type="text" x-model="form.identity.reports_to" placeholder="Steve" />
-          </div>
-        </div>
-      </details>
-
-      <details class="review-section" open>
-        <summary x-text="`Voice (${form.voice_traits.filter(t => t.label && t.detail).length})`"></summary>
-        <div class="review-section-body">
-          <div class="field-row-labels">
-            <span>Trait</span>
-            <span>How it shows up</span>
-            <span></span>
-          </div>
-          <template x-for="(trait, idx) in form.voice_traits" :key="`v-${idx}`">
-            <div class="field-row">
-              <input type="text" x-model="trait.label" placeholder="Warm but not chatty" />
-              <input type="text" x-model="trait.detail" placeholder="drops articles" />
-              <button type="button" class="icon-btn" @click="form.voice_traits.splice(idx, 1)" :disabled="form.voice_traits.length <= 1">×</button>
-            </div>
-          </template>
-          <button type="button" class="add-row" @click="form.voice_traits.push({ label: '', detail: '' })" :disabled="form.voice_traits.length >= 8">+ Add trait</button>
-        </div>
-      </details>
-
-      <details class="review-section">
-        <summary x-text="`Capabilities (${form.capabilities.filter(Boolean).length})`"></summary>
-        <div class="review-section-body">
-          <template x-for="(item, idx) in form.capabilities" :key="`c-${idx}`">
-            <div class="field-row single">
-              <input type="text" x-model="form.capabilities[idx]" placeholder="I can …" />
-              <button type="button" class="icon-btn" @click="form.capabilities.splice(idx, 1)">×</button>
-            </div>
-          </template>
-          <button type="button" class="add-row" @click="form.capabilities.push('')" :disabled="form.capabilities.length >= 10">+ Add capability</button>
-        </div>
-      </details>
-
-      <details class="review-section">
-        <summary x-text="`Accountabilities (${form.accountabilities.filter(Boolean).length})`"></summary>
-        <div class="review-section-body">
-          <template x-for="(item, idx) in form.accountabilities" :key="`a-${idx}`">
-            <div class="field-row single">
-              <input type="text" x-model="form.accountabilities[idx]" placeholder="I'm responsible for …" />
-              <button type="button" class="icon-btn" @click="form.accountabilities.splice(idx, 1)">×</button>
-            </div>
-          </template>
-          <button type="button" class="add-row" @click="form.accountabilities.push('')" :disabled="form.accountabilities.length >= 8">+ Add accountability</button>
-        </div>
-      </details>
-
-      <details class="review-section">
-        <summary x-text="`Success criteria (${form.success_criteria.filter(Boolean).length})`"></summary>
-        <div class="review-section-body">
-          <template x-for="(item, idx) in form.success_criteria" :key="`s-${idx}`">
-            <div class="field-row single">
-              <input type="text" x-model="form.success_criteria[idx]" placeholder="Drafts land in ≤2 review cycles." />
-              <button type="button" class="icon-btn" @click="form.success_criteria.splice(idx, 1)">×</button>
-            </div>
-          </template>
-          <button type="button" class="add-row" @click="form.success_criteria.push('')" :disabled="form.success_criteria.length >= 10">+ Add criterion</button>
-        </div>
-      </details>
-
-      <details class="review-section">
-        <summary x-text="`Hard inhibitions (${form.inhibitions.filter(Boolean).length})`"></summary>
-        <div class="review-section-body">
-          <template x-for="(item, idx) in form.inhibitions" :key="`i-${idx}`">
-            <div class="field-row single">
-              <input type="text" x-model="form.inhibitions[idx]" placeholder="I never …" />
-              <button type="button" class="icon-btn" @click="form.inhibitions.splice(idx, 1)">×</button>
-            </div>
-          </template>
-          <button type="button" class="add-row" @click="form.inhibitions.push('')" :disabled="form.inhibitions.length >= 10">+ Add inhibition</button>
-        </div>
-      </details>
-
-      <details class="review-section">
-        <summary x-text="`Initial verbs (${form.initial_verbs.filter(v => v.slug && v.purpose).length})`"></summary>
-        <div class="review-section-body">
-          <div class="field-row-labels">
-            <span>Slug</span>
-            <span>Purpose</span>
-            <span></span>
-          </div>
-          <template x-for="(verb, idx) in form.initial_verbs" :key="`v-${idx}`">
-            <div class="field-row">
-              <input type="text" x-model="verb.slug" placeholder="account-read" />
-              <input type="text" x-model="verb.purpose" placeholder="Weekly read…" />
-              <button type="button" class="icon-btn" @click="form.initial_verbs.splice(idx, 1)">×</button>
-            </div>
-          </template>
-          <button type="button" class="add-row" @click="form.initial_verbs.push({ slug: '', purpose: '' })" :disabled="form.initial_verbs.length >= 5">+ Add verb</button>
-        </div>
-      </details>
-
-      <template x-if="submitting">
-        <div class="commit-progress">
-          <div class="commit-step" :class="commit1Status">Commit 1: feat: seed role from praxis-framework template</div>
-          <div class="commit-step" :class="commit2Status">Commit 2: chore: tidy framework-only files post-seed</div>
-        </div>
-      </template>
-    </div>
-
-    <div class="wizard-actions">
-      <button type="button" class="btn" @click="prev()" :disabled="!canGoBack || submitting" x-text="backLabel"></button>
-      <template x-if="!isReviewStep">
-        <button type="button" class="btn btn-primary" @click="next()" :disabled="!canAdvance" x-show="step !== 4 && !(step === 5 && form.path === 'research')">Continue</button>
-      </template>
-      <template x-if="isReviewStep">
-        <button type="button" class="btn btn-primary" @click="submit()" :disabled="submitting || !canSubmit">
-          <span x-show="!submitting">Seed this role</span>
-          <span x-show="submitting">Seeding…</span>
-        </button>
-      </template>
-    </div>
+        class="setup-cta"
+        @click="next()"
+        :disabled="!canAdvance"
+        x-show="step !== 4 && !(step === 5 && form.path === 'research')"
+      >Continue <span class="setup-cta-arrow">→</span></button>
+    </template>
+    <template x-if="isReviewStep">
+      <button
+        type="button"
+        class="setup-cta setup-cta-pink"
+        @click="submit()"
+        :disabled="submitting || !canSubmit"
+      >
+        <span x-show="!submitting">Plant the role <span class="setup-cta-arrow">→</span></span>
+        <span x-show="submitting">Planting…</span>
+      </button>
+    </template>
   </div>
 </div>
 
@@ -641,6 +925,65 @@
         });
       },
 
+      // ---- per-step accent ---------------------------------------------
+      // Returns the palette CSS variable for the active step. The two
+      // variables are wired into the wrapper's `style` attribute so the
+      // step content reads `var(--accent)` rather than switching on `step`
+      // throughout the stylesheet.
+      get accent() {
+        const palette = this.accentPalette;
+        return palette.solid;
+      },
+      get accentSoft() {
+        const palette = this.accentPalette;
+        return palette.soft;
+      },
+      get accentPalette() {
+        const s = this.step;
+        // Path-divergent steps share step number 5 but read differently.
+        if (s === 5 && this.form.path === 'research') {
+          return { solid: 'var(--purple)', soft: 'var(--purple-soft)' };
+        }
+        if (s === 5 && this.form.path === 'manual') {
+          return { solid: 'var(--peach)', soft: 'var(--peach-soft)' };
+        }
+        if (s <= 3) return { solid: 'var(--teal)', soft: 'var(--teal-soft)' };
+        if (s === 4) return { solid: 'var(--purple)', soft: 'var(--purple-soft)' };
+        if (s === 6) return { solid: 'var(--purple)', soft: 'var(--purple-soft)' };
+        if (s === 7) return { solid: 'var(--pink)', soft: 'var(--pink-soft)' };
+        if (s === 8) return { solid: 'var(--lavender)', soft: 'var(--lavender-soft)' };
+        if (s === 9) return { solid: 'var(--oxblood)', soft: 'var(--oxblood-soft)' };
+        if (s === 10) return { solid: 'var(--teal)', soft: 'var(--teal-soft)' };
+        if (s === 11) return { solid: 'var(--pink)', soft: 'var(--pink-soft)' };
+        return { solid: 'var(--teal)', soft: 'var(--teal-soft)' };
+      },
+
+      // ---- step indicator copy -----------------------------------------
+      // Human label for the step indicator. Pixel-font uppercase, paired
+      // with `STEP N OF M` to read as a coordinate. Mirrors the section
+      // pills used on the populated dashboard surfaces.
+      get stepLabel() {
+        const total = this.totalSteps;
+        const idx = this.progressIndex;
+        return `STEP ${idx} OF ${total} · ${this.stepName}`;
+      },
+      get stepName() {
+        const s = this.step;
+        if (s === 1) return 'WELCOME';
+        if (s === 2) return 'ORGANISATION';
+        if (s === 3) return 'ROLE';
+        if (s === 4) return 'PATH';
+        if (s === 5 && this.form.path === 'research') return 'RESEARCH HANDOFF';
+        if (s === 5) return 'VOICE & PERSONALITY';
+        if (s === 6) return 'CAPABILITIES';
+        if (s === 7) return 'ACCOUNTABILITIES';
+        if (s === 8) return 'SUCCESS CRITERIA';
+        if (s === 9) return 'HARD INHIBITIONS';
+        if (s === 10) return 'INITIAL PLAYBOOKS';
+        if (s === 11) return 'REVIEW & SEED';
+        return '';
+      },
+
       // ---- progress -----------------------------------------------------
       get totalSteps() {
         // Manual flow: 11 steps + 1 submitting tick = 12 total segments.
@@ -666,9 +1009,6 @@
       // ---- navigation ---------------------------------------------------
       get canGoBack() {
         return this.step > 1 && !this.submitting;
-      },
-      get backLabel() {
-        return this.step === 1 ? 'Back' : 'Back';
       },
       get canAdvance() {
         if (this.step === 1) return true;
@@ -999,233 +1339,3 @@
     };
   }
 </script>
-
-<style>
-  .field textarea,
-  .field select {
-    width: 100%;
-    padding: 0.55rem 0.75rem;
-    border: 1px solid var(--rule-strong);
-    border-radius: 4px;
-    font-family: inherit;
-    font-size: 14px;
-    background: var(--surface);
-    color: var(--ink);
-    resize: vertical;
-  }
-  .field select {
-    cursor: pointer;
-  }
-  .field textarea:focus,
-  .field select:focus {
-    outline: 2px solid var(--link);
-    outline-offset: -1px;
-    border-color: var(--link);
-  }
-
-  /* Path cards */
-  .path-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1rem;
-    margin: 0.5rem 0 0.5rem;
-  }
-  .path-card {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    padding: 1.5rem;
-    background: var(--surface);
-    border: 1px solid var(--rule-strong);
-    border-radius: 6px;
-    text-align: left;
-    cursor: pointer;
-    font-family: inherit;
-    color: var(--ink);
-    transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
-  }
-  .path-card:hover {
-    background: var(--surface-mute);
-    border-color: var(--ink);
-  }
-  .path-card:focus-visible {
-    outline: 2px solid var(--link);
-    outline-offset: 2px;
-  }
-  .path-card.active {
-    border-color: var(--ink);
-    box-shadow: inset 0 0 0 1px var(--ink);
-  }
-  .path-card-head {
-    font-size: 16px;
-    font-weight: 600;
-  }
-  .path-card-sub {
-    font-size: 13px;
-    color: var(--ink-soft);
-  }
-  .path-card-note {
-    font-size: 12px;
-    color: var(--ink-muted);
-    font-style: italic;
-  }
-  .path-card-chip {
-    margin-top: auto;
-    align-self: flex-start;
-    font-family: ui-monospace, monospace;
-    font-size: 10.5px;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--ink-muted);
-    background: var(--surface-mute);
-    padding: 2px 6px;
-    border-radius: 3px;
-  }
-
-  /* Handoff (research path) */
-  .handoff-steps {
-    list-style: decimal;
-    padding-left: 1.4rem;
-    color: var(--ink-soft);
-    font-size: 13.5px;
-    margin: 0 0 1rem;
-  }
-  .handoff-steps li {
-    padding: 0.3rem 0;
-  }
-  .handoff-prompt {
-    margin-top: 0.4rem;
-    padding: 0.6rem 0.8rem;
-    background: var(--surface-mute);
-    border: 1px solid var(--rule);
-    border-radius: 4px;
-    display: flex;
-    gap: 0.6rem;
-    align-items: center;
-    flex-wrap: wrap;
-  }
-  .handoff-prompt code {
-    font-family: ui-monospace, 'SF Mono', Menlo, monospace;
-    font-size: 12.5px;
-    background: none;
-    color: var(--ink);
-    flex: 1;
-    word-break: break-word;
-  }
-  .handoff-status {
-    margin-top: 0.6rem;
-    padding: 0.7rem 0.9rem;
-    border-radius: 4px;
-    border: 1px dashed var(--rule);
-    background: var(--surface-mute);
-    font-size: 13px;
-    color: var(--ink-soft);
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-  }
-  .handoff-status-meta {
-    color: var(--ink-muted);
-    font-family: ui-monospace, monospace;
-    font-size: 11.5px;
-    margin-left: 0.4rem;
-  }
-  .handoff-status-ok {
-    color: var(--good);
-    font-weight: 500;
-  }
-  .handoff-pulse {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--ink-faint);
-    flex-shrink: 0;
-  }
-  .handoff-pulse.active {
-    background: var(--link);
-    animation: handoff-pulse 1.6s ease-in-out infinite;
-  }
-  @keyframes handoff-pulse {
-    0%, 100% { opacity: 0.3; transform: scale(0.85); }
-    50% { opacity: 1; transform: scale(1.1); }
-  }
-  .handoff-overrides {
-    margin-top: 0.8rem;
-    display: flex;
-    gap: 1rem;
-    align-items: center;
-  }
-  .add-row.danger {
-    color: var(--ink-muted);
-  }
-  .add-row.danger:hover {
-    color: var(--danger);
-  }
-
-  /* Review summary + collapsible sections */
-  .review-summary {
-    background: var(--surface-mute);
-    border: 1px solid var(--rule);
-    border-radius: 4px;
-    padding: 0.9rem 1.1rem;
-    margin-bottom: 1rem;
-    font-size: 13.5px;
-  }
-  .review-summary-meta {
-    margin-top: 0.3rem;
-    font-size: 12px;
-    color: var(--ink-muted);
-    font-family: ui-monospace, monospace;
-  }
-  .review-summary-jumps {
-    margin-top: 0.3rem;
-    font-size: 12px;
-    color: var(--ink-muted);
-  }
-  .review-summary-jumps a {
-    font-size: 12px;
-  }
-  .review-section {
-    border: 1px solid var(--rule);
-    border-radius: 4px;
-    margin-bottom: 0.6rem;
-    background: var(--surface);
-  }
-  .review-section > summary {
-    padding: 0.7rem 1rem;
-    cursor: pointer;
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--ink);
-    list-style: none;
-    user-select: none;
-  }
-  .review-section > summary::-webkit-details-marker {
-    display: none;
-  }
-  .review-section > summary::before {
-    content: '▸';
-    display: inline-block;
-    width: 1em;
-    color: var(--ink-muted);
-    transition: transform 120ms ease;
-  }
-  .review-section[open] > summary::before {
-    transform: rotate(90deg);
-  }
-  .review-section-body {
-    padding: 0.6rem 1rem 1rem;
-    border-top: 1px solid var(--rule);
-  }
-  .commit-progress {
-    margin-top: 1rem;
-    padding: 0.8rem 1rem;
-    background: var(--surface-mute);
-    border: 1px solid var(--rule);
-    border-radius: 4px;
-  }
-
-  @media (max-width: 768px) {
-    .path-grid { grid-template-columns: 1fr; }
-  }
-</style>
