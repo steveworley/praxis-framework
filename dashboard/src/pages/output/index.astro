@@ -166,7 +166,7 @@ const sub = persona
       <div class="nb-empty">Failed to load output: {loadError}</div>
     ) : outputs.length === 0 ? (
       <div class="nb-empty">
-        No output yet. As {personaName.short || 'the role'} produces work — drafts, reads, plans — entries will surface here.
+        No output yet. Drafts, notes, plans, records — they'll all show up here as {personaName.short || 'the role'} writes.
       </div>
     ) : (
       <>
@@ -176,7 +176,10 @@ const sub = persona
         </section>
 
         {filtered.length === 0 ? (
-          <div class="nb-empty">No outputs match the current filter.</div>
+          <div class="nb-empty">
+            Nothing matches these filters.{' '}
+            <a href="/output" class="clear-filters">clear filters →</a>
+          </div>
         ) : (
           <section class="entries">
             {filtered.map((o) => <OutputEntry output={o} />)}

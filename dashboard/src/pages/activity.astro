@@ -99,12 +99,13 @@ function personaShort(p: Persona | null): string {
   const ident = p?.identity ?? {};
   const full = (ident['full_name'] ?? ident['name'] ?? '').trim();
   const idx = full.indexOf(' ');
-  return idx < 0 ? (full || 'The role') : full.slice(0, idx);
+  return idx < 0 ? (full || 'the role') : full.slice(0, idx);
 }
 const subject = personaShort(persona);
+const subjectCap = subject.charAt(0).toUpperCase() + subject.slice(1);
 const title = persona ? `What ${subject} has been doing` : "What I've been doing";
 const sub = persona
-  ? `${subject}'s working trace — tool calls, decisions, verb runs — latest first.`
+  ? `${subjectCap}'s working trace — tool calls, decisions, verb runs — latest first.`
   : "The role's working trace — tool calls, decisions, verb runs — latest first.";
 ---
 
@@ -136,7 +137,9 @@ const sub = persona
     {activityError ? (
       <div class="nb-empty">Failed to load activity: {activityError}</div>
     ) : activity.length === 0 ? (
-      <div class="nb-empty">No activity logged yet.</div>
+      <div class="nb-empty">
+        Quiet so far. As {subject} works, the trace lands here.
+      </div>
     ) : (
       <>
         <section class="nb-filters">
@@ -144,7 +147,10 @@ const sub = persona
         </section>
 
         {buckets.length === 0 ? (
-          <div class="nb-empty">No activity matches the current filter.</div>
+          <div class="nb-empty">
+            Nothing matches this kind.{' '}
+            <a href="/activity" class="clear-filters">clear filters →</a>
+          </div>
         ) : (
           <section class="entries activity-entries">
             {buckets.map((bucket) => (

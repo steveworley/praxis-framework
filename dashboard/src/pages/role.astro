@@ -209,8 +209,7 @@ function outcomeBadge(o: VerbOutcomeCounts): string {
               />
               {voiceCount === 0 ? (
                 <div class="empty-pixel">
-                  Add a "## Voice & Personality" section to persona.md with bulleted
-                  "- **trait** -- qualifier" entries.
+                  No voice traits declared. Add a "## Voice & Personality" section to <code>persona.md</code> with "- **trait** -- qualifier" bullets.
                 </div>
               ) : (
                 <div class="voice-chips">
@@ -237,8 +236,7 @@ function outcomeBadge(o: VerbOutcomeCounts): string {
               />
               {accountabilitiesCount === 0 ? (
                 <div class="empty-pixel">
-                  Add an "## Accountabilities" section to persona.md with first-person
-                  "I'm responsible for…" bullets.
+                  Nothing declared. Add an "## Accountabilities" section to <code>persona.md</code> with first-person "I'm responsible for…" bullets.
                 </div>
               ) : (
                 <div class="acc-stack">
@@ -261,8 +259,7 @@ function outcomeBadge(o: VerbOutcomeCounts): string {
               />
               {capabilitiesCount === 0 ? (
                 <div class="empty-pixel">
-                  Add a "## Capabilities" section to persona.md with first-person
-                  "I can …" bullets.
+                  Nothing declared. Add a "## Capabilities" section to <code>persona.md</code> with first-person "I can …" bullets.
                 </div>
               ) : (
                 <div class="cap-grid">
@@ -282,7 +279,7 @@ function outcomeBadge(o: VerbOutcomeCounts): string {
               />
               {declaredCriteria.length === 0 ? (
                 <div class="empty-pixel">
-                  Add a "## Success criteria" section with observable, falsifiable outcomes.
+                  Nothing to measure against yet. Add a "## Success criteria" section to <code>persona.md</code> with observable, falsifiable outcomes.
                 </div>
               ) : (
                 <div class="sc-list">
@@ -309,7 +306,7 @@ function outcomeBadge(o: VerbOutcomeCounts): string {
               />
               {inhibitionsCount === 0 ? (
                 <div class="empty-pixel">
-                  Add a "## Hard inhibitions" section to persona.md.
+                  No constitutional rules declared. Add a "## Hard inhibitions" section to <code>persona.md</code>.
                 </div>
               ) : (
                 <div class="inhib-block">
@@ -435,7 +432,7 @@ function outcomeBadge(o: VerbOutcomeCounts): string {
                     <span class="cap-detail-count">{capabilities.verbs.length} live</span>
                   </div>
                   {capabilities.verbs.length === 0 ? (
-                    <EmptyState>No live verbs. Add `.md` files under `verbs/` to give the role playbooks.</EmptyState>
+                    <EmptyState>No live verbs yet. <code>.md</code> files under <code>verbs/</code> become the moves I can run.</EmptyState>
                   ) : (
                     <div class="cap-list">
                       {capabilities.verbs.map((v) => (
@@ -473,7 +470,7 @@ function outcomeBadge(o: VerbOutcomeCounts): string {
                     </span>
                   </div>
                   {capabilities.refData.length === 0 ? (
-                    <EmptyState>No reference data. Add YAML files to `lib/` to anchor the role's facts.</EmptyState>
+                    <EmptyState>Nothing under <code>lib/</code> yet. YAML files there anchor the facts I read from.</EmptyState>
                   ) : (
                     <div class="cap-list">
                       {capabilities.refData.map((r) => (
@@ -509,7 +506,7 @@ function outcomeBadge(o: VerbOutcomeCounts): string {
                 : `${liveVerbsCount} live${proposedVerbsCount > 0 ? ` · ${proposedVerbsCount} pending review` : ''}`}
             />
             {liveVerbsCount === 0 && proposedVerbsCount === 0 ? (
-              <div class="empty-pixel">No verbs authored yet. Add `.md` files under `verbs/`.</div>
+              <div class="empty-pixel">No playbooks yet. `.md` files in <code>verbs/</code> become the moves I can run.</div>
             ) : (
               <>
                 {verbs.live.map((v) => (
@@ -539,7 +536,7 @@ function outcomeBadge(o: VerbOutcomeCounts): string {
             />
             {!autonomy || edits.length === 0 ? (
               <div class="empty-pixel">
-                No autonomous edits yet. The role's grown surfaces are listed in lib/autonomy.yaml.
+                No autonomous edits yet. The surfaces I can grow into are listed in <code>lib/autonomy.yaml</code>.
               </div>
             ) : (
               <>
@@ -572,7 +569,7 @@ function outcomeBadge(o: VerbOutcomeCounts): string {
             />
             {libFiles.length === 0 ? (
               <div class="empty-pixel">
-                No reference data. Add YAML files to `lib/` to anchor the role's facts.
+                Nothing under <code>lib/</code> yet. YAML files there anchor the facts I read from.
               </div>
             ) : (
               <div class="ref-list">

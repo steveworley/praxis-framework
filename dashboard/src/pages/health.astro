@@ -406,7 +406,12 @@ const windowMeta = `4-WEEK WINDOWS · 30-DAY ACTIVITY & AUTONOMY · GENERATED ${
               }
             />
             {declaredCriteria.length === 0 ? (
-              <p class="crit-empty">No success criteria declared in <code>persona.md</code>.</p>
+              <p class="crit-empty">
+                {persona
+                  ? `${firstName} hasn't declared success criteria yet — add a "## Success criteria" section to `
+                  : 'No success criteria declared in '}
+                <code>persona.md</code>{persona ? ' with observable, falsifiable outcomes.' : '.'}
+              </p>
             ) : (
               <ol class="crit-list">
                 {criteriaRows.map(({ criterion, latest, trend }) => {
@@ -724,5 +729,41 @@ const windowMeta = `4-WEEK WINDOWS · 30-DAY ACTIVITY & AUTONOMY · GENERATED ${
     .crit-badge.amber { color: var(--warn); }
     .crit-badge.red { color: var(--danger); }
     .crit-badge.unsure { color: var(--ink-faint); }
+
+    /* Mobile (≤768px) — vital signs 2×2 collapses to single column, criteria
+       rows drop the mid trend column. Scoped here (not in global.css) because
+       Astro's per-component style hash beats the unscoped selector. */
+    @media (max-width: 768px) {
+      .vh-hero .hero-left h1 {
+        font-size: 30px;
+      }
+      .vh-hero .hero-left .sub {
+        font-size: 16px;
+      }
+      .vh-hero .windows {
+        font-size: 10px;
+        word-break: break-word;
+      }
+      .vitals {
+        grid-template-columns: 1fr;
+        gap: 1.4rem;
+      }
+      .vital-panel {
+        padding: 1.4rem;
+      }
+      .vp-num {
+        font-size: 42px;
+      }
+      .crit {
+        grid-template-columns: 2em 1fr 5em;
+        gap: 0.7rem;
+      }
+      .crit-trend {
+        display: none;
+      }
+      .criteria-panel {
+        padding: 1.4rem;
+      }
+    }
   </style>
 </BaseLayout>
