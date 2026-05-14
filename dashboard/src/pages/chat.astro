@@ -1,7 +1,4 @@
 ---
-import fs from 'node:fs/promises';
-import path from 'node:path';
-
 import ChatComposer from '@/components/chat/ChatComposer.astro';
 import GreetingHero from '@/components/chat/GreetingHero.astro';
 import PendingChip from '@/components/chat/PendingChip.astro';
@@ -11,9 +8,8 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
 import { hasApiKey } from '@/lib/chat/anthropic.js';
 import { listThreads, type ThreadSummary } from '@/lib/chat/conversation.js';
 import { buildGreeting } from '@/lib/chat/greeting.js';
-import { findMissingMcpDeclarations, getMcpCatalog } from '@/lib/chat/mcp-catalog.js';
 import { personaNameFrom } from '@/lib/chat/persona-name.js';
-import { buildSystemPrompt, parseToolsYaml } from '@/lib/chat/system-prompt.js';
+import { buildSystemPrompt } from '@/lib/chat/system-prompt.js';
 import { estimateTokens } from '@/lib/chat/tokens.js';
 import { assembleEscalations } from '@/lib/escalations-loader.js';
 import { assembleMemory } from '@/lib/memory-loader.js';
@@ -41,22 +37,17 @@ if (mode === 'seed') {
   return Astro.redirect('/setup');
 }
 
-const [personaRes, threadsRes, systemPromptRes, mcpWarningsRes, escalationsRes, memoryRes] =
+const [personaRes, threadsRes, systemPromptRes, escalationsRes, memoryRes] =
   await Promise.allSettled([
     parsePersona(roleHome),
     listThreads(roleHome),
     buildSystemPrompt(roleHome),
-    assembleMcpWarnings(roleHome),
     assembleEscalations(roleHome),
     assembleMemory(roleHome),
   ]);
 
 const persona = personaRes.status === 'fulfilled' ? personaRes.value : null;
 const threads: ThreadSummary[] = threadsRes.status === 'fulfilled' ? threadsRes.value : [];
-const mcpWarnings: McpWarnings =
-  mcpWarningsRes.status === 'fulfilled'
-    ? mcpWarningsRes.value
-    : { missingDeclared: [], unreachable: [] };
 
 const systemPromptText =
   systemPromptRes.status === 'fulfilled' ? systemPromptRes.value : '';
@@ -113,36 +104,6 @@ const bootstrap = {
   banner50kThreshold: 50_000,
 };
 
-interface McpWarnings {
-  /** Servers declared as `mcp:<name>` in lib/tools.yaml but missing from PRAXIS_MCPS. */
-  missingDeclared: string[];
-  /** Servers configured in PRAXIS_MCPS but currently unreachable / errored. */
-  unreachable: { name: string; status: string; message?: string }[];
-}
-
-async function assembleMcpWarnings(home: string): Promise<McpWarnings> {
-  let declaredCapabilities: string[] = [];
-  try {
-    const toolsYaml = await fs.readFile(
-      path.join(home, 'lib', 'tools.yaml'),
-      'utf-8',
-    );
-    declaredCapabilities = parseToolsYaml(toolsYaml).map((t) => t.name);
-  } catch {
-    // No tools.yaml — no declared capabilities to compare against.
-  }
-  const missingDeclared = findMissingMcpDeclarations(declaredCapabilities);
-  const catalog = await getMcpCatalog();
-  const unreachable = catalog.servers
-    .filter((s) => s.status !== 'connected')
-    .map((s) => ({
-      name: s.name,
-      status: s.status,
-      ...(s.errorMessage ? { message: s.errorMessage } : {}),
-    }));
-  return { missingDeclared, unreachable };
-}
-
 // Build the chip set: one chip per kind that has at least one open card,
 // plus the catch-all "open escalations" chip when there's any open at all.
 // Kinds map to the colour-coded variants in the mockup. Only `proposed_skill`
@@ -179,27 +140,6 @@ const hasPending = kindChips.length > 0;
     />
 
     <div class="chat-stage" x-data="praxisChat()" x-init="init()">
-      {(mcpWarnings.missingDeclared.length > 0 || mcpWarnings.unreachable.length > 0) && (
-        <div class="mcp-warning-banner" role="status">
-          <strong>MCP configuration issues:</strong>
-          <ul>
-            {mcpWarnings.missingDeclared.map((name) => (
-              <li>
-                <code>mcp:{name}</code> declared in <code>lib/tools.yaml</code> but not in
-                <code>PRAXIS_MCPS</code>. Add a service to <code>docker-compose.yml</code>
-                or remove the declaration.
-              </li>
-            ))}
-            {mcpWarnings.unreachable.map((server) => (
-              <li>
-                <code>{server.name}</code> is {server.status}
-                {server.message ? <span> — {server.message}</span> : null}.
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
       {/* Hero block — only shown when no thread is active. Once the operator
           starts a conversation it gives way to the transcript above the
           composer. The transcript is conditionally rendered by Alpine

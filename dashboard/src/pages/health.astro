@@ -1,8 +1,10 @@
 ---
 import EmptyState from '@/components/EmptyState.astro';
 import RouteHeader from '@/components/RouteHeader.astro';
+import SectionPill from '@/components/SectionPill.astro';
 import BaseLayout from '@/layouts/BaseLayout.astro';
 import { type HealthReport, loadHealth } from '@/lib/health-loader';
+import { assembleMcpWarnings, type McpWarnings } from '@/lib/health/mcp-warnings';
 import { parsePersona, type Persona } from '@/lib/persona-parser';
 import { detectMode, getRoleHome, nowIso } from '@/lib/role-home';
 import type { CriterionStatusValue } from '@/lib/self-assessment-parser';
@@ -16,14 +18,21 @@ if (mode === 'seed') {
   return Astro.redirect('/setup');
 }
 
-const [personaRes, healthRes] = await Promise.allSettled([
+const [personaRes, healthRes, mcpWarningsRes] = await Promise.allSettled([
   parsePersona(roleHome),
   loadHealth(roleHome),
+  assembleMcpWarnings(roleHome),
 ]);
 
 const persona: Persona | null = personaRes.status === 'fulfilled' ? personaRes.value : null;
 const health: HealthReport | null = healthRes.status === 'fulfilled' ? healthRes.value : null;
 const healthError = healthRes.status === 'rejected' ? String(healthRes.reason) : null;
+const mcpWarnings: McpWarnings =
+  mcpWarningsRes.status === 'fulfilled'
+    ? mcpWarningsRes.value
+    : { missingDeclared: [], unreachable: [] };
+const hasMcpWarnings =
+  mcpWarnings.missingDeclared.length > 0 || mcpWarnings.unreachable.length > 0;
 
 const fullName = persona?.identity['full_name'] ?? persona?.identity['name'] ?? '';
 const updatedAt = nowIso();
@@ -127,6 +136,41 @@ const toolBars = sparkline(toolCounts);
       <p class="page-lede">
         Read-only observability. Aggregations across the role's writes, escalations, activity logs, and autonomous edits — the firehose, summarised.
       </p>
+
+      {hasMcpWarnings && (
+        <section class="sec mcp-drift">
+          <SectionPill
+            colour="pink"
+            label="MCP CONFIG"
+            title="Configuration drift"
+            counter={`${mcpWarnings.missingDeclared.length + mcpWarnings.unreachable.length} ${
+              mcpWarnings.missingDeclared.length + mcpWarnings.unreachable.length === 1
+                ? 'issue'
+                : 'issues'
+            } · from lib/tools.yaml + PRAXIS_MCPS`}
+          />
+          <ul class="mcp-drift-list">
+            {mcpWarnings.missingDeclared.map((name) => (
+              <li class="mcp-drift-row">
+                <span class="mcp-drift-kind missing">MISSING</span>
+                <code class="mcp-drift-name">mcp:{name}</code>
+                <span class="mcp-drift-text">
+                  declared in <code>lib/tools.yaml</code> but not in <code>PRAXIS_MCPS</code> — add a service to <code>docker-compose.yml</code> or remove the declaration.
+                </span>
+              </li>
+            ))}
+            {mcpWarnings.unreachable.map((server) => (
+              <li class="mcp-drift-row">
+                <span class="mcp-drift-kind unreachable">{server.status === 'unreachable' ? 'UNREACHABLE' : 'ERROR'}</span>
+                <code class="mcp-drift-name">{server.name}</code>
+                <span class="mcp-drift-text">
+                  configured in <code>PRAXIS_MCPS</code> but the dashboard could not reach it{server.message ? ` — ${server.message}` : ''}.
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {healthError && (
         <EmptyState>Failed to load health report: {healthError}</EmptyState>
@@ -408,6 +452,63 @@ const toolBars = sparkline(toolCounts);
   </main>
 
   <style>
+    /* MCP configuration drift panel — only renders when there's at least one
+       declared-but-missing or configured-but-unreachable MCP. Each row keeps
+       the brief's reading order: kind chip (MISSING in --pink, UNREACHABLE in
+       --oxblood) + mono server name + Source Serif 4 remediation prose. */
+    .mcp-drift {
+      margin-bottom: 2.5rem;
+    }
+    .mcp-drift-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.55rem;
+    }
+    .mcp-drift-row {
+      display: flex;
+      gap: 0.7rem;
+      align-items: baseline;
+      flex-wrap: wrap;
+      font-size: 13px;
+      line-height: 1.55;
+      color: var(--ink);
+    }
+    .mcp-drift-kind {
+      font-family: var(--pixel);
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 1px 6px;
+      flex-shrink: 0;
+      color: var(--surface);
+    }
+    .mcp-drift-kind.missing {
+      background: var(--pink);
+      color: var(--ink);
+    }
+    .mcp-drift-kind.unreachable {
+      background: var(--oxblood);
+    }
+    .mcp-drift-name {
+      font-family: var(--mono);
+      font-size: 12.5px;
+      color: var(--ink);
+      flex-shrink: 0;
+    }
+    .mcp-drift-text {
+      font-family: var(--prose);
+      color: var(--ink-soft);
+      max-width: 64ch;
+    }
+    .mcp-drift-text code {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--ink);
+    }
+
     .health-panel {
       display: flex;
       flex-direction: column;
