@@ -2333,30 +2333,6 @@ a.verb-row:hover {
   border-left: 3px solid var(--oxblood);
 }
 
-/* MCP-warning banner — keep the legacy styling but make sure it slots in. */
-.chat-stage .mcp-warning-banner {
-  margin-top: 0;
-  padding: 0.7rem 1rem;
-  background: var(--surface-mute);
-  border-left: 3px solid var(--warn, var(--danger));
-  font-size: 12.5px;
-  color: var(--ink-soft);
-  line-height: 1.5;
-}
-.chat-stage .mcp-warning-banner ul {
-  margin: 0.35rem 0 0;
-  padding-left: 1.1rem;
-}
-.chat-stage .mcp-warning-banner li + li {
-  margin-top: 0.25rem;
-}
-.chat-stage .mcp-warning-banner code {
-  font-family: var(--mono);
-  font-size: 12px;
-  background: var(--surface);
-  padding: 0 0.25rem;
-}
-
 /* ============================================================================
  * /notebook — journal-shaped redesign
  *
