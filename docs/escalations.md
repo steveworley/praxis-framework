@@ -2,26 +2,31 @@
 
 The role's raise-your-hand surface. One markdown file per escalation, named `escalations/{YYYY-MM-DD}-{slug}.md`.
 
-## The three kinds
+## The four kinds
 
 - **`help`** — stuck *now* on a specific task that can't continue without input. Blocking.
 - **`improvement`** — process friction or gap noticed. Not blocking. File-and-forget.
 - **`proposed_skill`** — the role drafted a new verb. The draft itself goes in `verbs/proposed/{slug}.md`; the escalation describes what it does and why.
+- **`criterion_drift`** — a declared success criterion (see `## Success criteria` in `persona.md`) has trended away from green across multiple self-assessments. File when the role notices ≥2 consecutive amber/red statuses for the same criterion. Carries three required frontmatter fields: `criterion`, `trend`, `runs` (see Format below).
 
 The role picks the kind based on the *ask*, not the observation:
 
 - Would the work continue if the operator never replied? If yes, it's `improvement`. If no, it's `help`.
 - Is the role asking for review of a written draft? `proposed_skill`.
+- Is the role flagging that a success criterion has been amber/red for ≥2 reflections? `criterion_drift`.
 
 ## Format
 
 ```yaml
 ---
-kind: help | improvement | proposed_skill
+kind: help | improvement | proposed_skill | criterion_drift
 urgency: low | normal | high
 created: YYYY-MM-DD
 agent_context: <which verb run produced this>
-proposed_skill: <optional path to verbs/proposed/{slug}.md>
+proposed_skill: <optional path to verbs/proposed/{slug}.md, only on kind=proposed_skill>
+criterion: <required when kind=criterion_drift — verbatim text from persona.md>
+trend: <required when kind=criterion_drift — e.g. green→amber, amber→red>
+runs: <required when kind=criterion_drift — integer ≥1, consecutive non-green count>
 status: open
 ---
 ```

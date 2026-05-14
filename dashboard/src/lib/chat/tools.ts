@@ -57,14 +57,47 @@ export const WriteMemoryInput = z.object({
 });
 export type WriteMemoryArgs = z.infer<typeof WriteMemoryInput>;
 
-export const CreateEscalationInput = z.object({
-  kind: z.enum(['help', 'improvement', 'proposed_skill']),
-  summary: z.string().trim().min(1).max(200),
-  body: z.string().min(1),
-  urgency: z.enum(['low', 'normal', 'high']).optional(),
-  agent_context: z.string().trim().min(1).max(80).optional(),
-  proposed_skill_path: z.string().trim().min(1).optional(),
-});
+export const CreateEscalationInput = z
+  .object({
+    kind: z.enum(['help', 'improvement', 'proposed_skill', 'criterion_drift']),
+    summary: z.string().trim().min(1).max(200),
+    body: z.string().min(1),
+    urgency: z.enum(['low', 'normal', 'high']).optional(),
+    agent_context: z.string().trim().min(1).max(80).optional(),
+    proposed_skill_path: z.string().trim().min(1).optional(),
+    /**
+     * `criterion_drift`-only fields. Required when `kind === 'criterion_drift'`
+     * (refined below); ignored on other kinds.
+     */
+    criterion: z.string().trim().min(1).max(200).optional(),
+    trend: z.string().trim().min(1).max(80).optional(),
+    runs: z.number().int().min(1).max(99).optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.kind === 'criterion_drift') {
+      if (!data.criterion) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['criterion'],
+          message: 'criterion is required when kind=criterion_drift',
+        });
+      }
+      if (!data.trend) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['trend'],
+          message: 'trend is required when kind=criterion_drift',
+        });
+      }
+      if (data.runs === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['runs'],
+          message: 'runs is required when kind=criterion_drift',
+        });
+      }
+    }
+  });
 export type CreateEscalationArgs = z.infer<typeof CreateEscalationInput>;
 
 export const ProposeVerbInput = z.object({
@@ -197,6 +230,15 @@ export async function executeCreateEscalation(
   ];
   if (data.proposed_skill_path) {
     fmFields.splice(4, 0, ['proposed_skill', data.proposed_skill_path]);
+  }
+  // criterion_drift-specific frontmatter. The Zod refinement above ensures
+  // all three are present when `kind === 'criterion_drift'`; we write them
+  // in a stable order so the resulting markdown round-trips through the
+  // loader without surprises.
+  if (data.kind === 'criterion_drift') {
+    fmFields.push(['criterion', data.criterion ?? '']);
+    fmFields.push(['trend', data.trend ?? '']);
+    fmFields.push(['runs', String(data.runs ?? 0)]);
   }
 
   const content =

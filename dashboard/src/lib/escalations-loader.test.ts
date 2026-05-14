@@ -62,6 +62,67 @@ describe('assembleEscalations', () => {
     expect(result.entries[0]?.proposed_skill_body).toBeNull();
   });
 
+  it('parses criterion_drift frontmatter (criterion, trend, runs)', async () => {
+    await fs.writeFile(
+      path.join(tempDir, 'escalations', '2026-05-12-cd.md'),
+      [
+        '---',
+        'kind: criterion_drift',
+        'urgency: normal',
+        'created: 2026-05-12',
+        'status: open',
+        "criterion: Drafts land in ≤2 review cycles",
+        'trend: green→amber',
+        'runs: 2',
+        '---',
+        '',
+        '# Criterion drifting on draft cycles',
+        '',
+        'body text',
+      ].join('\n'),
+      'utf-8',
+    );
+    const result = await assembleEscalations(tempDir);
+    expect(result.entries).toHaveLength(1);
+    const entry = result.entries[0];
+    expect(entry?.kind).toBe('criterion_drift');
+    expect(entry?.criterion).toBe('Drafts land in ≤2 review cycles');
+    expect(entry?.trend).toBe('green→amber');
+    expect(entry?.runs).toBe(2);
+  });
+
+  it('leaves criterion/trend/runs as nulls when omitted on non-drift kinds', async () => {
+    await fs.writeFile(
+      path.join(tempDir, 'escalations', '2026-05-12-help.md'),
+      ['---', 'kind: help', 'created: 2026-05-12', 'status: open', '---', '# help'].join('\n'),
+      'utf-8',
+    );
+    const result = await assembleEscalations(tempDir);
+    expect(result.entries[0]?.criterion).toBeNull();
+    expect(result.entries[0]?.trend).toBeNull();
+    expect(result.entries[0]?.runs).toBeNull();
+  });
+
+  it('falls back to null runs when the value is malformed', async () => {
+    await fs.writeFile(
+      path.join(tempDir, 'escalations', '2026-05-12-cd.md'),
+      [
+        '---',
+        'kind: criterion_drift',
+        'created: 2026-05-12',
+        'status: open',
+        'criterion: X',
+        'trend: amber→red',
+        'runs: not-a-number',
+        '---',
+        '# cd',
+      ].join('\n'),
+      'utf-8',
+    );
+    const result = await assembleEscalations(tempDir);
+    expect(result.entries[0]?.runs).toBeNull();
+  });
+
   it('sorts open before resolved, then by urgency', async () => {
     await fs.writeFile(
       path.join(tempDir, 'escalations', '2026-05-01-a.md'),

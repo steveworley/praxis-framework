@@ -3,6 +3,21 @@ import path from 'node:path';
 
 import { extractTitle, parseFrontmatter } from './frontmatter.ts';
 
+/**
+ * The escalation `kind` taxonomy. Adding a new kind means updating four
+ * places in lockstep: this union, `CreateEscalationInput` in
+ * `chat/tools.ts`, the tool schema enum in `chat/tool-schemas.ts`, and the
+ * filter chip + lab style on the dashboard surfaces.
+ */
+export type EscalationKind = 'help' | 'improvement' | 'proposed_skill' | 'criterion_drift';
+
+export const ESCALATION_KINDS: readonly EscalationKind[] = [
+  'help',
+  'improvement',
+  'proposed_skill',
+  'criterion_drift',
+];
+
 const ESCALATION_FIELDS = new Set([
   'kind',
   'urgency',
@@ -10,6 +25,11 @@ const ESCALATION_FIELDS = new Set([
   'status',
   'agent_context',
   'proposed_skill',
+  // criterion_drift-specific fields. Always parsed (the loader is shape-
+  // agnostic); only meaningful when `kind === 'criterion_drift'`.
+  'criterion',
+  'trend',
+  'runs',
 ]);
 
 const STATUS_RANK: Record<string, number> = {
@@ -36,6 +56,14 @@ export interface EscalationEntry {
   agent_context: string | null;
   proposed_skill_path: string | null;
   proposed_skill_body: string | null;
+  /**
+   * `criterion_drift`-specific frontmatter. Always present on the entry
+   * object (null when the escalation isn't of that kind or the field was
+   * omitted) so callers don't have to widen the type per kind.
+   */
+  criterion: string | null;
+  trend: string | null;
+  runs: number | null;
   body: string;
 }
 
@@ -129,6 +157,10 @@ async function parseEscalation(filePath: string, roleHome: string): Promise<Esca
     }
   }
 
+  const runsRaw = fm['runs'];
+  const runsParsed = runsRaw ? Number.parseInt(runsRaw, 10) : Number.NaN;
+  const runs = Number.isFinite(runsParsed) ? runsParsed : null;
+
   return {
     slug: stem,
     path: path.relative(roleHome, filePath),
@@ -140,6 +172,9 @@ async function parseEscalation(filePath: string, roleHome: string): Promise<Esca
     agent_context: fm['agent_context'] ?? null,
     proposed_skill_path: proposedPath ?? null,
     proposed_skill_body: proposedBody,
+    criterion: fm['criterion'] ?? null,
+    trend: fm['trend'] ?? null,
+    runs,
     body: body.trim(),
   };
 }

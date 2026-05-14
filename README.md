@@ -43,7 +43,7 @@ A praxis role lives in one directory:
 - **`verbs/`** — modular markdown playbooks. One file per repeatable behavior. New drafts land in `verbs/proposed/` and are accepted via the dashboard's triage surface.
 - **`lib/`** — declarative reference data. Role-authored, verb-readable. `lib/autonomy.yaml` declares which files are operator-opened and in which mode.
 - **`memory/`** — observational notebook. Persona-shaped, longitudinal, free-form markdown. The role decides relevance. `memory/conversations/` holds chat transcripts.
-- **`escalations/`** — structured asks (`help` / `improvement` / `proposed_skill`). The role files; the operator triages.
+- **`escalations/`** — structured asks (`help` / `improvement` / `proposed_skill` / `criterion_drift`). The role files; the operator triages.
 - **`output/`** — typed work product. Five framework-shipped primitives (`document`, `draft`, `record`, `plan`, `reference`) with a closed-enum status lifecycle. See [`docs/output.md`](docs/output.md).
 - **`logs/`** — JSONL decision feed. Optional per-work-product nested logs are also picked up by the dashboard's activity glob.
 

@@ -84,7 +84,7 @@ All endpoints return JSON. Read endpoints exist for parity / external consumers,
 | Escalations | `escalations/*.md` | Sorted by status (open first) → urgency → date desc; filterable by status |
 | Activity | files matching `PRAXIS_LOG_GLOB` | Recent verb runs |
 | Capabilities | `tool-schemas.ts` + `verbs/*.md` + `lib/*` + activity log + git history | Four-section now-state snapshot of *what the role can do*: 13 native chat tools, MCP servers (placeholder until issue #25 lands), live verbs, and operator-opened reference data. Each capability carries 30-day usage and last-invoked, joined from the same activity feed `/activity` reads. |
-| Health | memory + escalations + logs + git history | Read-only aggregations over the same sources: weekly memory writes, escalation file/resolve/decline buckets, median time-to-triage, 30-day tool-call distribution, role-author commit count + revert ratio. No charts — small monospace tables and `▁▃▅▇` block-glyph sparklines. |
+| Health | memory + escalations + logs + git history + persona | Read-only aggregations over the same sources: weekly memory writes, escalation file/resolve/decline buckets, median time-to-triage, 30-day tool-call distribution, role-author commit count + revert ratio, plus a **Performance against criteria** panel that joins declared `success_criteria` from `persona.md` to the role's `Criteria self-assessment YYYY-MM-DD` memory entries (latest status + reasoning + trend strip per criterion). No charts — small monospace tables and `▁▃▅▇` block-glyph sparklines. |
 
 The dashboard handles missing files gracefully — section-by-section error handling, one failed loader doesn't blank the page.
 

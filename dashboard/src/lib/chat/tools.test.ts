@@ -175,6 +175,53 @@ describe('executeCreateEscalation', () => {
     const text = await fs.readFile(path.join(tempDir, r.data['path'] as string), 'utf-8');
     expect(text).toMatch(/proposed_skill: verbs\/proposed\/foo\.md/);
   });
+
+  it('refuses criterion_drift without criterion / trend / runs', async () => {
+    const noCriterion = await executeCreateEscalation(tempDir, {
+      kind: 'criterion_drift',
+      summary: 'drift',
+      body: 'body',
+      trend: 'green→amber',
+      runs: 2,
+    });
+    expect(noCriterion.ok).toBe(false);
+
+    const noTrend = await executeCreateEscalation(tempDir, {
+      kind: 'criterion_drift',
+      summary: 'drift',
+      body: 'body',
+      criterion: 'Drafts land in ≤2 review cycles',
+      runs: 2,
+    });
+    expect(noTrend.ok).toBe(false);
+
+    const noRuns = await executeCreateEscalation(tempDir, {
+      kind: 'criterion_drift',
+      summary: 'drift',
+      body: 'body',
+      criterion: 'Drafts land in ≤2 review cycles',
+      trend: 'green→amber',
+    });
+    expect(noRuns.ok).toBe(false);
+  });
+
+  it('accepts criterion_drift with all three required fields and persists them', async () => {
+    const r = await executeCreateEscalation(tempDir, {
+      kind: 'criterion_drift',
+      summary: 'Draft cycles drifting amber',
+      body: 'Trend has slipped from green to amber across last two reflections.',
+      criterion: 'Drafts land in ≤2 review cycles',
+      trend: 'green→amber',
+      runs: 2,
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const text = await fs.readFile(path.join(tempDir, r.data['path'] as string), 'utf-8');
+    expect(text).toMatch(/kind: criterion_drift/);
+    expect(text).toMatch(/criterion: Drafts land in ≤2 review cycles/);
+    expect(text).toMatch(/trend: green→amber/);
+    expect(text).toMatch(/runs: 2/);
+  });
 });
 
 describe('executeProposeVerb', () => {
