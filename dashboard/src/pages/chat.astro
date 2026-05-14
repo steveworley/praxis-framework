@@ -170,7 +170,9 @@ const hasPending = kindChips.length > 0;
             <a class="a" href="/notebook?cat=conversations">all threads →</a>
           </header>
           {recentConversationEntries.length === 0 ? (
-            <div class="thread-empty">No conversations yet.</div>
+            <div class="thread-empty">
+              No threads yet — anything {personaName.short} writes back will appear here.
+            </div>
           ) : (
             recentConversationEntries.map((entry) => <RecentThread entry={entry} />)
           )}
@@ -199,12 +201,20 @@ const hasPending = kindChips.length > 0;
           </article>
         </template>
         <template x-if="pendingAssistant">
-          <article class="chat-turn role-assistant">
+          <article class="chat-turn role-assistant chat-turn-pending" aria-busy="true" aria-label="awaiting response">
             <header class="chat-turn-head">
               <span class="chat-turn-role" x-text="personaShort.toUpperCase()"></span>
               <span class="chat-turn-time">thinking…</span>
             </header>
-            <div class="prose"><span>·  ·  ·</span></div>
+            {/* Shimmer placeholder — four pill rows with alternating widths
+                that read as in-flight prose. The sweep animation lives in
+                .chat-shimmer-pill below. */}
+            <div class="chat-shimmer">
+              <span class="chat-shimmer-pill" style="width: 82%;"></span>
+              <span class="chat-shimmer-pill" style="width: 66%;"></span>
+              <span class="chat-shimmer-pill" style="width: 91%;"></span>
+              <span class="chat-shimmer-pill" style="width: 48%;"></span>
+            </div>
           </article>
         </template>
       </div>

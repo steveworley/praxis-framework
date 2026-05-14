@@ -2333,6 +2333,45 @@ a.verb-row:hover {
   border-left: 3px solid var(--oxblood);
 }
 
+/* Shimmer placeholder — shown in the pending assistant turn while the
+   operator's message is in flight. Four pill rows with a left-to-right peach
+   sweep animation. Reads as activity, not as a loud notification — the
+   gradient is `--rule → --peach-soft → --rule` so the sweep stays subtle
+   against the cream surface. */
+.chat-stage .chat-shimmer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55em;
+  padding: 0.3em 0;
+}
+.chat-stage .chat-shimmer-pill {
+  display: block;
+  height: 1em;
+  border-radius: 0;
+  background: linear-gradient(
+    90deg,
+    var(--rule) 0%,
+    var(--peach-soft) 50%,
+    var(--rule) 100%
+  );
+  background-size: 200% 100%;
+  animation: chat-shimmer-sweep 1.5s linear infinite;
+}
+@keyframes chat-shimmer-sweep {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-stage .chat-shimmer-pill {
+    animation: none;
+    background: var(--peach-soft);
+  }
+}
+
 /* ============================================================================
  * /notebook — journal-shaped redesign
  *
@@ -2600,6 +2639,32 @@ a.verb-row:hover {
   color: var(--ink-muted);
   font-style: italic;
 }
+.nb-empty code {
+  font-family: var(--mono);
+  font-style: normal;
+  font-size: 12.5px;
+  background: var(--surface-mute);
+  padding: 1px 5px;
+  border-radius: 0;
+  color: var(--ink-soft);
+}
+.nb-empty .clear-filters {
+  display: inline-block;
+  margin-top: 0.5em;
+  font-family: var(--mono);
+  font-style: normal;
+  font-size: 11.5px;
+  color: var(--ink-soft);
+  text-decoration: none;
+  padding: 0.2em 0.6em;
+  border: 1px solid var(--rule);
+  background: var(--bg);
+}
+.nb-empty .clear-filters:hover {
+  border-color: var(--rule-strong);
+  color: var(--ink);
+  text-decoration: none;
+}
 
 @media (max-width: 900px) {
   .nb-hero {
@@ -2626,5 +2691,127 @@ a.verb-row:hover {
   }
   .chat-stage .greeting-text {
     font-size: 28px;
+  }
+}
+
+/* ============================================================================
+ * Mobile breakpoint — 768px
+ *
+ * Single phone-width breakpoint. Higher-width adjustments live in the 900px
+ * block above. The treatment here is a degraded reading mode, not a
+ * redesigned experience: stack the hero to one column, shrink the title,
+ * collapse the gutter to a horizontal strip, and make the nav horizontally
+ * scrollable so all seven tabs stay reachable without a hamburger.
+ * ========================================================================== */
+@media (max-width: 768px) {
+  /* Brand strip — let the meta (updated timestamp + refresh button) wrap
+     below the role tag when there's not enough room. */
+  .brand-strip {
+    flex-wrap: wrap;
+    padding: 0.7rem 1.2rem;
+  }
+  .brand-strip .meta {
+    margin-left: 0;
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  /* Nav — horizontally scrollable on narrow viewports. Tabs stay inline so
+     the operator can swipe between them; the scrollbar is hidden on macOS /
+     iOS so it doesn't sit on top of the content. */
+  .nav-wrap {
+    margin-bottom: 1.6rem;
+  }
+  .nav {
+    padding: 0 1.2rem;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .nav::-webkit-scrollbar {
+    display: none;
+  }
+  .nav a {
+    flex-shrink: 0;
+    padding: 0.8em 0.9em;
+  }
+
+  /* Container padding — shrink horizontal to 1.2rem. The base `.container`
+     rule already uses 0 vertical padding (chrome handles spacing); preserve
+     that here so the redesigned surfaces don't pick up extra vertical
+     whitespace. */
+  .container {
+    padding: 0 1.2rem;
+  }
+
+  /* nb-hero already stacks at 900px — at 768px tighten the title further and
+     keep the stats strip readable. */
+  .nb-hero .hero-left h1 {
+    font-size: 32px;
+  }
+  .stats {
+    padding: 0.7em 0.9em;
+    gap: 1em;
+  }
+  .stats .stat .n {
+    font-size: 22px;
+  }
+
+  /* /role hero — already two-column. Stack at 768px and shrink the name. */
+  .role-hero {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+    padding-bottom: 2rem;
+    margin-bottom: 2.5rem;
+  }
+  .role-hero .hero-left .name {
+    font-size: 40px;
+  }
+  .role-hero .hero-left .title {
+    font-size: 18px;
+  }
+  .role-hero .hero-right {
+    align-self: stretch;
+  }
+
+  /* (/health hero adjustments live in health.astro's scoped block — Astro's
+     per-component style hash beats unscoped selectors here.) */
+
+  /* Gutter-rail entries — at 900px the gutter already stacks above the body
+     (single column). At 768px the gutter contents themselves go from a
+     vertical stack to a horizontal strip so the category pill + date + slug
+     read as one editorial caption row instead of three stacked lines. */
+  .entry .gutter {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.6em 0.9em;
+  }
+  .entry .gutter .cat {
+    align-self: center;
+  }
+  .entry .gutter .when {
+    font-size: 11px;
+  }
+  .entry .gutter .when br {
+    display: none;
+  }
+  .entry .gutter .slug {
+    font-size: 10.5px;
+  }
+  .entry {
+    padding: 1.4rem 0;
+  }
+
+  /* (Health vital signs + criteria rows live in health.astro's scoped
+     <style> block so the Astro CSS scoping doesn't beat the override.) */
+
+  /* Chat composer — stickier at phone scale, padding shrinks. */
+  .chat-stage {
+    gap: 1.6rem;
+  }
+  .chat-stage .composer-shell {
+    padding: 0.7rem 0.85rem;
   }
 }

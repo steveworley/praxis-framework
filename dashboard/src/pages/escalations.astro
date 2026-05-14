@@ -148,7 +148,7 @@ function personaShort(p: Persona | null): string {
   const ident = p?.identity ?? {};
   const full = (ident['full_name'] ?? ident['name'] ?? '').trim();
   const idx = full.indexOf(' ');
-  return idx < 0 ? (full || 'The role') : full.slice(0, idx);
+  return idx < 0 ? (full || 'the role') : full.slice(0, idx);
 }
 
 const personaSubject = personaShort(persona);
@@ -187,7 +187,7 @@ const sub = persona
       <div class="nb-empty">Failed to load escalations: {escalationError}</div>
     ) : entries.length === 0 ? (
       <div class="nb-empty">
-        No escalations on file. Help requests, process improvements, and proposed skills will surface here.
+        Nothing flagged. Anything {personaSubject} can't resolve will land here.
       </div>
     ) : (
       <>
@@ -197,7 +197,10 @@ const sub = persona
         </section>
 
         {filteredEntries.length === 0 ? (
-          <div class="nb-empty">No escalations match the current filter.</div>
+          <div class="nb-empty">
+            Nothing matches these filters.{' '}
+            <a href="/escalations" class="clear-filters">clear filters →</a>
+          </div>
         ) : (
           <section class="entries">
             {filteredEntries.map((e) => <EscalationEntry escalation={e} />)}

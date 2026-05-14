@@ -136,11 +136,11 @@ const sub = persona
   ? `${personaShort(persona)}'s persona-shaped memory feed — entries the role wrote, sorted by recency.`
   : 'Persona-shaped memory feed — entries the role wrote, sorted by recency.';
 
-function personaShort(p: Persona): string {
-  const ident = p.identity;
+function personaShort(p: Persona | null): string {
+  const ident = p?.identity ?? {};
   const full = (ident['full_name'] ?? ident['name'] ?? '').trim();
   const idx = full.indexOf(' ');
-  return idx < 0 ? (full || 'The role') : full.slice(0, idx);
+  return idx < 0 ? (full || 'the role') : full.slice(0, idx);
 }
 
 const title = persona ? `What ${personaShort(persona)} has noticed` : "What I've remembered";
@@ -175,8 +175,7 @@ const title = persona ? `What ${personaShort(persona)} has noticed` : "What I've
       <div class="nb-empty">Failed to load notebook: {memoryError}</div>
     ) : memoryEntries.length === 0 ? (
       <div class="nb-empty">
-        Notebook is empty. As the role works, observations about people,
-        accounts, and patterns will land here.
+        Nothing in memory yet. As {personaShort(persona)} writes, entries will surface here.
       </div>
     ) : (
       <>
@@ -188,7 +187,10 @@ const title = persona ? `What ${personaShort(persona)} has noticed` : "What I've
         />
 
         {filteredEntries.length === 0 ? (
-          <div class="nb-empty">No entries match the current filter.</div>
+          <div class="nb-empty">
+            Nothing matches these filters.{' '}
+            <a href="/notebook" class="clear-filters">clear filters →</a>
+          </div>
         ) : (
           <section class="entries">
             {filteredEntries.map((entry) => <NotebookEntry entry={entry} />)}

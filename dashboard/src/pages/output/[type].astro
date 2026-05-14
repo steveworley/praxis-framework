@@ -187,9 +187,16 @@ const title = persona ? `${personaName.short}'s ${type}s` : `What I've produced 
     </section>
 
     {entries.length === 0 ? (
-      <div class="nb-empty">
-        No {type} entries{statusFilter || entityTypeFilter ? ' matching this filter' : ''}.
-      </div>
+      statusFilter || entityTypeFilter ? (
+        <div class="nb-empty">
+          Nothing matches these filters.{' '}
+          <a href={`/output/${type}`} class="clear-filters">clear filters →</a>
+        </div>
+      ) : (
+        <div class="nb-empty">
+          No {type} entries yet. As {personaName.short || 'the role'} writes, they'll appear here.
+        </div>
+      )
     ) : (
       <section class="entries">
         {entries.map((o) => <OutputEntry output={o} />)}
