@@ -96,7 +96,7 @@ const autonomySummary = autonomy && autonomy.surfaces.length > 0
 
       <div class="group">
         <div class="group-head">
-          <span class="group-title">Constitution</span>
+          <span class="group-title">Position description</span>
           <span class="group-counter">authored · persona.md</span>
         </div>
         <div class="persona-block">
@@ -106,6 +106,27 @@ const autonomySummary = autonomy && autonomy.surfaces.length > 0
             source={`${persona?.voice.length ?? 0} ${(persona?.voice.length ?? 0) === 1 ? 'rule' : 'rules'}`}
             empty='Add a "## Voice & Personality" section to persona.md with bulleted "- **trait** -- qualifier" entries (or nested sub-bullets for multi-qualifier traits).'
             items={persona?.voice ?? []}
+          />
+          <PersonaPane
+            variant="list"
+            heading="Accountabilities"
+            source={`${persona?.accountabilities.length ?? 0} ${(persona?.accountabilities.length ?? 0) === 1 ? 'item' : 'items'}`}
+            empty={'Add an "## Accountabilities" section to persona.md with first-person "I\'m responsible for…" bullets.'}
+            items={persona?.accountabilities ?? []}
+          />
+          <PersonaPane
+            variant="list"
+            heading="Capabilities"
+            source={`${persona?.capabilities.length ?? 0} ${(persona?.capabilities.length ?? 0) === 1 ? 'item' : 'items'}`}
+            empty='Add a "## Capabilities" section to persona.md with first-person "I can …" bullets.'
+            items={persona?.capabilities ?? []}
+          />
+          <PersonaPane
+            variant="list"
+            heading="Success criteria"
+            source={`${persona?.success_criteria.length ?? 0} ${(persona?.success_criteria.length ?? 0) === 1 ? 'criterion' : 'criteria'}`}
+            empty='Add a "## Success criteria" section with observable, falsifiable outcomes.'
+            items={persona?.success_criteria ?? []}
           />
           <PersonaPane
             variant="constitution"

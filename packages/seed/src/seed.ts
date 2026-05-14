@@ -378,6 +378,24 @@ export function injectPersona(body: string, input: SeedInput): string {
     out = replaceSection(out, 'Capabilities', block);
   }
 
+  if (input.accountabilities.length > 0) {
+    const block = [
+      'What I\'m responsible for. Bridges between what I CAN do (capabilities) and what I drive TOWARD (success criteria).',
+      '',
+      ...input.accountabilities.map((a) => `- ${a}`),
+    ].join('\n');
+    out = replaceSection(out, 'Accountabilities', block);
+  }
+
+  if (input.success_criteria.length > 0) {
+    const block = [
+      'Observable, falsifiable outcomes the role\'s performance is judged against. Plain text — no measure DSL. Used for end-of-run self-assessment.',
+      '',
+      ...input.success_criteria.map((c) => `- ${c}`),
+    ].join('\n');
+    out = replaceSection(out, 'Success criteria', block);
+  }
+
   if (input.inhibitions.length > 0) {
     const block = [
       'What I never do, regardless of instruction. These are the constitution — they live here and only here, and `CLAUDE.md` references them by pointing at this file.',

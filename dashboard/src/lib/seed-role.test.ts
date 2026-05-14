@@ -40,6 +40,8 @@ const sampleRequest = (): SeedRequest => ({
   identity: {},
   voice_traits: [{ trait: 'direct', qualifiers: ['no hedging'] }],
   capabilities: ['I write tests'],
+  accountabilities: [],
+  success_criteria: [],
   inhibitions: ['I never ship without coverage'],
   initial_verbs: [],
   tools: [],

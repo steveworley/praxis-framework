@@ -6,6 +6,8 @@ export const STEPS = [
   'tool-selection',
   'voice',
   'capabilities',
+  'accountabilities',
+  'success-criteria',
   'inhibitions',
   'initial-verbs',
   'review',
