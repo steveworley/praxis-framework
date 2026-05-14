@@ -31,8 +31,6 @@ docker run --rm -p 4321:4321 \
 
 Open `http://localhost:4321/`. Since `persona.md` doesn't exist at the role root yet, the dashboard redirects to **`/setup`** — the wizard. Walk it through; on submit the seed initialises git (if needed) and writes the role files plus `docker-compose.yml` + `.env.example` into the mounted directory as two visible commits. When the wizard finishes, kill the one-shot container with `Ctrl-C` and continue to step 2.
 
-> The GHCR image is currently private. Run `docker login ghcr.io -u <username> -p $GITHUB_TOKEN` with a PAT carrying `read:packages` before pulling.
-
 ## 2. Bring the dashboard up
 
 The seed writes a `docker-compose.yml` at the role root that pulls the published dashboard image. After running the wizard, set your API key and start the stack:

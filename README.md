@@ -62,8 +62,6 @@ That's it. The CLI walks you through identity, voice, capabilities, hard inhibit
 
 Open `http://localhost:4321/`. The dashboard is your primary surface — `/chat` to operate the role, `/triage` to review what it raises, `/role` to inspect the constitution. See [`docs/dashboard.md`](docs/dashboard.md).
 
-> The published dashboard image is currently private. Before `docker compose up` works, `docker login ghcr.io -u <username> -p $GITHUB_TOKEN` with a PAT carrying `read:packages`.
-
 ### Scripted setup
 
 For CI or version-controlled role definitions:
