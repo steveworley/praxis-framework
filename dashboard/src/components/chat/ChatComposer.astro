@@ -1,0 +1,66 @@
+---
+/**
+ * The /chat composer — sticky-bottom textarea with peach offset block-shadow
+ * matching the character-sheet aesthetic. Two modes:
+ *
+ *   - **active**  (`apiKeyConfigured = true`):  full chat wiring through the
+ *     `praxisChat()` Alpine island already declared on the page. The textarea
+ *     binds to `composer`, send fires `send()`, cmd/ctrl+↵ also fires send.
+ *   - **disabled** (`apiKeyConfigured = false`): the same visual shape but
+ *     `<textarea disabled>` + a hint below explaining how to enable.
+ *
+ * The Alpine island lives on the page (`x-data="praxisChat()"`), so this
+ * component only emits the markup that island bindings hook into. The page
+ * is responsible for the surrounding `x-data` scope.
+ */
+interface Props {
+  apiKeyConfigured: boolean;
+  personaShort: string;
+}
+
+const { apiKeyConfigured, personaShort } = Astro.props;
+const placeholder = `Talk to ${personaShort}…`;
+---
+
+<div class="composer">
+  <div class="composer-shell">
+    {apiKeyConfigured ? (
+      <>
+        <textarea
+          x-model="composer"
+          x-ref="composer"
+          placeholder={placeholder}
+          rows="2"
+          {...({ '@keydown.cmd.enter': 'send()' } as Record<string, string>)}
+          {...({ '@keydown.ctrl.enter': 'send()' } as Record<string, string>)}
+        ></textarea>
+        <div class="composer-foot">
+          <span class="hint">⌘↵ to send · auto-saves to memory/conversations/</span>
+          <button
+            type="button"
+            class="send"
+            {...({ ':disabled': '!canSend' } as Record<string, string>)}
+            {...({ '@click': 'send()' } as Record<string, string>)}
+          >
+            <span x-show="!sending">SEND →</span>
+            <span x-show="sending">SENDING…</span>
+          </button>
+        </div>
+      </>
+    ) : (
+      <>
+        <textarea
+          placeholder="Chat is disabled — set ANTHROPIC_API_KEY to enable."
+          rows="2"
+          disabled
+        ></textarea>
+        <div class="composer-foot">
+          <span class="hint">
+            Chat is disabled — set <code>ANTHROPIC_API_KEY</code> to enable.
+          </span>
+          <button type="button" class="send" disabled>SEND →</button>
+        </div>
+      </>
+    )}
+  </div>
+</div>

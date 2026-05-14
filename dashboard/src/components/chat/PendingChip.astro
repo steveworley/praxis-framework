@@ -1,0 +1,28 @@
+---
+/**
+ * One pending-item chip in the `/chat` greeting row. Each chip carries a
+ * count + lowercase label and links to the surface that owns the action.
+ * Colour-coded by escalation `kind` to match the per-surface colour map:
+ *
+ *   - `improvement` / `help` / `criterion_drift` → pink (escalations colour)
+ *   - `proposed_skill` → purple (capabilities colour)
+ *
+ * Chips are only rendered when count > 0; the parent component owns that
+ * filter so this stays a dumb presentational chip.
+ */
+type Variant = 'pink' | 'purple' | 'muted';
+
+interface Props {
+  count: number;
+  label: string;
+  href: string;
+  variant: Variant;
+}
+
+const { count, label, href, variant } = Astro.props;
+---
+
+<a class:list={['pending-chip', variant]} href={href}>
+  <span class="num">{count}</span>
+  <span class="label">{label}</span>
+</a>

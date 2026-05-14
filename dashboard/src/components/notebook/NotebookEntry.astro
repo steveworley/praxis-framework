@@ -1,0 +1,85 @@
+---
+import type { MemoryEntry } from '@/lib/memory-loader';
+import { renderMarkdown } from '@/lib/markdown';
+import { daysSince, formatAgeLabel, formatIsoDate, formatIsoTime } from '@/lib/ui/time';
+
+/**
+ * One memory entry rendered in the redesigned /notebook journal layout. The
+ * layout is a 14em gutter (category pill in palette colour + date + age +
+ * slug) on the left, and the entry body (title + rendered markdown) on the
+ * right. Entries are separated by a hairline rule only — no card chrome.
+ *
+ * Category → palette colour mapping (`notes` → peach, `accounts` → purple,
+ * `people` → pink, `conversations` → lavender, anything else → peach
+ * fallback). The mapping lives here because it's purely a visual concern.
+ *
+ * The `data-*` attributes drive /notebook's filters (category × age ×
+ * archived-visibility, ANDed together by the page-level script).
+ */
+interface Props {
+  entry: MemoryEntry;
+}
+
+const { entry } = Astro.props;
+const bodyHtml = renderMarkdown(entry.body);
+// Title precedence: frontmatter `title:` (richer than the loader's extracted
+// title when the file has no H1 — common for conversation logs) → loader's
+// `entry.title` → slug. The loader's prettify-stem fallback ("2026 05 14
+// 3b1aeb") is rejected here in favour of the frontmatter shape.
+const titleText = (() => {
+  const fm = entry.frontmatter['title']?.trim();
+  if (fm) return fm;
+  const t = (entry.title ?? '').trim();
+  if (t && !/^\d{4} \d{2} \d{2} [a-f0-9]+$/.test(t)) return t;
+  return entry.slug;
+})();
+const touchedAt = entry.updated ?? entry.created;
+const days = daysSince(touchedAt);
+const ageLabel = formatAgeLabel(days);
+
+// Date format: `2026-05-14 · today` or `2026-05-10 · 4d ago`
+const datePart = touchedAt ? formatIsoDate(touchedAt) : '';
+const timePart = touchedAt ? formatIsoTime(touchedAt) : '';
+
+function ageBucket(d: number | null): string {
+  if (d === null) return 'unknown';
+  if (d <= 7) return 'week';
+  if (d <= 30) return 'month';
+  if (d < 60) return 'recent';
+  return 'stale';
+}
+
+const bucket = ageBucket(days);
+
+// Category-coloured pill. The full set of categories isn't fixed — operators
+// can drop a markdown file under `memory/whatever/` and it'll surface as
+// that category. Map the well-known ones; everything else gets peach.
+const KNOWN_CAT_COLOURS: Record<string, string> = {
+  notes: 'peach',
+  accounts: 'purple',
+  people: 'pink',
+  conversations: 'lavender',
+};
+const catColour = KNOWN_CAT_COLOURS[entry.category] ?? 'peach';
+---
+
+<article
+  class:list={['entry', entry.category]}
+  data-category={entry.category}
+  data-age-bucket={bucket}
+  data-archived={entry.archived ? 'true' : 'false'}
+>
+  <div class="gutter">
+    <span class:list={['cat', catColour]}>{entry.category}</span>
+    <span class="when">
+      {datePart && <>{datePart}{ageLabel && <> · <span class="age">{ageLabel}</span></>}</>}
+      {timePart && <><br />{timePart}</>}
+    </span>
+    {entry.archived && <span class="archived-tag">archived</span>}
+    <span class="slug">{entry.slug}</span>
+  </div>
+  <div class="body">
+    <h2>{titleText}</h2>
+    <div class="prose" set:html={bodyHtml}></div>
+  </div>
+</article>

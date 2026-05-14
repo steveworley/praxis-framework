@@ -1,0 +1,40 @@
+---
+import type { Greeting } from '@/lib/chat/greeting';
+
+/**
+ * The /chat hero. Renders the pixel-font `WHO · BUCKET · STATUS` preamble, a
+ * large Fraunces salutation + body, and (when there's a CTA) an inline
+ * underlined anchor linking to `/escalations?status=open`.
+ *
+ * The greeting itself is computed by `buildGreeting()` in
+ * `lib/chat/greeting.ts` — this component is presentation only.
+ */
+interface Props {
+  greeting: Greeting;
+}
+
+const { greeting } = Astro.props;
+
+// The greeting body template includes a `{cta}` token where the inline anchor
+// should land. Split into [before, after] so the template can render the
+// anchor in the middle without dangerouslySetInnerHTML semantics.
+const [bodyBefore, bodyAfter] = greeting.empty
+  ? [greeting.body, '']
+  : greeting.body.split('{cta}');
+---
+
+<section class="greeting">
+  <div class="who"><span class="dot"></span> {greeting.who}</div>
+  <div class="greeting-text">
+    {greeting.salutation}{' '}
+    {greeting.empty ? (
+      <span>{greeting.body}</span>
+    ) : (
+      <>
+        {bodyBefore}
+        <a href="/escalations?status=open">{greeting.ctaText}</a>
+        {bodyAfter}
+      </>
+    )}
+  </div>
+</section>

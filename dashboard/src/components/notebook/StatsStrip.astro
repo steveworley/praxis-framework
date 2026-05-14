@@ -1,0 +1,42 @@
+---
+/**
+ * The 4-stat strip in the /notebook hero. Peach offset block-shadow + 2px
+ * ink border to match the character-sheet "anchor card" treatment. Each stat
+ * is a small column with a Fraunces numeral and an uppercase mono label.
+ *
+ * The first stat (`thisWeek`) wears the `.accent` class so its numeral is
+ * peach — the focal "what's new" headline. Other stats use ink.
+ *
+ * Display strings are passed in pre-formatted so this component stays
+ * presentational. The page computes them from `assembleMemory()` and the
+ * `recentMemoryCount` helper.
+ */
+interface Props {
+  thisWeek: number;
+  total: number;
+  sinceLastLabel: string;
+  archived: number;
+}
+
+const { thisWeek, total, sinceLastLabel, archived } = Astro.props;
+const weekDisplay = thisWeek > 0 ? `+${thisWeek}` : '0';
+---
+
+<div class="stats">
+  <div class="stat accent">
+    <div class="n">{weekDisplay}</div>
+    <div class="l">this week</div>
+  </div>
+  <div class="stat">
+    <div class="n">{total}</div>
+    <div class="l">total</div>
+  </div>
+  <div class="stat">
+    <div class="n">{sinceLastLabel}</div>
+    <div class="l">since last</div>
+  </div>
+  <div class="stat">
+    <div class="n">{archived}</div>
+    <div class="l">archived</div>
+  </div>
+</div>

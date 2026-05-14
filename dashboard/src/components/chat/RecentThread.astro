@@ -1,0 +1,38 @@
+---
+import type { MemoryEntry } from '@/lib/memory-loader';
+import { daysSince, formatAgeLabel } from '@/lib/ui/time';
+import { firstLine } from '@/lib/ui/text';
+
+/**
+ * One row in the `/chat` "recent threads" section — a thread is just the most
+ * recent conversation entry from `memory/conversations/`. Title is the entry
+ * title (the conversation log's H1); right-rail shows a coarse age label.
+ *
+ * Each row links to `/notebook` (filtered to conversations) so the operator
+ * lands on the full transcript. Deep-link anchoring to a specific entry is
+ * out of scope for Phase 2 — clicking lands on the notebook surface where the
+ * entry is already among the first under the `conversations` filter.
+ */
+interface Props {
+  entry: MemoryEntry;
+}
+
+const { entry } = Astro.props;
+const ageLabel = formatAgeLabel(daysSince(entry.updated ?? entry.created));
+// Title precedence: the conversation log's `title:` frontmatter (set when
+// the chat surface writes the first turn) is the most readable form; the
+// loader's `extractTitle` fallback (filename → "2026 05 14 3b1aeb") is too
+// opaque to headline a thread row. Fall through to first-line and finally
+// the slug only when neither is available.
+const titleText =
+  entry.frontmatter['title'] ||
+  (entry.title && !/^\d{4} \d{2} \d{2} [a-f0-9]+$/.test(entry.title) ? entry.title : '') ||
+  firstLine(entry.body) ||
+  entry.slug;
+const titleQuoted = `"${titleText}"`;
+---
+
+<a class="thread-row" href={`/notebook?cat=conversations`}>
+  <span class="title">{titleQuoted}</span>
+  <span class="when">{ageLabel || ''}</span>
+</a>
