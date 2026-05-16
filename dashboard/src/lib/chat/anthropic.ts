@@ -1,4 +1,15 @@
-import Anthropic from '@anthropic-ai/sdk';
+import {
+  aggregateStream,
+  AnthropicProvider,
+  InferenceError,
+  type ContentBlock,
+  type InferenceProvider,
+  type InferenceRequest,
+  type InferenceResponse,
+  type Message,
+  type StreamEvent,
+  type ToolDef,
+} from '@praxis-framework/inference';
 
 import type { PersistedToolCall, Turn } from './conversation.js';
 
@@ -14,8 +25,8 @@ export interface SendMessageOptions {
 }
 
 export class MissingApiKeyError extends Error {
-  constructor() {
-    super('ANTHROPIC_API_KEY environment variable is not set');
+  constructor(message = 'ANTHROPIC_API_KEY environment variable is not set') {
+    super(message);
     this.name = 'MissingApiKeyError';
   }
 }
@@ -31,8 +42,9 @@ export class AnthropicChatError extends Error {
 
 /**
  * Resolve the chat model from env (PRAXIS_CHAT_MODEL) with a hard default of
- * `claude-sonnet-4-6` — Sonnet 4.6 is the recommended balance of intelligence
- * and cost for conversational surfaces.
+ * `claude-sonnet-4-6`. The provider is responsible for translating this logical
+ * id to a concrete one (e.g. AnthropicProvider passes it through; QuantCloudProvider
+ * may resolve it to a Bedrock-style id).
  */
 export function resolveChatModel(override?: string): string {
   if (override && override.length > 0) return override;
@@ -42,28 +54,30 @@ export function resolveChatModel(override?: string): string {
 }
 
 /**
- * Whether the env carries an API key. Used by the UI to render a clean
- * "missing key" empty state instead of triggering the API call.
+ * Whether the configured provider has credentials available. The Anthropic
+ * provider checks ANTHROPIC_API_KEY; the QuantCloud provider checks
+ * QUANT_API_TOKEN.
  */
 export function hasApiKey(): boolean {
-  const key = process.env['ANTHROPIC_API_KEY'];
-  return typeof key === 'string' && key.length > 0;
+  const id = providerId();
+  if (id === 'quantcloud') {
+    const t = process.env['QUANT_API_TOKEN'];
+    return typeof t === 'string' && t.length > 0;
+  }
+  const k = process.env['ANTHROPIC_API_KEY'];
+  return typeof k === 'string' && k.length > 0;
 }
 
 /**
- * Translate stored turns into the Anthropic SDK's MessageParam shape.
- * Exported for testing the request shape.
+ * Translate stored turns into the provider-neutral Message shape.
  *
  * Tool calls are NOT replayed back to the model on subsequent turns — once a
  * thread is loaded from disk, we send the assistant's final reply text only.
- * The model has the reply in its conversational context; replaying tool_use
- * + tool_result blocks would require keeping the original tool_use ids in
- * sync across loads, which adds complexity without a clear benefit.
  *
  * Summary turns are translated to a user-role message with a "Summary of
  * earlier turns" preface so the model treats them as established context.
  */
-export function buildMessages(history: Turn[]): Anthropic.MessageParam[] {
+export function buildMessages(history: Turn[]): Message[] {
   return history.map((turn) => {
     if (turn.role === 'summary') {
       const range = turn.summaryRange
@@ -78,37 +92,21 @@ export function buildMessages(history: Turn[]): Anthropic.MessageParam[] {
   });
 }
 
-/**
- * Tool result handed back to the model. The executor returns either ok+data
- * or fail+error; the loop turns that into a tool_result block (is_error true
- * on fail).
- */
 export interface ToolExecResult {
   ok: boolean;
-  /** Plain-text payload the model sees in its tool_result content. */
   contentText: string;
-  /** Structured data preserved for persistence (UI rendering). */
   data?: Record<string, unknown>;
-  /** Short human summary surfaced to the operator in the UI. */
   summary?: string;
 }
 
 export type ToolExecutor = (name: string, input: unknown) => Promise<ToolExecResult>;
 
 export interface SendMessageResult {
-  /** Final assistant text (the model's last `text` content block). */
   text: string;
-  /** All tool calls made during the loop, in execution order. */
   toolCalls: PersistedToolCall[];
-  /** True when the loop hit the iteration cap before the model said "end_turn". */
   truncated: boolean;
 }
 
-/**
- * Single-turn chat completion. Backwards-compatible signature: no tools,
- * returns the assistant text. Internally just a thin wrapper around
- * `sendMessageWithTools` with an empty tools array.
- */
 export async function sendMessage(
   systemPrompt: string,
   history: Turn[],
@@ -126,34 +124,17 @@ export async function sendMessage(
   return result.text;
 }
 
-/**
- * Chat completion with tool-use loop. Loops while the model emits `tool_use`
- * blocks; executes each via `executeTool`; appends the assistant turn + the
- * tool_result blocks to the message stack; repeats up to MAX_TOOL_ITERATIONS.
- *
- * Returns the final assistant text + all tool calls made (in order). The
- * `truncated` flag is true when the cap is hit before the model says
- * `end_turn` — the caller can surface that as a warning.
- *
- * Error handling: SDK errors are wrapped in `AnthropicChatError` and thrown.
- * Tool execution failures do NOT throw — they become `is_error: true`
- * tool_result blocks the model sees and can recover from.
- */
 export async function sendMessageWithTools(
   systemPrompt: string,
   history: Turn[],
   userContent: string,
-  tools: readonly Anthropic.Tool[],
+  tools: readonly ToolDef[],
   executeTool: ToolExecutor,
   options: SendMessageOptions = {},
 ): Promise<SendMessageResult> {
-  const apiKey = process.env['ANTHROPIC_API_KEY'];
-  if (!apiKey || apiKey.length === 0) {
-    throw new MissingApiKeyError();
-  }
+  const provider = await loadProvider();
 
-  const client = new Anthropic({ apiKey });
-  const messages: Anthropic.MessageParam[] = [
+  const messages: Message[] = [
     ...buildMessages(history),
     { role: 'user', content: userContent },
   ];
@@ -163,45 +144,26 @@ export async function sendMessageWithTools(
   let truncated = false;
 
   for (let iter = 0; iter < MAX_TOOL_ITERATIONS; iter += 1) {
-    let response: Anthropic.Message;
-    try {
-      const createParams: Anthropic.MessageCreateParamsNonStreaming = {
-        model: resolveChatModel(options.model),
-        max_tokens: options.maxTokens ?? DEFAULT_MAX_TOKENS,
-        system: systemPrompt,
-        messages,
-      };
-      if (tools.length > 0) createParams.tools = [...tools];
-      response = await client.messages.create(createParams);
-    } catch (error: unknown) {
-      if (error instanceof Anthropic.APIError) {
-        throw new AnthropicChatError(
-          `Anthropic API error (${error.status ?? 'unknown'}): ${error.message}`,
-          error,
-        );
-      }
-      const message = error instanceof Error ? error.message : String(error);
-      throw new AnthropicChatError(`Anthropic request failed: ${message}`, error);
-    }
+    const response = await callProvider(provider, {
+      model: resolveChatModel(options.model),
+      max_tokens: options.maxTokens ?? DEFAULT_MAX_TOKENS,
+      system: systemPrompt,
+      messages,
+      tools: tools.length > 0 ? [...tools] : undefined,
+    });
 
-    // Always keep the last text response. The Anthropic API guarantees text
-    // content is present on every turn, but tool_use blocks may follow.
-    finalText = extractText(response);
+    finalText = extractText(response.content);
 
     if (response.stop_reason !== 'tool_use') {
-      // Normal end of turn (`end_turn`, `max_tokens`, `stop_sequence`, etc).
       return { text: finalText, toolCalls, truncated };
     }
 
-    // The model wants to call tools. Collect the tool_use blocks, run each,
-    // then append (a) the assistant turn verbatim and (b) the user turn
-    // with the matching tool_result blocks.
-    const toolUseBlocks: Anthropic.ToolUseBlock[] = [];
+    const toolUseBlocks: Array<Extract<ContentBlock, { type: 'tool_use' }>> = [];
     for (const block of response.content) {
       if (block.type === 'tool_use') toolUseBlocks.push(block);
     }
 
-    const resultBlocks: Anthropic.ToolResultBlockParam[] = [];
+    const resultBlocks: Array<Extract<ContentBlock, { type: 'tool_result' }>> = [];
     for (const block of toolUseBlocks) {
       const execResult = await executeTool(block.name, block.input);
       resultBlocks.push({
@@ -230,8 +192,6 @@ export async function sendMessageWithTools(
       toolCalls.push(persisted);
     }
 
-    // The assistant content needs to be passed back verbatim so the model
-    // sees its own tool_use blocks paired with the tool_result blocks.
     messages.push({ role: 'assistant', content: response.content });
     messages.push({ role: 'user', content: resultBlocks });
 
@@ -243,10 +203,194 @@ export async function sendMessageWithTools(
   return { text: finalText, toolCalls, truncated };
 }
 
-function extractText(response: Anthropic.Message): string {
+function providerId(): string {
+  return process.env['PRAXIS_INFERENCE_PROVIDER'] ?? 'anthropic';
+}
+
+let cachedProvider: InferenceProvider | null = null;
+
+async function loadProvider(): Promise<InferenceProvider> {
+  if (cachedProvider) return cachedProvider;
+  const id = providerId();
+  try {
+    if (id === 'anthropic') {
+      cachedProvider = new AnthropicProvider();
+    } else if (id === 'quantcloud') {
+      // Lazy import so OSS users without the optional package don't pay the load.
+      const mod = await import('@praxis-framework/inference-quantcloud');
+      cachedProvider = new mod.QuantCloudProvider();
+    } else {
+      throw new AnthropicChatError(`Unknown PRAXIS_INFERENCE_PROVIDER: ${id}`);
+    }
+  } catch (error: unknown) {
+    if (error instanceof InferenceError && error.code === 'auth') {
+      throw new MissingApiKeyError(error.message);
+    }
+    if (error instanceof AnthropicChatError) throw error;
+    const message = error instanceof Error ? error.message : String(error);
+    throw new AnthropicChatError(`Failed to load inference provider: ${message}`, error);
+  }
+  return cachedProvider;
+}
+
+/** Test seam: reset the cached provider between tests. */
+export function resetProviderForTesting(): void {
+  cachedProvider = null;
+}
+
+async function callProvider(
+  provider: InferenceProvider,
+  req: Parameters<InferenceProvider['createMessage']>[0],
+) {
+  try {
+    return await provider.createMessage(req);
+  } catch (error: unknown) {
+    if (error instanceof InferenceError) {
+      if (error.code === 'auth') throw new MissingApiKeyError(error.message);
+      throw new AnthropicChatError(error.message, error.cause ?? error);
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    throw new AnthropicChatError(`Inference request failed: ${message}`, error);
+  }
+}
+
+function extractText(content: ContentBlock[]): string {
   const parts: string[] = [];
-  for (const block of response.content) {
+  for (const block of content) {
     if (block.type === 'text') parts.push(block.text);
   }
   return parts.join('').trim();
+}
+
+export type ChatStreamEvent =
+  | { type: 'inference_event'; event: StreamEvent }
+  | { type: 'tool_start'; name: string; input: unknown; toolUseId: string }
+  | { type: 'tool_complete'; name: string; toolUseId: string; result: ToolExecResult }
+  | { type: 'complete'; result: SendMessageResult };
+
+/**
+ * Streaming variant of `sendMessageWithTools`. Yields:
+ *   - `inference_event` for each provider stream event (use to push SSE deltas
+ *     to a browser),
+ *   - `tool_start` / `tool_complete` around each tool execution,
+ *   - `complete` once, at the end, carrying the same `SendMessageResult` shape
+ *     as `sendMessageWithTools`.
+ *
+ * Falls back to `createMessage` if the configured provider does not implement
+ * `streamMessage` — callers still receive `complete`, just without any
+ * `inference_event` items in between.
+ */
+export async function* streamMessageWithTools(
+  systemPrompt: string,
+  history: Turn[],
+  userContent: string,
+  tools: readonly ToolDef[],
+  executeTool: ToolExecutor,
+  options: SendMessageOptions = {},
+): AsyncIterable<ChatStreamEvent> {
+  const provider = await loadProvider();
+
+  const messages: Message[] = [
+    ...buildMessages(history),
+    { role: 'user', content: userContent },
+  ];
+
+  const toolCalls: PersistedToolCall[] = [];
+  let finalText = '';
+  let truncated = false;
+
+  for (let iter = 0; iter < MAX_TOOL_ITERATIONS; iter += 1) {
+    const req: InferenceRequest = {
+      model: resolveChatModel(options.model),
+      max_tokens: options.maxTokens ?? DEFAULT_MAX_TOKENS,
+      system: systemPrompt,
+      messages,
+      ...(tools.length > 0 ? { tools: [...tools] } : {}),
+    };
+
+    let response: InferenceResponse;
+    try {
+      if (provider.streamMessage) {
+        const collected: StreamEvent[] = [];
+        for await (const ev of provider.streamMessage(req)) {
+          yield { type: 'inference_event', event: ev };
+          collected.push(ev);
+        }
+        response = await aggregateStream(replay(collected));
+      } else {
+        response = await provider.createMessage(req);
+      }
+    } catch (error: unknown) {
+      if (error instanceof InferenceError) {
+        if (error.code === 'auth') throw new MissingApiKeyError(error.message);
+        throw new AnthropicChatError(error.message, error.cause ?? error);
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      throw new AnthropicChatError(`Inference request failed: ${message}`, error);
+    }
+
+    finalText = extractText(response.content);
+
+    if (response.stop_reason !== 'tool_use') {
+      yield { type: 'complete', result: { text: finalText, toolCalls, truncated } };
+      return;
+    }
+
+    const toolUseBlocks: Array<Extract<ContentBlock, { type: 'tool_use' }>> = [];
+    for (const block of response.content) {
+      if (block.type === 'tool_use') toolUseBlocks.push(block);
+    }
+
+    const resultBlocks: Array<Extract<ContentBlock, { type: 'tool_result' }>> = [];
+    for (const block of toolUseBlocks) {
+      yield { type: 'tool_start', name: block.name, input: block.input, toolUseId: block.id };
+      const execResult = await executeTool(block.name, block.input);
+      yield {
+        type: 'tool_complete',
+        name: block.name,
+        toolUseId: block.id,
+        result: execResult,
+      };
+
+      resultBlocks.push({
+        type: 'tool_result',
+        tool_use_id: block.id,
+        content: execResult.contentText,
+        is_error: !execResult.ok,
+      });
+
+      const inputRecord: Record<string, unknown> =
+        typeof block.input === 'object' && block.input !== null
+          ? { ...(block.input as Record<string, unknown>) }
+          : { value: block.input };
+
+      const persisted: PersistedToolCall = {
+        name: block.name,
+        input: inputRecord,
+        result: execResult.ok
+          ? {
+              ok: true,
+              ...(execResult.summary ? { summary: execResult.summary } : {}),
+              ...(execResult.data ? { data: execResult.data } : {}),
+            }
+          : { ok: false, error: execResult.contentText },
+      };
+      toolCalls.push(persisted);
+    }
+
+    messages.push({ role: 'assistant', content: response.content });
+    messages.push({ role: 'user', content: resultBlocks });
+
+    if (iter === MAX_TOOL_ITERATIONS - 1) truncated = true;
+  }
+
+  yield { type: 'complete', result: { text: finalText, toolCalls, truncated } };
+}
+
+function replay<T>(items: T[]): AsyncIterable<T> {
+  return {
+    async *[Symbol.asyncIterator]() {
+      for (const i of items) yield i;
+    },
+  };
 }
