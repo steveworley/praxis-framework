@@ -1,0 +1,59 @@
+{
+  "name": "@praxis-framework/inference",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "description": "Provider-agnostic inference interface for praxis-framework. Ships with an Anthropic provider; first-party Quant Cloud provider available as a separate package.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./providers/anthropic": {
+      "types": "./dist/providers/anthropic.d.ts",
+      "default": "./dist/providers/anthropic.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/steveworley/praxis-framework.git",
+    "directory": "packages/inference"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/steveworley/praxis-framework#readme",
+  "bugs": {
+    "url": "https://github.com/steveworley/praxis-framework/issues"
+  },
+  "author": "Steve Worley",
+  "keywords": [
+    "praxis",
+    "agent",
+    "anthropic",
+    "claude",
+    "inference",
+    "llm"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "check": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.95.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.8"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
