@@ -1,0 +1,59 @@
+{
+  "name": "@praxis-framework/inference-quantcloud",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "description": "Quant Cloud inference provider for praxis-framework. Routes praxis inference through QuantCDN's AI primitives (model routing, durable execution, spend tracking, agent registry).",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/steveworley/praxis-framework.git",
+    "directory": "packages/inference-quantcloud"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/steveworley/praxis-framework#readme",
+  "bugs": {
+    "url": "https://github.com/steveworley/praxis-framework/issues"
+  },
+  "author": "Steve Worley",
+  "keywords": [
+    "praxis",
+    "agent",
+    "quantcdn",
+    "quant-cloud",
+    "inference",
+    "llm"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "check": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "peerDependencies": {
+    "@praxis-framework/inference": "*"
+  },
+  "dependencies": {
+    "@quantcdn/quant-client": "^4.10.0"
+  },
+  "devDependencies": {
+    "@praxis-framework/inference": "*",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.8"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
