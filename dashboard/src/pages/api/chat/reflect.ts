@@ -5,6 +5,7 @@ import {
   AnthropicChatError,
   hasApiKey,
   MissingApiKeyError,
+  missingApiKeyMessage,
   sendMessageWithTools,
   type ToolExecutor,
 } from '@/lib/chat/anthropic.js';
@@ -52,9 +53,7 @@ const REFLECTION_PROMPT = [
 
 export const POST: APIRoute = async ({ request }) => {
   if (!hasApiKey()) {
-    return json(503, {
-      error: 'ANTHROPIC_API_KEY is not set. The chat surface is disabled.',
-    });
+    return json(503, { error: missingApiKeyMessage() });
   }
 
   let body: unknown;
