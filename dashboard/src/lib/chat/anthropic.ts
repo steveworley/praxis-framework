@@ -69,6 +69,18 @@ export function hasApiKey(): boolean {
 }
 
 /**
+ * Human-readable message naming the env var the configured provider needs
+ * but hasn't been given. Used by API routes so operators see "QUANT_API_TOKEN
+ * is not set" when running against QuantCloud, not the hardcoded
+ * ANTHROPIC_API_KEY.
+ */
+export function missingApiKeyMessage(): string {
+  const id = providerId();
+  const envVar = id === 'quantcloud' ? 'QUANT_API_TOKEN' : 'ANTHROPIC_API_KEY';
+  return `${envVar} is not set. The chat surface is disabled.`;
+}
+
+/**
  * Translate stored turns into the provider-neutral Message shape.
  *
  * Tool calls are NOT replayed back to the model on subsequent turns — once a

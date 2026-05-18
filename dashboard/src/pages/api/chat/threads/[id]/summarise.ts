@@ -1,6 +1,6 @@
 import type { APIRoute } from 'astro';
 
-import { hasApiKey } from '@/lib/chat/anthropic.js';
+import { hasApiKey, missingApiKeyMessage } from '@/lib/chat/anthropic.js';
 import { loadThread, serializeTurn } from '@/lib/chat/conversation.js';
 import { summariseThread } from '@/lib/chat/summarise.js';
 import { getRoleHome } from '@/lib/role-home.js';
@@ -20,9 +20,7 @@ const THREAD_ID_RE = /^[A-Za-z0-9._-]+$/;
  */
 export const POST: APIRoute = async ({ params }) => {
   if (!hasApiKey()) {
-    return json(503, {
-      error: 'ANTHROPIC_API_KEY is not set. The chat surface is disabled.',
-    });
+    return json(503, { error: missingApiKeyMessage() });
   }
 
   const threadId = params['id'];
