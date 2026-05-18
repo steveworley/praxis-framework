@@ -25,6 +25,14 @@ jobs:
         # which resolves to the package's dist/ — so it must be built first.
         run: npm run build --workspace=@praxis-framework/seed
 
+      - name: Build inference packages
+        # The dashboard imports @praxis-framework/inference (and optionally
+        # @praxis-framework/inference-quantcloud) via workspace links. Both
+        # resolve to their dist/ output, so they must be built before typecheck.
+        run: |
+          npm run build --workspace=@praxis-framework/inference
+          npm run build --workspace=@praxis-framework/inference-quantcloud
+
       - name: Typecheck (all workspaces)
         run: npm run check
 
