@@ -102,13 +102,23 @@ export class QuantCloudProvider implements InferenceProvider {
     return MODEL_MAP[logical] ?? logical;
   }
 
-  async createMessage(req: InferenceRequest): Promise<InferenceResponse> {
+  async createMessage(
+    req: InferenceRequest,
+    signal?: AbortSignal,
+  ): Promise<InferenceResponse> {
     if (this.preferStreaming()) {
-      return aggregateStream(this.streamMessage(req));
+      return aggregateStream(this.streamMessage(req, signal));
     }
+    if (signal?.aborted) throw abortError(signal);
     const body = this.buildBody(req);
     try {
-      const res = await this.api.chatInference(this.org, body as never);
+      // The Quant SDK wraps Axios — pass `signal` through the Axios request
+      // config so the underlying HTTP request is actually cancelled.
+      const res = await this.api.chatInference(
+        this.org,
+        body as never,
+        (signal ? { signal } : undefined) as never,
+      );
       return fromQuantResponse(res.data as never);
     } catch (error: unknown) {
       throw wrapError(error);
@@ -117,25 +127,34 @@ export class QuantCloudProvider implements InferenceProvider {
 
   async *streamMessage(
     req: InferenceRequest,
-    _signal?: AbortSignal,
+    signal?: AbortSignal,
   ): AsyncIterable<StreamEvent> {
     const body: ChatInferenceBody & { stream: true } = {
       ...this.buildBody(req),
       stream: true,
     };
 
+    if (signal?.aborted) throw abortError(signal);
+
     let upstream: { data: AsyncIterable<Buffer | string | Uint8Array> };
     try {
+      // Pass `signal` through the Axios request config so the SDK cancels the
+      // upstream HTTP request itself. Falls back to the per-event check below
+      // for the inter-event window if the SDK ever stops honouring signal.
       upstream = (await this.api.chatInferenceStream(this.org, body as never, {
         responseType: 'stream',
         headers: { Accept: 'text/event-stream' },
+        ...(signal ? { signal } : {}),
       } as never)) as never;
     } catch (error: unknown) {
       throw wrapError(error);
     }
 
     try {
-      yield* translateQuantStream(parseSSE(upstream.data));
+      for await (const ev of translateQuantStream(parseSSE(upstream.data))) {
+        if (signal?.aborted) throw abortError(signal);
+        yield ev;
+      }
     } catch (error: unknown) {
       throw wrapError(error);
     }
@@ -162,6 +181,20 @@ export class QuantCloudProvider implements InferenceProvider {
     }
     return body;
   }
+}
+
+function abortError(signal: AbortSignal): InferenceError {
+  const reason =
+    signal.reason instanceof Error
+      ? signal.reason
+      : signal.reason !== undefined
+        ? new Error(String(signal.reason))
+        : new Error('aborted');
+  return new InferenceError(
+    `Quant Cloud request aborted: ${reason.message}`,
+    'network',
+    reason,
+  );
 }
 
 function wrapError(error: unknown): InferenceError {

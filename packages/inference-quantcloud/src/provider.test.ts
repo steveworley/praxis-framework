@@ -30,12 +30,15 @@ describe('QuantCloudProvider.createMessage', () => {
     expect(res.content).toEqual([{ type: 'text', text: 'hi back' }]);
     expect(res.stop_reason).toBe('end_turn');
     expect(chatInference).toHaveBeenCalledTimes(1);
-    expect(chatInference).toHaveBeenCalledWith('org_123', {
+    expect(chatInference.mock.calls[0]![0]).toBe('org_123');
+    expect(chatInference.mock.calls[0]![1]).toEqual({
       modelId: 'anthropic.claude-sonnet-4-6-v1:0',
       systemPrompt: 'sys',
       messages: [{ role: 'user', content: [{ text: 'hi' }] }],
       maxTokens: 100,
     });
+    // No signal supplied — third arg stays undefined so the SDK falls through.
+    expect(chatInference.mock.calls[0]![2]).toBeUndefined();
   });
 
   it('createMessage defaults to streaming-aggregate (streaming endpoint for token UX)', async () => {
@@ -334,6 +337,148 @@ describe('QuantCloudProvider.createMessage', () => {
     });
     // Asserts we asked the SDK for a raw stream rather than a parsed object.
     expect(chatInferenceStream.mock.calls[0]![2]).toMatchObject({ responseType: 'stream' });
+  });
+
+  it('throws InferenceError immediately when createMessage is called with an already-aborted signal', async () => {
+    const chatInference = vi.fn();
+    const { QuantCloudProvider } = await import('./provider.ts');
+    const { InferenceError } = await import('@praxis-framework/inference');
+    const provider = new QuantCloudProvider({
+      inferenceApi: { chatInference } as never,
+      organisation: 'org_123',
+      preferStreaming: false,
+    });
+    const controller = new AbortController();
+    controller.abort();
+    const err = await provider
+      .createMessage(
+        {
+          model: 'claude-sonnet-4-6',
+          messages: [{ role: 'user', content: 'hi' }],
+          max_tokens: 50,
+        },
+        controller.signal,
+      )
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(InferenceError);
+    expect((err as Error).message).toMatch(/aborted/);
+    expect(chatInference).not.toHaveBeenCalled();
+  });
+
+  it('forwards the AbortSignal to the Axios request config on createMessage', async () => {
+    const chatInference = vi.fn().mockResolvedValue({
+      data: {
+        requestId: 'r',
+        model: 'm',
+        response: { role: 'assistant', content: 'ok' },
+        usage: { input_tokens: 1, output_tokens: 1 },
+      },
+    });
+    const { QuantCloudProvider } = await import('./provider.ts');
+    const provider = new QuantCloudProvider({
+      inferenceApi: { chatInference } as never,
+      organisation: 'org_123',
+      preferStreaming: false,
+    });
+    const controller = new AbortController();
+    await provider.createMessage(
+      {
+        model: 'claude-sonnet-4-6',
+        messages: [{ role: 'user', content: 'hi' }],
+        max_tokens: 50,
+      },
+      controller.signal,
+    );
+    expect(chatInference).toHaveBeenCalledTimes(1);
+    expect(chatInference.mock.calls[0]![2]).toEqual({ signal: controller.signal });
+  });
+
+  it('throws InferenceError immediately when streamMessage is called with an already-aborted signal', async () => {
+    const chatInferenceStream = vi.fn();
+    const { QuantCloudProvider } = await import('./provider.ts');
+    const { InferenceError } = await import('@praxis-framework/inference');
+    const provider = new QuantCloudProvider({
+      inferenceApi: { chatInferenceStream } as never,
+      organisation: 'org_123',
+    });
+    const controller = new AbortController();
+    controller.abort();
+    const err = await (async () => {
+      try {
+        for await (const _ev of provider.streamMessage!(
+          {
+            model: 'claude-sonnet-4-6',
+            messages: [{ role: 'user', content: 'hi' }],
+            max_tokens: 50,
+          },
+          controller.signal,
+        )) {
+          // unreachable
+        }
+        return null;
+      } catch (e) {
+        return e;
+      }
+    })();
+    expect(err).toBeInstanceOf(InferenceError);
+    expect((err as Error).message).toMatch(/aborted/);
+    expect(chatInferenceStream).not.toHaveBeenCalled();
+  });
+
+  it('stops yielding stream events and throws when the signal aborts mid-stream', async () => {
+    const controller = new AbortController();
+    const chatInferenceStream = vi.fn().mockResolvedValue({
+      data: {
+        [Symbol.asyncIterator]: async function* () {
+          yield Buffer.from('event: start\ndata: {"requestId":"r1","model":"m"}\n\n');
+          yield Buffer.from('event: content\ndata: {"delta":"hi"}\n\n');
+          // Caller aborts after the first content event — subsequent
+          // events must not be yielded to the consumer.
+          yield Buffer.from('event: content\ndata: {"delta":" there"}\n\n');
+          yield Buffer.from(
+            'event: done\ndata: {"stopReason":"end_turn","usage":{"inputTokens":3,"outputTokens":1}}\n\n',
+          );
+        },
+      },
+    });
+    const { QuantCloudProvider } = await import('./provider.ts');
+    const { InferenceError } = await import('@praxis-framework/inference');
+    const provider = new QuantCloudProvider({
+      inferenceApi: { chatInferenceStream } as never,
+      organisation: 'org_123',
+    });
+    const collected: unknown[] = [];
+    const run = async () => {
+      for await (const ev of provider.streamMessage!(
+        {
+          model: 'claude-sonnet-4-6',
+          messages: [{ role: 'user', content: 'hi' }],
+          max_tokens: 50,
+        },
+        controller.signal,
+      )) {
+        collected.push(ev);
+        // Abort right after the first content_block_delta surfaces.
+        if (
+          (ev as { type: string }).type === 'content_block_delta' &&
+          collected.filter((e) => (e as { type: string }).type === 'content_block_delta').length === 1
+        ) {
+          controller.abort();
+        }
+      }
+    };
+    const err = await run().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(InferenceError);
+    expect((err as Error).message).toMatch(/aborted/);
+    // The single content delta should be the last thing yielded.
+    expect(collected.at(-1)).toMatchObject({
+      type: 'content_block_delta',
+      delta: { type: 'text_delta', text: 'hi' },
+    });
+    // The SDK was called with the signal forwarded to the Axios config.
+    expect(chatInferenceStream.mock.calls[0]![2]).toMatchObject({
+      signal: controller.signal,
+    });
   });
 
   it('throws InferenceError(code=auth) when an injected api is provided but organisation is missing', async () => {

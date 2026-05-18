@@ -64,12 +64,14 @@ describe('AnthropicProvider.createMessage', () => {
       usage: { input_tokens: 5, output_tokens: 2 },
       raw: expect.anything(),
     });
-    expect(createSpy).toHaveBeenCalledWith({
+    expect(createSpy.mock.calls[0]![0]).toEqual({
       model: 'claude-sonnet-4-6',
       max_tokens: 100,
       system: 'sys',
       messages: [{ role: 'user', content: 'hi' }],
     });
+    // No signal supplied — the SDK gets `undefined` for options.
+    expect(createSpy.mock.calls[0]![1]).toBeUndefined();
     expect(constructorSpy).toHaveBeenCalledWith({ apiKey: 'sk-test' });
   });
 
@@ -218,10 +220,126 @@ describe('AnthropicProvider.createMessage', () => {
       },
       { type: 'message_stop' },
     ]);
-    expect(streamSpy).toHaveBeenCalledWith(expect.objectContaining({
+    expect(streamSpy.mock.calls[0]![0]).toMatchObject({
       model: 'claude-sonnet-4-6',
       max_tokens: 50,
-    }));
+    });
+    // No signal supplied — the SDK gets `undefined` for options.
+    expect(streamSpy.mock.calls[0]![1]).toBeUndefined();
+  });
+
+  it('throws InferenceError immediately when createMessage is called with an already-aborted signal', async () => {
+    process.env['ANTHROPIC_API_KEY'] = 'sk-test';
+    const { AnthropicProvider, InferenceError } = await import('../index.ts');
+    const provider = new AnthropicProvider();
+    const controller = new AbortController();
+    controller.abort();
+    const err = await provider
+      .createMessage(
+        {
+          model: 'claude-sonnet-4-6',
+          messages: [{ role: 'user', content: 'hi' }],
+          max_tokens: 50,
+        },
+        controller.signal,
+      )
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(InferenceError);
+    expect((err as Error).message).toMatch(/aborted/);
+    expect(createSpy).not.toHaveBeenCalled();
+  });
+
+  it('forwards the AbortSignal to the SDK request options when createMessage is called', async () => {
+    process.env['ANTHROPIC_API_KEY'] = 'sk-test';
+    createSpy.mockResolvedValueOnce({
+      id: 'm',
+      model: 'claude-sonnet-4-6',
+      content: [],
+      stop_reason: 'end_turn',
+      usage: { input_tokens: 1, output_tokens: 1 },
+    });
+    const { AnthropicProvider } = await import('./anthropic.ts');
+    const provider = new AnthropicProvider();
+    const controller = new AbortController();
+    await provider.createMessage(
+      {
+        model: 'claude-sonnet-4-6',
+        messages: [{ role: 'user', content: 'hi' }],
+        max_tokens: 50,
+      },
+      controller.signal,
+    );
+    expect(createSpy.mock.calls[0]![1]).toEqual({ signal: controller.signal });
+  });
+
+  it('throws InferenceError immediately when streamMessage is called with an already-aborted signal', async () => {
+    process.env['ANTHROPIC_API_KEY'] = 'sk-test';
+    const { AnthropicProvider, InferenceError } = await import('../index.ts');
+    const provider = new AnthropicProvider();
+    const controller = new AbortController();
+    controller.abort();
+    const err = await (async () => {
+      try {
+        for await (const _ev of provider.streamMessage!(
+          {
+            model: 'claude-sonnet-4-6',
+            messages: [{ role: 'user', content: 'hi' }],
+            max_tokens: 50,
+          },
+          controller.signal,
+        )) {
+          // unreachable
+        }
+        return null;
+      } catch (e) {
+        return e;
+      }
+    })();
+    expect(err).toBeInstanceOf(InferenceError);
+    expect((err as Error).message).toMatch(/aborted/);
+    expect(streamSpy).not.toHaveBeenCalled();
+  });
+
+  it('stops yielding stream events and throws when the signal aborts mid-stream', async () => {
+    process.env['ANTHROPIC_API_KEY'] = 'sk-test';
+    const controller = new AbortController();
+    const sdkEvents = [
+      { type: 'message_start', message: { id: 'msg_1', model: 'claude-sonnet-4-6' } },
+      { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+      { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'hi' } },
+      // After this event we abort — subsequent events must not be yielded.
+      { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: ' there' } },
+      { type: 'message_stop' },
+    ];
+    streamSpy.mockReturnValue({
+      [Symbol.asyncIterator]: async function* () {
+        for (const e of sdkEvents) yield e;
+      },
+    });
+
+    const { AnthropicProvider, InferenceError } = await import('../index.ts');
+    const provider = new AnthropicProvider();
+    const collected: unknown[] = [];
+    const run = async () => {
+      for await (const ev of provider.streamMessage!(
+        {
+          model: 'claude-sonnet-4-6',
+          messages: [{ role: 'user', content: 'hi' }],
+          max_tokens: 50,
+        },
+        controller.signal,
+      )) {
+        collected.push(ev);
+        if (collected.length === 3) controller.abort();
+      }
+    };
+    const err = await run().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(InferenceError);
+    expect((err as Error).message).toMatch(/aborted/);
+    // We yielded 3 events before aborting — no events should follow.
+    expect(collected).toHaveLength(3);
+    // Confirm the signal was passed through to the SDK call too.
+    expect(streamSpy.mock.calls[0]![1]).toEqual({ signal: controller.signal });
   });
 
   it('forwards temperature and stop_sequences when set', async () => {

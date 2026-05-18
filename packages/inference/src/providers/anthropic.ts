@@ -39,7 +39,10 @@ export class AnthropicProvider implements InferenceProvider {
     return logical;
   }
 
-  async createMessage(req: InferenceRequest): Promise<InferenceResponse> {
+  async createMessage(
+    req: InferenceRequest,
+    signal?: AbortSignal,
+  ): Promise<InferenceResponse> {
     const params: Anthropic.MessageCreateParamsNonStreaming = {
       model: this.resolveModel(req.model),
       max_tokens: req.max_tokens,
@@ -52,9 +55,11 @@ export class AnthropicProvider implements InferenceProvider {
     if (req.temperature !== undefined) params.temperature = req.temperature;
     if (req.stop_sequences) params.stop_sequences = req.stop_sequences;
 
+    if (signal?.aborted) throw abortError(signal);
+
     let res: Anthropic.Message;
     try {
-      res = await this.client.messages.create(params);
+      res = await this.client.messages.create(params, signal ? { signal } : undefined);
     } catch (error: unknown) {
       throw wrapError(error);
     }
@@ -71,7 +76,7 @@ export class AnthropicProvider implements InferenceProvider {
 
   async *streamMessage(
     req: InferenceRequest,
-    _signal?: AbortSignal,
+    signal?: AbortSignal,
   ): AsyncIterable<StreamEvent> {
     const params: Anthropic.MessageCreateParamsStreaming = {
       model: this.resolveModel(req.model),
@@ -84,15 +89,21 @@ export class AnthropicProvider implements InferenceProvider {
     if (req.temperature !== undefined) params.temperature = req.temperature;
     if (req.stop_sequences) params.stop_sequences = req.stop_sequences;
 
+    if (signal?.aborted) throw abortError(signal);
+
     let stream: AsyncIterable<unknown>;
     try {
-      stream = this.client.messages.stream(params) as unknown as AsyncIterable<unknown>;
+      stream = this.client.messages.stream(
+        params,
+        signal ? { signal } : undefined,
+      ) as unknown as AsyncIterable<unknown>;
     } catch (error: unknown) {
       throw wrapError(error);
     }
 
     try {
       for await (const ev of stream) {
+        if (signal?.aborted) throw abortError(signal);
         const translated = translateStreamEvent(ev);
         if (translated) yield translated;
       }
@@ -100,6 +111,20 @@ export class AnthropicProvider implements InferenceProvider {
       throw wrapError(error);
     }
   }
+}
+
+function abortError(signal: AbortSignal): InferenceError {
+  const reason =
+    signal.reason instanceof Error
+      ? signal.reason
+      : signal.reason !== undefined
+        ? new Error(String(signal.reason))
+        : new Error('aborted');
+  return new InferenceError(
+    `Anthropic request aborted: ${reason.message}`,
+    'network',
+    reason,
+  );
 }
 
 interface SDKMessageStartEvent {
