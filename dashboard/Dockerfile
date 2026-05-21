@@ -21,7 +21,7 @@
 # -----------------------------------------------------------------------------
 # Stage 1: build
 # -----------------------------------------------------------------------------
-FROM node:20-alpine AS builder
+FROM node:20-bookworm-slim AS builder
 
 WORKDIR /repo
 
@@ -32,11 +32,15 @@ COPY package.json package-lock.json ./
 COPY dashboard/package.json ./dashboard/
 COPY cli/package.json ./cli/
 COPY packages/seed/package.json ./packages/seed/
+COPY packages/inference/package.json ./packages/inference/
+COPY packages/inference-quantcloud/package.json ./packages/inference-quantcloud/
 
 RUN npm ci --no-audit --no-fund
 
 # Copy the rest of the workspaces that participate in the build.
 COPY packages/seed ./packages/seed
+COPY packages/inference ./packages/inference
+COPY packages/inference-quantcloud ./packages/inference-quantcloud
 COPY dashboard ./dashboard
 
 # The seed package's build step (`scripts/copy-template.mjs`) copies the
@@ -45,8 +49,11 @@ COPY dashboard ./dashboard
 # container because template/ isn't in the build context.
 COPY template ./template
 
-# The seed package emits compiled output to packages/seed/dist — the dashboard
-# imports that, so it must be built first.
+# Build workspaces the dashboard depends on first. Order matters:
+# inference is imported by both inference-quantcloud and the dashboard;
+# seed and inference-quantcloud are imported by the dashboard.
+RUN npm run build --workspace=@praxis-framework/inference
+RUN npm run build --workspace=@praxis-framework/inference-quantcloud
 RUN npm run build --workspace=@praxis-framework/seed
 RUN npm run build --workspace=praxis-dashboard
 
@@ -57,10 +64,12 @@ RUN npm prune --omit=dev
 # -----------------------------------------------------------------------------
 # Stage 2: runtime
 # -----------------------------------------------------------------------------
-FROM node:20-alpine
+FROM node:20-bookworm-slim
 
 # git is required by the wizard's seed flow (simple-git).
-RUN apk add --no-cache git
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends git \
+ && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -72,6 +81,10 @@ COPY --from=builder /repo/package.json ./package.json
 COPY --from=builder /repo/node_modules ./node_modules
 COPY --from=builder /repo/packages/seed/package.json ./packages/seed/package.json
 COPY --from=builder /repo/packages/seed/dist ./packages/seed/dist
+COPY --from=builder /repo/packages/inference/package.json ./packages/inference/package.json
+COPY --from=builder /repo/packages/inference/dist ./packages/inference/dist
+COPY --from=builder /repo/packages/inference-quantcloud/package.json ./packages/inference-quantcloud/package.json
+COPY --from=builder /repo/packages/inference-quantcloud/dist ./packages/inference-quantcloud/dist
 COPY --from=builder /repo/dashboard/package.json ./dashboard/package.json
 COPY --from=builder /repo/dashboard/dist ./dashboard/dist
 COPY --from=builder /repo/dashboard/node_modules ./dashboard/node_modules
