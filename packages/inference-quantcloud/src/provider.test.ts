@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 describe('QuantCloudProvider.createMessage', () => {
   it('forwards a basic text request to AIInferenceApi.chatInference with the org and translated body', async () => {
@@ -500,5 +500,53 @@ describe('QuantCloudProvider.createMessage', () => {
     } finally {
       if (prevOrg !== undefined) process.env['QUANT_ORGANISATION'] = prevOrg;
     }
+  });
+
+  describe('has(capability)', () => {
+    const prevToken = process.env['QUANT_API_TOKEN'];
+    const prevOrg = process.env['QUANT_ORGANISATION'];
+
+    beforeEach(() => {
+      delete process.env['QUANT_API_TOKEN'];
+      delete process.env['QUANT_ORGANISATION'];
+    });
+
+    afterEach(() => {
+      if (prevToken === undefined) delete process.env['QUANT_API_TOKEN'];
+      else process.env['QUANT_API_TOKEN'] = prevToken;
+      if (prevOrg === undefined) delete process.env['QUANT_ORGANISATION'];
+      else process.env['QUANT_ORGANISATION'] = prevOrg;
+    });
+
+    it('returns true for all capabilities when both creds present', async () => {
+      process.env['QUANT_API_TOKEN'] = 'token-test';
+      process.env['QUANT_ORGANISATION'] = 'org-test';
+      const { QuantCloudProvider } = await import('./provider.ts');
+      const p = new QuantCloudProvider();
+      expect(p.has('chat')).toBe(true);
+      expect(p.has('streaming')).toBe(true);
+      expect(p.has('tools')).toBe(true);
+    });
+
+    it('returns true via explicit options without env vars', async () => {
+      const { QuantCloudProvider } = await import('./provider.ts');
+      const p = new QuantCloudProvider({
+        accessToken: 'token-test',
+        organisation: 'org-test',
+      });
+      expect(p.has('chat')).toBe(true);
+    });
+
+    it('returns true via injected inferenceApi + org from options', async () => {
+      const { QuantCloudProvider } = await import('./provider.ts');
+      const fakeApi = {} as unknown as NonNullable<
+        ConstructorParameters<typeof QuantCloudProvider>[0]
+      >['inferenceApi'];
+      const p = new QuantCloudProvider({
+        inferenceApi: fakeApi,
+        organisation: 'org-test',
+      });
+      expect(p.has('chat')).toBe(true);
+    });
   });
 });
