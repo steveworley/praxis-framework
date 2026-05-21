@@ -13,6 +13,8 @@
  * component only emits the markup that island bindings hook into. The page
  * is responsible for the surrounding `x-data` scope.
  */
+import { missingApiKeyMessage } from '@/lib/chat/anthropic.js';
+
 interface Props {
   apiKeyConfigured: boolean;
   personaShort: string;
@@ -20,6 +22,7 @@ interface Props {
 
 const { apiKeyConfigured, personaShort } = Astro.props;
 const placeholder = `Talk to ${personaShort}…`;
+const disabledMessage = missingApiKeyMessage();
 ---
 
 <div class="composer">
@@ -50,13 +53,13 @@ const placeholder = `Talk to ${personaShort}…`;
     ) : (
       <>
         <textarea
-          placeholder="Chat is disabled — set ANTHROPIC_API_KEY to enable."
+          placeholder={`Chat is disabled — ${disabledMessage}`}
           rows="2"
           disabled
         ></textarea>
         <div class="composer-foot">
           <span class="hint">
-            Chat is disabled — set <code>ANTHROPIC_API_KEY</code> to enable.
+            Chat is disabled — {disabledMessage}
           </span>
           <button type="button" class="send" disabled>SEND →</button>
         </div>
