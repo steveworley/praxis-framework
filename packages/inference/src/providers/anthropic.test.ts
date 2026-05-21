@@ -362,4 +362,42 @@ describe('AnthropicProvider.createMessage', () => {
       stop_sequences: ['END'],
     });
   });
+
+  describe('has(capability)', () => {
+    const prev = process.env['ANTHROPIC_API_KEY'];
+
+    beforeEach(() => {
+      delete process.env['ANTHROPIC_API_KEY'];
+    });
+
+    afterEach(() => {
+      if (prev === undefined) delete process.env['ANTHROPIC_API_KEY'];
+      else process.env['ANTHROPIC_API_KEY'] = prev;
+    });
+
+    it('returns true for all capabilities when api key is present', async () => {
+      process.env['ANTHROPIC_API_KEY'] = 'sk-test';
+      const { AnthropicProvider } = await import('./anthropic.ts');
+      const p = new AnthropicProvider();
+      expect(p.has('chat')).toBe(true);
+      expect(p.has('streaming')).toBe(true);
+      expect(p.has('tools')).toBe(true);
+    });
+
+    it('returns true via apiKey constructor option without env var', async () => {
+      const { AnthropicProvider } = await import('./anthropic.ts');
+      const p = new AnthropicProvider({ apiKey: 'sk-test' });
+      expect(p.has('chat')).toBe(true);
+    });
+
+    it('returns true via client injection (testing seam)', async () => {
+      const { AnthropicProvider } = await import('./anthropic.ts');
+      // When a pre-built client is injected, we trust the caller has auth set up.
+      const fakeClient = {} as unknown as NonNullable<
+        ConstructorParameters<typeof AnthropicProvider>[0]
+      >['client'];
+      const p = new AnthropicProvider({ client: fakeClient });
+      expect(p.has('chat')).toBe(true);
+    });
+  });
 });
