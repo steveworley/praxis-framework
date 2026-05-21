@@ -25,18 +25,66 @@ vi.mock('@anthropic-ai/sdk', () => {
   return { default: Anthropic, APIError };
 });
 
+// Stub the optional quantcloud package so the dashboard's lazy-import in
+// loadProvider() succeeds in tests without pulling in real quantcloud deps.
+// The constructor mirrors the real provider: throws InferenceError on missing
+// creds, exposes has() that returns true when creds were present at
+// construction. Imports the real InferenceError so loadProvider's
+// `error instanceof InferenceError` check still narrows correctly.
+vi.mock('@praxis-framework/inference-quantcloud', async () => {
+  const { InferenceError } = await import('@praxis-framework/inference');
+  return {
+    QuantCloudProvider: class FakeQuantCloudProvider {
+      readonly id = 'quantcloud';
+      private creds: boolean;
+      constructor() {
+        const token = process.env['QUANT_API_TOKEN'];
+        const org = process.env['QUANT_ORGANISATION'];
+        if (!token) {
+          throw new InferenceError(
+            'QUANT_API_TOKEN environment variable is not set',
+            'auth',
+          );
+        }
+        if (!org) {
+          throw new InferenceError(
+            'QUANT_ORGANISATION environment variable is not set',
+            'auth',
+          );
+        }
+        this.creds = true;
+      }
+      has(): boolean {
+        return this.creds;
+      }
+      resolveModel(x: string): string {
+        return x;
+      }
+      async createMessage(): Promise<never> {
+        throw new Error('not implemented in test');
+      }
+    },
+  };
+});
+
 let prevKey: string | undefined;
 let prevModel: string | undefined;
 let prevProvider: string | undefined;
 let prevQuantToken: string | undefined;
+let prevQuantOrg: string | undefined;
 
-beforeEach(() => {
+beforeEach(async () => {
   createSpy.mockReset();
   constructorSpy.mockReset();
   prevKey = process.env['ANTHROPIC_API_KEY'];
   prevModel = process.env['PRAXIS_CHAT_MODEL'];
   prevProvider = process.env['PRAXIS_INFERENCE_PROVIDER'];
   prevQuantToken = process.env['QUANT_API_TOKEN'];
+  prevQuantOrg = process.env['QUANT_ORGANISATION'];
+  // The chat module caches the constructed provider — reset between tests so
+  // each test sees a fresh provider built from its env-var setup.
+  const { resetProviderForTesting } = await import('./anthropic.ts');
+  resetProviderForTesting();
 });
 
 afterEach(() => {
@@ -48,19 +96,21 @@ afterEach(() => {
   else process.env['PRAXIS_INFERENCE_PROVIDER'] = prevProvider;
   if (prevQuantToken === undefined) delete process.env['QUANT_API_TOKEN'];
   else process.env['QUANT_API_TOKEN'] = prevQuantToken;
+  if (prevQuantOrg === undefined) delete process.env['QUANT_ORGANISATION'];
+  else process.env['QUANT_ORGANISATION'] = prevQuantOrg;
 });
 
 describe('hasApiKey + resolveChatModel', () => {
   it('reports false when the env var is missing', async () => {
     delete process.env['ANTHROPIC_API_KEY'];
     const { hasApiKey } = await import('./anthropic.ts');
-    expect(hasApiKey()).toBe(false);
+    expect(await hasApiKey()).toBe(false);
   });
 
   it('reports true when the env var is set', async () => {
     process.env['ANTHROPIC_API_KEY'] = 'sk-test';
     const { hasApiKey } = await import('./anthropic.ts');
-    expect(hasApiKey()).toBe(true);
+    expect(await hasApiKey()).toBe(true);
   });
 
   it('defaults the chat model to claude-sonnet-4-6', async () => {
@@ -78,20 +128,32 @@ describe('hasApiKey + resolveChatModel', () => {
   it('hasApiKey returns false on quantcloud when QUANT_API_TOKEN is unset, and missingApiKeyMessage names QUANT_API_TOKEN', async () => {
     process.env['PRAXIS_INFERENCE_PROVIDER'] = 'quantcloud';
     delete process.env['QUANT_API_TOKEN'];
+    delete process.env['QUANT_ORGANISATION'];
     // Even with ANTHROPIC_API_KEY present, the QuantCloud provider gates on QUANT_API_TOKEN.
     process.env['ANTHROPIC_API_KEY'] = 'sk-test';
     const { hasApiKey, missingApiKeyMessage } = await import('./anthropic.ts');
-    expect(hasApiKey()).toBe(false);
+    expect(await hasApiKey()).toBe(false);
     const msg = missingApiKeyMessage();
     expect(msg).toContain('QUANT_API_TOKEN');
     expect(msg).not.toContain('ANTHROPIC_API_KEY');
   });
 
-  it('hasApiKey returns true on quantcloud when QUANT_API_TOKEN is set', async () => {
+  it('hasApiKey returns true under quantcloud provider with both creds set', async () => {
     process.env['PRAXIS_INFERENCE_PROVIDER'] = 'quantcloud';
-    process.env['QUANT_API_TOKEN'] = 'qc-test';
+    process.env['QUANT_API_TOKEN'] = 'token-test';
+    process.env['QUANT_ORGANISATION'] = 'org-test';
+    delete process.env['ANTHROPIC_API_KEY'];
     const { hasApiKey } = await import('./anthropic.ts');
-    expect(hasApiKey()).toBe(true);
+    expect(await hasApiKey()).toBe(true);
+  });
+
+  it('hasApiKey returns false under quantcloud provider when QUANT_ORGANISATION missing', async () => {
+    process.env['PRAXIS_INFERENCE_PROVIDER'] = 'quantcloud';
+    process.env['QUANT_API_TOKEN'] = 'token-test';
+    delete process.env['QUANT_ORGANISATION'];
+    delete process.env['ANTHROPIC_API_KEY'];
+    const { hasApiKey } = await import('./anthropic.ts');
+    expect(await hasApiKey()).toBe(false);
   });
 
   it('missingApiKeyMessage names ANTHROPIC_API_KEY when the provider defaults to anthropic', async () => {
