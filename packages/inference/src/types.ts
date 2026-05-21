@@ -79,6 +79,8 @@ export type StreamEvent =
     }
   | { type: 'message_stop' };
 
+export type InferenceCapability = 'chat' | 'streaming' | 'tools';
+
 export interface InferenceProvider {
   readonly id: string;
   createMessage(
@@ -90,6 +92,17 @@ export interface InferenceProvider {
     signal?: AbortSignal,
   ): AsyncIterable<StreamEvent>;
   resolveModel(logical: string): string;
+  /**
+   * Capability gate.
+   *
+   * `chat`     — credentials present and the provider can serve a request now.
+   * `streaming` — provider can emit token-by-token events (implies `chat`).
+   * `tools`    — provider supports the Anthropic-shape tool loop (implies `chat`).
+   *
+   * Implementations may short-circuit: a `false` from `chat` implies `false` for
+   * `streaming` and `tools`.
+   */
+  has(capability: InferenceCapability): boolean;
 }
 
 export type InferenceErrorCode =

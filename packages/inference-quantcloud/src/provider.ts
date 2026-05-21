@@ -3,6 +3,7 @@ import { AIInferenceApi, Configuration } from '@quantcdn/quant-client';
 import {
   aggregateStream,
   InferenceError,
+  type InferenceCapability,
   type InferenceProvider,
   type InferenceRequest,
   type InferenceResponse,
@@ -69,6 +70,7 @@ export class QuantCloudProvider implements InferenceProvider {
   readonly id = 'quantcloud';
   private api: AIInferenceApi;
   private org: string;
+  private hasCredentials: boolean;
 
   constructor(private opts: QuantCloudProviderOptions = {}) {
     if (opts.inferenceApi) {
@@ -95,11 +97,17 @@ export class QuantCloudProvider implements InferenceProvider {
       );
     }
     this.org = org;
+    this.hasCredentials = true;
   }
 
   resolveModel(logical: string): string {
     if (this.opts.defaultModelId) return this.opts.defaultModelId;
     return MODEL_MAP[logical] ?? logical;
+  }
+
+  has(capability: InferenceCapability): boolean {
+    void capability;
+    return this.hasCredentials;
   }
 
   async createMessage(

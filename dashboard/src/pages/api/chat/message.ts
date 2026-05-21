@@ -48,7 +48,7 @@ const MessageBody = z.object({
 });
 
 export const POST: APIRoute = async ({ request }) => {
-  if (!hasApiKey()) {
+  if (!(await hasApiKey())) {
     return json(503, { error: missingApiKeyMessage() });
   }
 

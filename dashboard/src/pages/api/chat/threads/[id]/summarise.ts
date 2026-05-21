@@ -19,7 +19,7 @@ const THREAD_ID_RE = /^[A-Za-z0-9._-]+$/;
  * without a second round-trip.
  */
 export const POST: APIRoute = async ({ params }) => {
-  if (!hasApiKey()) {
+  if (!(await hasApiKey())) {
     return json(503, { error: missingApiKeyMessage() });
   }
 

@@ -54,30 +54,32 @@ export function resolveChatModel(override?: string): string {
 }
 
 /**
- * Whether the configured provider has credentials available. The Anthropic
- * provider checks ANTHROPIC_API_KEY; the QuantCloud provider checks
- * QUANT_API_TOKEN.
+ * Whether the configured provider has credentials available to serve a chat
+ * request. Delegates to the provider's own capability gate so the dashboard
+ * doesn't need to know which env vars each provider reads.
  */
-export function hasApiKey(): boolean {
-  const id = providerId();
-  if (id === 'quantcloud') {
-    const t = process.env['QUANT_API_TOKEN'];
-    return typeof t === 'string' && t.length > 0;
+export async function hasApiKey(): Promise<boolean> {
+  try {
+    const provider = await loadProvider();
+    return provider.has('chat');
+  } catch {
+    // Provider construction threw — auth missing or unknown provider id.
+    return false;
   }
-  const k = process.env['ANTHROPIC_API_KEY'];
-  return typeof k === 'string' && k.length > 0;
 }
 
 /**
- * Human-readable message naming the env var the configured provider needs
+ * Human-readable message naming the env vars the configured provider needs
  * but hasn't been given. Used by API routes so operators see "QUANT_API_TOKEN
  * is not set" when running against QuantCloud, not the hardcoded
  * ANTHROPIC_API_KEY.
  */
 export function missingApiKeyMessage(): string {
   const id = providerId();
-  const envVar = id === 'quantcloud' ? 'QUANT_API_TOKEN' : 'ANTHROPIC_API_KEY';
-  return `${envVar} is not set. The chat surface is disabled.`;
+  if (id === 'quantcloud') {
+    return 'QUANT_API_TOKEN / QUANT_ORGANISATION are not set. The chat surface is disabled.';
+  }
+  return 'ANTHROPIC_API_KEY is not set. The chat surface is disabled.';
 }
 
 /**

@@ -3,6 +3,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import {
   InferenceError,
   type ContentBlock,
+  type InferenceCapability,
   type InferenceProvider,
   type InferenceRequest,
   type InferenceResponse,
@@ -18,11 +19,13 @@ export interface AnthropicProviderOptions {
 
 export class AnthropicProvider implements InferenceProvider {
   readonly id = 'anthropic';
+  private hasCredentials: boolean;
   private client: Anthropic;
 
   constructor(opts: AnthropicProviderOptions = {}) {
     if (opts.client) {
       this.client = opts.client;
+      this.hasCredentials = true;
       return;
     }
     const apiKey = opts.apiKey ?? process.env['ANTHROPIC_API_KEY'];
@@ -33,10 +36,17 @@ export class AnthropicProvider implements InferenceProvider {
       );
     }
     this.client = new Anthropic({ apiKey });
+    this.hasCredentials = true;
   }
 
   resolveModel(logical: string): string {
     return logical;
+  }
+
+  has(capability: InferenceCapability): boolean {
+    // Anthropic supports streaming and tools whenever it has chat.
+    void capability;
+    return this.hasCredentials;
   }
 
   async createMessage(
