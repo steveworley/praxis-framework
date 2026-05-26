@@ -55,6 +55,15 @@
     <div class="setup-error" x-text="submitError"></div>
   </template>
 
+  <!-- Field-level validation issues from a 422 response -->
+  <template x-if="submitIssues.length">
+    <ul class="setup-error-issues">
+      <template x-for="(issue, i) in submitIssues" :key="i">
+        <li><strong x-text="issue.label"></strong><span x-text="issue.message"></span></li>
+      </template>
+    </ul>
+  </template>
+
   <!-- ============================================================== -->
   <!-- Step 1: Welcome                                                  -->
   <!-- ============================================================== -->
@@ -866,6 +875,24 @@
   </div>
 </div>
 
+<!-- Bundled bridge: the inline Alpine factory below cannot import modules, so we
+     attach the (unit-tested) issue formatter onto `window` for it to read at
+     submit time. Vite bundles non-inline <script> blocks. -->
+<script>
+  import {
+    formatSetupValidationIssues,
+    type FormattedSetupIssue,
+  } from '@/lib/setup-validation-issues';
+
+  declare global {
+    interface Window {
+      praxisFormatSetupIssues?: (input: unknown) => FormattedSetupIssue[];
+    }
+  }
+
+  window.praxisFormatSetupIssues = formatSetupValidationIssues;
+</script>
+
 <script is:inline src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
 <script is:inline>
   function setupWizard() {
@@ -873,6 +900,7 @@
       step: 1,
       submitting: false,
       submitError: '',
+      submitIssues: [],
       commit1Status: 'pending',
       commit2Status: 'pending',
       pollHandle: null,
@@ -1305,6 +1333,7 @@
       },
       async submit() {
         this.submitError = '';
+        this.submitIssues = [];
         this.submitting = true;
         this.commit1Status = 'active';
         this.commit2Status = 'pending';
@@ -1319,6 +1348,9 @@
             try {
               const err = await res.json();
               if (err && err.error) msg = err.error;
+              this.submitIssues = window.praxisFormatSetupIssues
+                ? window.praxisFormatSetupIssues(err.issues)
+                : [];
             } catch (_) {}
             throw new Error(msg);
           }
