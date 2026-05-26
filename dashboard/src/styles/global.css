@@ -2955,6 +2955,90 @@ a.verb-row:hover {
   cursor: not-allowed;
 }
 
+/* Left cluster of the footer: attach control + send hint sit together,
+   pushing the SEND button to the far right via the parent's space-between. */
+.chat-stage .composer-foot-left {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  min-width: 0;
+}
+.chat-stage .composer-foot .attach {
+  font-family: var(--pixel);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  background: transparent;
+  color: var(--ink-muted);
+  border: 1px solid var(--rule);
+  padding: 0.4em 0.7em;
+  cursor: pointer;
+  border-radius: 0;
+  white-space: nowrap;
+}
+.chat-stage .composer-foot .attach:hover {
+  border-color: var(--peach);
+  color: var(--peach);
+}
+.chat-stage .composer-file-input {
+  display: none;
+}
+
+/* Pending attachment chips above the textarea. */
+.chat-stage .composer-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4em;
+}
+.chat-stage .composer-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink);
+  background: var(--surface-mute);
+  border: 1px solid var(--rule);
+  padding: 0.25em 0.5em;
+  max-width: 100%;
+}
+.chat-stage .composer-chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 16rem;
+}
+.chat-stage .composer-chip-remove {
+  font-family: var(--ui);
+  font-size: 14px;
+  line-height: 1;
+  background: transparent;
+  border: none;
+  color: var(--ink-muted);
+  cursor: pointer;
+  padding: 0;
+}
+.chat-stage .composer-chip-remove:hover {
+  color: var(--oxblood);
+}
+
+/* Attachment chips echoed inside a sent user turn bubble. */
+.chat-stage .chat-turn-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4em;
+  margin-top: 0.5em;
+}
+.chat-stage .chat-attachment-chip {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+  color: var(--ink-muted);
+  background: var(--surface-mute);
+  border: 1px solid var(--rule);
+  padding: 0.2em 0.5em;
+}
+
 /* Chat transcript (active conversation) — sits above the composer.
    Lighter editorial treatment to coexist with the greeting hero. */
 .chat-stage .chat-transcript {

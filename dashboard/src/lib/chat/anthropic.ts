@@ -2,6 +2,7 @@ import {
   aggregateStream,
   AnthropicProvider,
   InferenceError,
+  type AttachmentSupport,
   type ContentBlock,
   type InferenceProvider,
   type InferenceRequest,
@@ -69,6 +70,17 @@ export async function hasApiKey(): Promise<boolean> {
 }
 
 /**
+ * MIME types the configured provider accepts as native attachment blocks.
+ * Delegates to the provider's own `supportedAttachments()` so the dashboard
+ * doesn't hardcode per-backend capability — used to drive the composer's
+ * accept filter and the message route's attachment resolver.
+ */
+export async function getAttachmentSupport(): Promise<AttachmentSupport> {
+  const provider = await loadProvider();
+  return provider.supportedAttachments();
+}
+
+/**
  * Human-readable message naming the env vars the configured provider needs
  * but hasn't been given. Used by API routes so operators see "QUANT_API_TOKEN
  * is not set" when running against QuantCloud, not the hardcoded
@@ -124,7 +136,7 @@ export interface SendMessageResult {
 export async function sendMessage(
   systemPrompt: string,
   history: Turn[],
-  userContent: string,
+  userContent: string | ContentBlock[],
   options: SendMessageOptions = {},
 ): Promise<string> {
   const result = await sendMessageWithTools(
@@ -141,7 +153,7 @@ export async function sendMessage(
 export async function sendMessageWithTools(
   systemPrompt: string,
   history: Turn[],
-  userContent: string,
+  userContent: string | ContentBlock[],
   tools: readonly ToolDef[],
   executeTool: ToolExecutor,
   options: SendMessageOptions = {},
@@ -297,7 +309,7 @@ export type ChatStreamEvent =
 export async function* streamMessageWithTools(
   systemPrompt: string,
   history: Turn[],
-  userContent: string,
+  userContent: string | ContentBlock[],
   tools: readonly ToolDef[],
   executeTool: ToolExecutor,
   options: SendMessageOptions = {},

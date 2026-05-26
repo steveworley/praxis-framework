@@ -5,7 +5,7 @@ import PendingChip from '@/components/chat/PendingChip.astro';
 import RecentThread from '@/components/chat/RecentThread.astro';
 import RouteHeader from '@/components/RouteHeader.astro';
 import BaseLayout from '@/layouts/BaseLayout.astro';
-import { hasApiKey } from '@/lib/chat/anthropic.js';
+import { getAttachmentSupport, hasApiKey } from '@/lib/chat/anthropic.js';
 import { listThreads, type ThreadSummary } from '@/lib/chat/conversation.js';
 import { buildGreeting } from '@/lib/chat/greeting.js';
 import { personaNameFrom } from '@/lib/chat/persona-name.js';
@@ -57,6 +57,21 @@ const personaName = personaNameFrom(persona);
 const initialThreadId =
   (Astro.url.searchParams.get('thread') ?? '').trim() || '';
 const apiKeyConfigured = await hasApiKey();
+
+// What the configured backend can natively read, used to drive the composer's
+// file-picker accept filter. Falls back to empty support if the provider can't
+// be loaded (e.g. missing credentials) — the universal text extensions are
+// always allowed client-side regardless.
+let attachmentSupport: { images: readonly string[]; documents: readonly string[] } = {
+  images: [],
+  documents: [],
+};
+try {
+  attachmentSupport = await getAttachmentSupport();
+} catch {
+  // Provider unavailable — leave the empty default; chat is likely disabled.
+}
+
 const updatedAt = nowIso();
 
 // Greeting input. Counts come from the escalations loader; `localHour` is the
@@ -102,6 +117,7 @@ const bootstrap = {
   systemPromptTokens,
   contextWindowTokens: 200_000,
   banner50kThreshold: 50_000,
+  attachmentSupport,
 };
 
 // Build the chip set: one chip per kind that has at least one open card,
@@ -198,6 +214,13 @@ const hasPending = kindChips.length > 0;
               <span class="chat-turn-time" x-text="formatTimestamp(turn.timestamp)"></span>
             </header>
             <div class="prose" x-html="turn.content_html"></div>
+            <template x-if="turn.attachments && turn.attachments.length">
+              <div class="chat-turn-attachments">
+                <template x-for="(name, ai) in turn.attachments" :key="`${idx}-att-${ai}`">
+                  <span class="chat-attachment-chip" x-text="name"></span>
+                </template>
+              </div>
+            </template>
           </article>
         </template>
         <template x-if="pendingAssistant">
@@ -240,6 +263,7 @@ const hasPending = kindChips.length > 0;
     function praxisChat() {
       const boot = window.__praxisChatBootstrap || { threads: [], initialThreadId: '', personaName: null };
       const persona = boot.personaName || { full: 'the role', short: 'the role', identifier: '' };
+      const support = boot.attachmentSupport || { images: [], documents: [] };
       return {
         threads: boot.threads || [],
         activeThreadId: boot.initialThreadId || '',
@@ -250,7 +274,9 @@ const hasPending = kindChips.length > 0;
         personaTitle: persona.title || '',
         turns: [],
         composer: '',
+        // Pending File objects staged before upload: { name, file }.
         attachments: [],
+        attachmentSupport: support,
         sending: false,
         pendingAssistant: false,
         loadingTurns: false,
@@ -268,7 +294,66 @@ const hasPending = kindChips.length > 0;
         },
 
         get canSend() {
-          return !this.sending && this.composer.trim().length > 0;
+          return !this.sending && (this.composer.trim().length > 0 || this.attachments.length > 0);
+        },
+
+        // Build the file input's accept attribute from the backend's native
+        // support plus the universal text extensions (always inlinable). Map
+        // each supported MIME back to an extension so the OS file picker
+        // surfaces only files the backend can actually read.
+        get acceptAttr() {
+          const mimeToExt = {
+            'image/png': '.png',
+            'image/jpeg': '.jpg,.jpeg',
+            'image/gif': '.gif',
+            'image/webp': '.webp',
+            'application/pdf': '.pdf',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
+            'application/msword': '.doc',
+            'text/markdown': '.md',
+            'text/csv': '.csv',
+            'text/html': '.html,.htm',
+            'text/plain': '.txt',
+          };
+          const exts = new Set(['.md', '.txt', '.json', '.yaml', '.yml', '.csv', '.tsv', '.log']);
+          const support = this.attachmentSupport || { images: [], documents: [] };
+          for (const mime of [...(support.images || []), ...(support.documents || [])]) {
+            const mapped = mimeToExt[mime];
+            if (mapped) {
+              for (const e of mapped.split(',')) exts.add(e);
+            }
+          }
+          return [...exts].join(',');
+        },
+
+        addFiles(fileList) {
+          if (!fileList) return;
+          for (const file of Array.from(fileList)) {
+            this.attachments.push({ name: file.name, file });
+          }
+          // Reset the input so re-picking the same file fires @change again.
+          const input = this.$refs && this.$refs.fileInput;
+          if (input) input.value = '';
+        },
+
+        removeAttachment(i) {
+          this.attachments.splice(i, 1);
+        },
+
+        // Read a File to raw base64 (no data-URL prefix) so it can ride inside a
+        // JSON upload body. Multipart bodies trip Astro's checkOrigin CSRF guard
+        // behind a reverse proxy; JSON is exempt, so we encode the bytes here.
+        fileToBase64(file) {
+          return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onerror = () => reject(reader.error || new Error('read failed'));
+            reader.onload = () => {
+              const result = String(reader.result || '');
+              const comma = result.indexOf(','); // strip "data:<mime>;base64," prefix
+              resolve(comma >= 0 ? result.slice(comma + 1) : result);
+            };
+            reader.readAsDataURL(file);
+          });
         },
 
         async loadActiveThread() {
@@ -305,17 +390,24 @@ const hasPending = kindChips.length > 0;
         },
 
         async send() {
-          const content = this.composer.trim();
-          if (!content || this.sending) return;
+          if (!this.canSend) return;
           this.sending = true;
           this.error = '';
 
-          if (!this.activeThreadId) {
-            try {
+          const effectiveText = this.composer.trim();
+          // The server defaults empty text when attachments are present; use a
+          // sensible fallback only for the thread title (first_message).
+          const titleText = effectiveText || 'Please review the attached file(s).';
+          const pending = this.attachments.slice();
+          const attachmentNames = pending.map((a) => a.name);
+          const isNewThread = !this.activeThreadId;
+
+          try {
+            if (isNewThread) {
               const res = await fetch('/api/chat/threads', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ first_message: content }),
+                body: JSON.stringify({ first_message: titleText }),
               });
               if (!res.ok) {
                 const errBody = await res.json().catch(() => ({}));
@@ -324,30 +416,61 @@ const hasPending = kindChips.length > 0;
               const body = await res.json();
               this.activeThreadId = body.thread_id;
               this.activeTitle = body.title;
-              this.composer = '';
               this.updateUrl();
-              const now = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
-              this.turns = [{ role: 'user', timestamp: now, content, content_html: this.escapeAsHtml(content) }];
-              this.pendingAssistant = true;
-              await this.runMessage(content);
-            } catch (e) {
-              this.error = e instanceof Error ? e.message : String(e);
-              this.sending = false;
-              this.pendingAssistant = false;
             }
-            return;
-          }
 
-          const optimisticNow = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
-          this.turns.push({ role: 'user', timestamp: optimisticNow, content, content_html: this.escapeAsHtml(content) });
-          this.composer = '';
-          this.pendingAssistant = true;
-          await this.runMessage(content);
+            // Upload each pending file before sending the message. Abort the
+            // whole send on any failure rather than send a partial turn.
+            const paths = [];
+            for (const item of pending) {
+              const data = await this.fileToBase64(item.file);
+              const upRes = await fetch('/api/chat/upload', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  thread_id: this.activeThreadId,
+                  filename: item.name,
+                  mime_type: item.file.type || undefined,
+                  data,
+                }),
+              });
+              if (!upRes.ok) {
+                const errBody = await upRes.json().catch(() => ({}));
+                throw new Error(errBody.error || `Upload failed for ${item.name} (${upRes.status})`);
+              }
+              const upBody = await upRes.json();
+              paths.push(upBody.path);
+            }
+
+            // Optimistic user turn — typed text + attachment chips.
+            const now = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+            const turn = {
+              role: 'user',
+              timestamp: now,
+              content: effectiveText,
+              content_html: this.escapeAsHtml(effectiveText),
+            };
+            if (attachmentNames.length > 0) turn.attachments = attachmentNames;
+            if (isNewThread) {
+              this.turns = [turn];
+            } else {
+              this.turns.push(turn);
+            }
+
+            this.composer = '';
+            this.attachments = [];
+            this.pendingAssistant = true;
+            await this.runMessage(effectiveText, paths);
+          } catch (e) {
+            this.error = e instanceof Error ? e.message : String(e);
+            this.sending = false;
+            this.pendingAssistant = false;
+          }
         },
 
-        async runMessage(content) {
+        async runMessage(content, attachments) {
           try {
-            const body = { thread_id: this.activeThreadId, content };
+            const body = { thread_id: this.activeThreadId, content, attachments: attachments || [] };
             const res = await fetch('/api/chat/message', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },

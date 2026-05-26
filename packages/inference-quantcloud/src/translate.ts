@@ -60,7 +60,34 @@ export type BedrockBlock =
         status: 'success' | 'error';
       };
     }
-  | { image: { format: string; source: { bytes: string } } };
+  | { image: { format: string; source: { bytes: string } } }
+  | { document: { format: string; name: string; source: { bytes: string } } };
+
+// Bedrock document formats keyed by MIME type. Anything unmapped falls back to
+// the substring after the slash (mirrors how the image case derives format).
+const DOCUMENT_FORMATS: Record<string, string> = {
+  'application/pdf': 'pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+  'application/msword': 'doc',
+  'text/markdown': 'md',
+  'text/csv': 'csv',
+  'text/html': 'html',
+  'text/plain': 'txt',
+};
+
+/**
+ * Bedrock restricts document names to alphanumerics, spaces, hyphens,
+ * parentheses, and square brackets, and they cannot be empty. Replace
+ * disallowed characters with spaces, collapse runs, and trim; if nothing
+ * usable remains, fall back to `document`.
+ */
+function sanitiseDocumentName(name: string | undefined): string {
+  const cleaned = (name ?? '')
+    .replace(/[^a-zA-Z0-9 \-()[\]]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return cleaned === '' ? 'document' : cleaned;
+}
 
 export function toBedrockBlock(b: ContentBlock): BedrockBlock {
   switch (b.type) {
@@ -83,6 +110,17 @@ export function toBedrockBlock(b: ContentBlock): BedrockBlock {
       return {
         image: {
           format: b.source.media_type.split('/')[1] ?? b.source.media_type,
+          source: { bytes: b.source.data },
+        },
+      };
+    case 'document':
+      return {
+        document: {
+          format:
+            DOCUMENT_FORMATS[b.source.media_type] ??
+            b.source.media_type.split('/')[1] ??
+            b.source.media_type,
+          name: sanitiseDocumentName(b.name),
           source: { bytes: b.source.data },
         },
       };
