@@ -143,16 +143,20 @@
       saving: false,
       error: '',
 
-      // Core keys mirror CORE_FIELDS in lib/role/business-context.ts.
-      coreKeys: [
-        'name',
-        'website',
-        'sector',
-        'size',
-        'what_we_do',
-        'who_we_serve',
-        'what_makes_us_different',
+      // Core fields mirror CORE_FIELDS in lib/role/business-context.ts, in order.
+      coreFields: [
+        { key: 'name', label: 'Name' },
+        { key: 'website', label: 'Website' },
+        { key: 'sector', label: 'Sector' },
+        { key: 'size', label: 'Size' },
+        { key: 'what_we_do', label: 'What we do' },
+        { key: 'who_we_serve', label: 'Who we serve' },
+        { key: 'what_makes_us_different', label: 'What makes us different' },
       ],
+      // Core keys (derived from coreFields) — used for membership checks.
+      get coreKeys() {
+        return this.coreFields.map((f) => f.key);
+      },
       // Scalar keys mirror SCALAR_KEYS — these render single-line.
       scalarKeys: ['name', 'website', 'sector', 'size'],
 
@@ -205,6 +209,19 @@
 
       startEdit() {
         this.error = '';
+        // Guarantee all core fields are present, in canonical order, before the
+        // edit view renders — reuse existing values where present, blank otherwise,
+        // then append any non-core (custom) fields in their current order.
+        const core = this.coreFields.map((c) => {
+          const existing = this.fields.find((f) => f.key === c.key);
+          return {
+            key: c.key,
+            label: c.label,
+            value: existing ? existing.value : '',
+          };
+        });
+        const custom = this.fields.filter((f) => !this.isCore(f.key));
+        this.fields = core.concat(custom);
         this.editing = true;
       },
 
