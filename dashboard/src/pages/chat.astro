@@ -340,6 +340,22 @@ const hasPending = kindChips.length > 0;
           this.attachments.splice(i, 1);
         },
 
+        // Read a File to raw base64 (no data-URL prefix) so it can ride inside a
+        // JSON upload body. Multipart bodies trip Astro's checkOrigin CSRF guard
+        // behind a reverse proxy; JSON is exempt, so we encode the bytes here.
+        fileToBase64(file) {
+          return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onerror = () => reject(reader.error || new Error('read failed'));
+            reader.onload = () => {
+              const result = String(reader.result || '');
+              const comma = result.indexOf(','); // strip "data:<mime>;base64," prefix
+              resolve(comma >= 0 ? result.slice(comma + 1) : result);
+            };
+            reader.readAsDataURL(file);
+          });
+        },
+
         async loadActiveThread() {
           if (!this.activeThreadId) {
             this.turns = [];
@@ -407,10 +423,17 @@ const hasPending = kindChips.length > 0;
             // whole send on any failure rather than send a partial turn.
             const paths = [];
             for (const item of pending) {
-              const form = new FormData();
-              form.append('thread_id', this.activeThreadId);
-              form.append('file', item.file, item.name);
-              const upRes = await fetch('/api/chat/upload', { method: 'POST', body: form });
+              const data = await this.fileToBase64(item.file);
+              const upRes = await fetch('/api/chat/upload', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  thread_id: this.activeThreadId,
+                  filename: item.name,
+                  mime_type: item.file.type || undefined,
+                  data,
+                }),
+              });
               if (!upRes.ok) {
                 const errBody = await upRes.json().catch(() => ({}));
                 throw new Error(errBody.error || `Upload failed for ${item.name} (${upRes.status})`);
