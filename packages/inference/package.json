@@ -1,7 +1,7 @@
 {
   "name": "@praxis-framework/inference",
-  "version": "0.1.0",
-  "private": false,
+  "version": "0.3.0",
+  "private": true,
   "type": "module",
   "description": "Provider-agnostic inference interface for praxis-framework. Ships with an Anthropic provider; first-party Quant Cloud provider available as a separate package.",
   "main": "./dist/index.js",

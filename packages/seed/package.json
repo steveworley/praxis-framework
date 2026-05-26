@@ -1,6 +1,6 @@
 {
   "name": "@praxis-framework/seed",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "private": false,
   "type": "module",
   "description": "Shared role-seeding logic — writes a populated praxis role from a template into a target directory",

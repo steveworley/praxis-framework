@@ -1,7 +1,7 @@
 {
   "name": "@praxis-framework/inference-quantcloud",
-  "version": "0.1.0",
-  "private": false,
+  "version": "0.3.0",
+  "private": true,
   "type": "module",
   "description": "Quant Cloud inference provider for praxis-framework. Routes praxis inference through QuantCDN's AI primitives (model routing, durable execution, spend tracking, agent registry).",
   "main": "./dist/index.js",
