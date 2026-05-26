@@ -2390,6 +2390,36 @@ a.verb-row:hover {
   font-size: 14px;
 }
 
+/* Field-level breakdown of a 422 validation response, shown beneath the
+   summary .setup-error. Bordered list mirroring the .setup-error treatment. */
+.setup-error-issues {
+  margin: 0.6rem 0 0;
+  list-style: none;
+  background: var(--oxblood-soft);
+  border-left: 3px solid var(--oxblood);
+  padding: 0.8rem 1.1rem;
+  font-family: var(--prose);
+  font-size: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.setup-error-issues li {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.setup-error-issues li strong {
+  color: var(--oxblood);
+  font-weight: 600;
+}
+
+.setup-error-issues li span {
+  opacity: 0.85;
+}
+
 /* Navigation row — text-only Back on the left, filled CTA on the right.
    The CTA carries the per-step accent shadow so each step's commitment
    feels coloured by the topic. */
