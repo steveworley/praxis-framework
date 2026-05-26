@@ -29,6 +29,24 @@ const disabledMessage = missingApiKeyMessage();
   <div class="composer-shell">
     {apiKeyConfigured ? (
       <>
+        {/* Pending attachment chips — staged File objects before upload. */}
+        <div
+          class="composer-attachments"
+          {...({ 'x-show': 'attachments.length' } as Record<string, string>)}
+          x-cloak
+        >
+          <template {...({ 'x-for': '(att, i) in attachments' } as Record<string, string>)} {...({ ':key': 'i' } as Record<string, string>)}>
+            <span class="composer-chip">
+              <span class="composer-chip-name" x-text="att.name"></span>
+              <button
+                type="button"
+                class="composer-chip-remove"
+                aria-label="Remove attachment"
+                {...({ '@click': 'removeAttachment(i)' } as Record<string, string>)}
+              >×</button>
+            </span>
+          </template>
+        </div>
         <textarea
           x-model="composer"
           x-ref="composer"
@@ -38,7 +56,22 @@ const disabledMessage = missingApiKeyMessage();
           {...({ '@keydown.ctrl.enter': 'send()' } as Record<string, string>)}
         ></textarea>
         <div class="composer-foot">
-          <span class="hint">⌘↵ to send · auto-saves to memory/conversations/</span>
+          <div class="composer-foot-left">
+            <button
+              type="button"
+              class="attach"
+              {...({ '@click': '$refs.fileInput.click()' } as Record<string, string>)}
+            >+ ATTACH</button>
+            <input
+              type="file"
+              multiple
+              x-ref="fileInput"
+              class="composer-file-input"
+              {...({ ':accept': 'acceptAttr' } as Record<string, string>)}
+              {...({ '@change': 'addFiles($event.target.files)' } as Record<string, string>)}
+            />
+            <span class="hint">⌘↵ to send · {personaShort} reads attachments on the turn they're sent — re-attach if needed again</span>
+          </div>
           <button
             type="button"
             class="send"

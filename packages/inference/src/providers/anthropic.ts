@@ -2,11 +2,13 @@ import Anthropic from '@anthropic-ai/sdk';
 
 import {
   InferenceError,
+  type AttachmentSupport,
   type ContentBlock,
   type InferenceCapability,
   type InferenceProvider,
   type InferenceRequest,
   type InferenceResponse,
+  type Message,
   type StopReason,
   type StreamEvent,
   type Usage,
@@ -49,6 +51,13 @@ export class AnthropicProvider implements InferenceProvider {
     return this.hasCredentials;
   }
 
+  supportedAttachments(): AttachmentSupport {
+    return {
+      images: ['image/png', 'image/jpeg', 'image/gif', 'image/webp'],
+      documents: ['application/pdf'],
+    };
+  }
+
   async createMessage(
     req: InferenceRequest,
     signal?: AbortSignal,
@@ -57,7 +66,9 @@ export class AnthropicProvider implements InferenceProvider {
       model: this.resolveModel(req.model),
       max_tokens: req.max_tokens,
       system: req.system as Anthropic.MessageCreateParamsNonStreaming['system'],
-      messages: req.messages as Anthropic.MessageCreateParamsNonStreaming['messages'],
+      messages: toAnthropicMessages(
+        req.messages,
+      ) as Anthropic.MessageCreateParamsNonStreaming['messages'],
     };
     if (req.tools?.length) {
       params.tools = req.tools as Anthropic.Tool[];
@@ -92,7 +103,9 @@ export class AnthropicProvider implements InferenceProvider {
       model: this.resolveModel(req.model),
       max_tokens: req.max_tokens,
       system: req.system as Anthropic.MessageCreateParamsStreaming['system'],
-      messages: req.messages as Anthropic.MessageCreateParamsStreaming['messages'],
+      messages: toAnthropicMessages(
+        req.messages,
+      ) as Anthropic.MessageCreateParamsStreaming['messages'],
       stream: true,
     };
     if (req.tools?.length) params.tools = req.tools as Anthropic.Tool[];
@@ -121,6 +134,35 @@ export class AnthropicProvider implements InferenceProvider {
       throw wrapError(error);
     }
   }
+}
+
+/**
+ * Map neutral messages into the shape the Anthropic SDK expects. Our neutral
+ * `document` block carries the original filename in `name`; the SDK's document
+ * block has no `name` field and uses an optional `title` instead. Every other
+ * block type — and plain string content — passes through untouched.
+ *
+ * Exported for unit testing without a network call; callers should use the
+ * provider methods. The result is still cast to the SDK's `messages` type at
+ * the call site because the document `title` shape diverges from `ContentBlock`.
+ */
+export function toAnthropicMessages(messages: Message[]): Message[] {
+  return messages.map((message) => {
+    if (typeof message.content === 'string') return message;
+    return {
+      ...message,
+      content: message.content.map(toAnthropicBlock),
+    };
+  });
+}
+
+function toAnthropicBlock(block: ContentBlock): ContentBlock {
+  if (block.type !== 'document') return block;
+  const { name, ...rest } = block;
+  return {
+    ...rest,
+    ...(name ? { title: name } : {}),
+  } as unknown as ContentBlock;
 }
 
 function abortError(signal: AbortSignal): InferenceError {

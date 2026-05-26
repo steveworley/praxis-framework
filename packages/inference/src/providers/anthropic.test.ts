@@ -400,4 +400,87 @@ describe('AnthropicProvider.createMessage', () => {
       expect(p.has('chat')).toBe(true);
     });
   });
+
+  describe('supportedAttachments()', () => {
+    it('reports the native image and document MIME types', async () => {
+      process.env['ANTHROPIC_API_KEY'] = 'sk-test';
+      const { AnthropicProvider } = await import('./anthropic.ts');
+      const p = new AnthropicProvider();
+      expect(p.supportedAttachments()).toEqual({
+        images: ['image/png', 'image/jpeg', 'image/gif', 'image/webp'],
+        documents: ['application/pdf'],
+      });
+    });
+  });
+});
+
+describe('toAnthropicMessages', () => {
+  it('rewrites a document block name to the SDK title field and drops name', async () => {
+    const { toAnthropicMessages } = await import('./anthropic.ts');
+    const out = toAnthropicMessages([
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'review this' },
+          {
+            type: 'document',
+            source: { type: 'base64', media_type: 'application/pdf', data: 'AAAA' },
+            name: 'spec.pdf',
+          },
+        ],
+      },
+    ]);
+    expect(out).toEqual([
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'review this' },
+          {
+            type: 'document',
+            source: { type: 'base64', media_type: 'application/pdf', data: 'AAAA' },
+            title: 'spec.pdf',
+          },
+        ],
+      },
+    ]);
+    // The neutral `name` field must not survive into the SDK shape.
+    const doc = (out[0]!.content as unknown[])[1] as Record<string, unknown>;
+    expect(doc).not.toHaveProperty('name');
+  });
+
+  it('omits title when the document block has no name', async () => {
+    const { toAnthropicMessages } = await import('./anthropic.ts');
+    const out = toAnthropicMessages([
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'document',
+            source: { type: 'base64', media_type: 'application/pdf', data: 'AAAA' },
+          },
+        ],
+      },
+    ]);
+    const doc = (out[0]!.content as unknown[])[0] as Record<string, unknown>;
+    expect(doc).not.toHaveProperty('title');
+    expect(doc).not.toHaveProperty('name');
+  });
+
+  it('leaves other block types and string content untouched', async () => {
+    const { toAnthropicMessages } = await import('./anthropic.ts');
+    const input = [
+      { role: 'user' as const, content: 'plain string' },
+      {
+        role: 'assistant' as const,
+        content: [
+          { type: 'text' as const, text: 'reply' },
+          {
+            type: 'image' as const,
+            source: { type: 'base64' as const, media_type: 'image/png', data: 'BBBB' },
+          },
+        ],
+      },
+    ];
+    expect(toAnthropicMessages(input)).toEqual(input);
+  });
 });

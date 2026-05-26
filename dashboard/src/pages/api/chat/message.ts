@@ -1,17 +1,16 @@
-import fs from 'node:fs/promises';
-import path from 'node:path';
-
 import type { APIRoute } from 'astro';
 import { z } from 'zod';
 
 import {
   AnthropicChatError,
+  getAttachmentSupport,
   hasApiKey,
   MissingApiKeyError,
   missingApiKeyMessage,
   sendMessageWithTools,
   type ToolExecutor,
 } from '@/lib/chat/anthropic.js';
+import { buildUserContent } from '@/lib/chat/attachments.js';
 import {
   appendTurn,
   loadThread,
@@ -25,25 +24,13 @@ import { getRoleHome } from '@/lib/role-home.js';
 
 export const prerender = false;
 
-const MAX_ATTACHMENT_SIZE = 10 * 1024; // 10 KB — inline only short text uploads.
-const TEXTUAL_EXTENSIONS = new Set<string>([
-  '.md',
-  '.txt',
-  '.json',
-  '.yaml',
-  '.yml',
-  '.csv',
-  '.tsv',
-  '.log',
-]);
-
 const MessageBody = z.object({
   thread_id: z
     .string()
     .trim()
     .min(1)
     .regex(/^[A-Za-z0-9._-]+$/, 'thread_id must contain only alphanumeric, dot, dash, or underscore'),
-  content: z.string().trim().min(1, 'content is required'),
+  content: z.string().trim(),
   attachments: z.array(z.string()).optional(),
 });
 
@@ -64,6 +51,15 @@ export const POST: APIRoute = async ({ request }) => {
     return json(422, { error: 'Validation failed', issues: parsed.error.issues });
   }
 
+  const attachments = parsed.data.attachments ?? [];
+  if (parsed.data.content.length === 0 && attachments.length === 0) {
+    return json(422, { error: 'content or attachments required' });
+  }
+  // When the operator sends attachments without typing anything, give the
+  // model a default instruction so it has a turn to act on.
+  const effectiveText =
+    parsed.data.content.length > 0 ? parsed.data.content : 'Please review the attached file(s).';
+
   const roleHome = getRoleHome();
 
   let thread;
@@ -81,10 +77,16 @@ export const POST: APIRoute = async ({ request }) => {
     return json(500, { error: `Failed to assemble system prompt: ${errorMessage(error)}` });
   }
 
-  const attachmentBlock = await renderAttachmentsInline(roleHome, parsed.data.attachments ?? []);
-  const userContent = attachmentBlock
-    ? `${attachmentBlock}\n\n${parsed.data.content}`
-    : parsed.data.content;
+  // Resolve attachments against the provider's native capability: small text
+  // files inline into the prompt, supported images/docs become base64 blocks,
+  // and anything the backend can't read becomes a short refusal note.
+  const support = await getAttachmentSupport();
+  const { content: userContent, persistedText } = await buildUserContent(
+    roleHome,
+    effectiveText,
+    attachments,
+    support,
+  );
 
   // Wire the tool executor. It captures `roleHome` and dispatches via the
   // shared `executeTool` registry — keeps the routing logic in one place.
@@ -138,7 +140,7 @@ export const POST: APIRoute = async ({ request }) => {
   try {
     await appendTurn(roleHome, parsed.data.thread_id, {
       role: 'user',
-      content: userContent,
+      content: persistedText,
     });
     const assistantTurn = await appendTurn(roleHome, parsed.data.thread_id, {
       role: 'assistant',
@@ -161,58 +163,6 @@ export const POST: APIRoute = async ({ request }) => {
     });
   }
 };
-
-/**
- * Read uploaded attachments and inline them into the user content when they're
- * small + text-shaped. Larger or non-text attachments are mentioned by path
- * only (the model can ask the operator about them if needed).
- */
-async function renderAttachmentsInline(
-  roleHome: string,
-  attachments: string[],
-): Promise<string | null> {
-  if (attachments.length === 0) return null;
-  const pieces: string[] = [];
-
-  for (const rel of attachments) {
-    if (!isSafeAttachmentPath(rel)) {
-      pieces.push(`[Attachment refused — unsafe path: ${rel}]`);
-      continue;
-    }
-    const abs = path.join(roleHome, rel);
-    let stat;
-    try {
-      stat = await fs.stat(abs);
-    } catch {
-      pieces.push(`[Attachment missing: ${rel}]`);
-      continue;
-    }
-
-    const filename = path.basename(rel);
-    const ext = path.extname(filename).toLowerCase();
-    if (!TEXTUAL_EXTENSIONS.has(ext) || stat.size > MAX_ATTACHMENT_SIZE) {
-      pieces.push(`[Attachment: ${filename} — ${stat.size} bytes, not inlined]`);
-      continue;
-    }
-    try {
-      const text = await fs.readFile(abs, 'utf-8');
-      pieces.push(`--- Attachment: ${filename} ---\n${text}\n--- end attachment ---`);
-    } catch {
-      pieces.push(`[Attachment unreadable: ${filename}]`);
-    }
-  }
-
-  return pieces.join('\n\n');
-}
-
-function isSafeAttachmentPath(rel: string): boolean {
-  if (rel.length === 0) return false;
-  if (rel.includes('..')) return false;
-  if (path.isAbsolute(rel)) return false;
-  // Attachments live under lib/uploads/<thread_id>/ — accept any path that
-  // starts with that prefix to keep the surface narrow.
-  return rel.startsWith('lib/uploads/');
-}
 
 function isNotFound(error: unknown): boolean {
   return (

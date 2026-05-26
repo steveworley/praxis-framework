@@ -141,6 +141,97 @@ describe('toBedrockBlock', () => {
       }),
     ).toEqual({ image: { format: 'jpeg', source: { bytes: 'AAAA' } } });
   });
+
+  describe('document', () => {
+    const cases: { mediaType: string; expectedFormat: string }[] = [
+      { mediaType: 'application/pdf', expectedFormat: 'pdf' },
+      {
+        mediaType:
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        expectedFormat: 'docx',
+      },
+      { mediaType: 'application/msword', expectedFormat: 'doc' },
+      { mediaType: 'text/markdown', expectedFormat: 'md' },
+      { mediaType: 'text/csv', expectedFormat: 'csv' },
+      { mediaType: 'text/html', expectedFormat: 'html' },
+      { mediaType: 'text/plain', expectedFormat: 'txt' },
+    ];
+
+    it.each(cases)(
+      'maps $mediaType to format $expectedFormat',
+      ({ mediaType, expectedFormat }) => {
+        expect(
+          toBedrockBlock({
+            type: 'document',
+            source: { type: 'base64', media_type: mediaType, data: 'AAAA' },
+            // Name uses only Bedrock-allowed characters so it passes through.
+            name: 'report 1',
+          }),
+        ).toEqual({
+          document: {
+            format: expectedFormat,
+            name: 'report 1',
+            source: { bytes: 'AAAA' },
+          },
+        });
+      },
+    );
+
+    it('falls back to the substring after the slash for unmapped media types', () => {
+      expect(
+        toBedrockBlock({
+          type: 'document',
+          source: { type: 'base64', media_type: 'application/xyz', data: 'AAAA' },
+          name: 'thing',
+        }),
+      ).toEqual({
+        document: { format: 'xyz', name: 'thing', source: { bytes: 'AAAA' } },
+      });
+    });
+
+    it('passes the base64 bytes through unchanged', () => {
+      const out = toBedrockBlock({
+        type: 'document',
+        source: { type: 'base64', media_type: 'application/pdf', data: 'Zm9vYmFy' },
+        name: 'doc one',
+      });
+      expect(out).toEqual({
+        document: { format: 'pdf', name: 'doc one', source: { bytes: 'Zm9vYmFy' } },
+      });
+    });
+
+    describe('name sanitisation', () => {
+      const nameCases: { input: string | undefined; expected: string }[] = [
+        // A dot is disallowed, so a typical filename extension becomes a space.
+        { input: 'report.pdf', expected: 'report pdf' },
+        // Disallowed characters become spaces and runs collapse.
+        { input: 'my/weird:file*name.pdf', expected: 'my weird file name pdf' },
+        // Allowed punctuation is preserved.
+        { input: 'Report (v2) [final].pdf', expected: 'Report (v2) [final] pdf' },
+        // Leading/trailing disallowed chars are trimmed.
+        { input: '___notes___', expected: 'notes' },
+        // Empty after sanitising falls back to `document`.
+        { input: '***', expected: 'document' },
+        { input: '', expected: 'document' },
+        // Missing name falls back to `document`.
+        { input: undefined, expected: 'document' },
+      ];
+
+      it.each(nameCases)(
+        'sanitises $input to "$expected"',
+        ({ input, expected }) => {
+          const out = toBedrockBlock({
+            type: 'document',
+            source: { type: 'base64', media_type: 'application/pdf', data: 'AAAA' },
+            ...(input !== undefined ? { name: input } : {}),
+          });
+          expect(out).toEqual({
+            document: { format: 'pdf', name: expected, source: { bytes: 'AAAA' } },
+          });
+        },
+      );
+    });
+  });
 });
 
 describe('toBedrockMessage', () => {

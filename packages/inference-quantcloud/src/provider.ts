@@ -3,6 +3,7 @@ import { AIInferenceApi, Configuration } from '@quantcdn/quant-client';
 import {
   aggregateStream,
   InferenceError,
+  type AttachmentSupport,
   type InferenceCapability,
   type InferenceProvider,
   type InferenceRequest,
@@ -108,6 +109,21 @@ export class QuantCloudProvider implements InferenceProvider {
   has(capability: InferenceCapability): boolean {
     void capability;
     return this.hasCredentials;
+  }
+
+  supportedAttachments(): AttachmentSupport {
+    return {
+      images: ['image/png', 'image/jpeg', 'image/gif', 'image/webp'],
+      documents: [
+        'application/pdf',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/msword',
+        'text/markdown',
+        'text/csv',
+        'text/html',
+        'text/plain',
+      ],
+    };
   }
 
   async createMessage(

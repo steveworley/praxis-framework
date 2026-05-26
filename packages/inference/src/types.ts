@@ -12,6 +12,11 @@ export type ContentBlock =
   | {
       type: 'image';
       source: { type: 'base64'; media_type: string; data: string };
+    }
+  | {
+      type: 'document';
+      source: { type: 'base64'; media_type: string; data: string };
+      name?: string;
     };
 
 export interface Message {
@@ -81,6 +86,13 @@ export type StreamEvent =
 
 export type InferenceCapability = 'chat' | 'streaming' | 'tools';
 
+export interface AttachmentSupport {
+  /** MIME types accepted as native image blocks. */
+  images: readonly string[];
+  /** MIME types accepted as native document blocks. */
+  documents: readonly string[];
+}
+
 export interface InferenceProvider {
   readonly id: string;
   createMessage(
@@ -103,6 +115,8 @@ export interface InferenceProvider {
    * `streaming` and `tools`.
    */
   has(capability: InferenceCapability): boolean;
+  /** MIME types this provider accepts as native attachment blocks. */
+  supportedAttachments(): AttachmentSupport;
 }
 
 export type InferenceErrorCode =
