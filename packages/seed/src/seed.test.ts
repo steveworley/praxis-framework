@@ -72,6 +72,7 @@ describe('seedRole', () => {
       'escalations/README.md',
       'lib/autonomy.yaml',
       'lib/output-schemas.yaml',
+      'lib/business-context.yaml',
       '.gitignore',
       'docker-compose.yml',
       '.env.example',
@@ -117,7 +118,9 @@ describe('seedRole', () => {
 
     const persona = await fs.readFile(path.join(tmp, 'persona.md'), 'utf-8');
     expect(persona).toContain('Persona — Pat Example');
-    expect(persona).toContain('- **Name**: Acme Co');
+    // Org content no longer lives in the persona — it's rendered into
+    // lib/business-context.yaml (see the dedicated test for that file).
+    expect(persona).not.toContain('## Organisation');
     expect(persona).toContain('- **Full name**: Pat Example');
     expect(persona).toContain('- **Email**: pat@acme.example');
     // Trait with one qualifier renders inline.
@@ -378,6 +381,29 @@ describe('seedRole', () => {
       const names = Object.keys(parsed);
 
       expect(names.sort()).toEqual(['bash', 'edit', 'log'].sort());
+    });
+  });
+
+  describe('lib/business-context.yaml', () => {
+    it('writes lib/business-context.yaml from organisation input and omits ## Organisation from persona', async () => {
+      const input: SeedInput = {
+        ...sampleInput(),
+        organisation: {
+          name: 'Acme Co',
+          sector: 'B2B SaaS',
+          description: 'We sell widgets to other widget-makers.',
+          moats: 'Decade of proprietary widget-tolerancing data.',
+          customer_profile: 'Mid-market manufacturers who buy widgets in bulk.',
+        },
+      };
+      await seedRole(input, tmp);
+
+      const bc = await fs.readFile(path.join(tmp, 'lib', 'business-context.yaml'), 'utf-8');
+      expect(bc).toContain('key: what_we_do');
+      expect(bc).toContain(input.organisation.description);
+
+      const persona = await fs.readFile(path.join(tmp, 'persona.md'), 'utf-8');
+      expect(persona).not.toContain('## Organisation');
     });
   });
 

@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 import { simpleGit } from 'simple-git';
+import { stringify as stringifyYaml } from 'yaml';
 
 import { buildSeededCatalog, renderToolsYaml } from './catalog.js';
 import { resolveTemplatePath } from './template.js';
@@ -222,6 +223,23 @@ export async function seedRole(
     filesWritten.push(target);
   }
 
+  // Generated business-context.yaml — operator's organisation input rendered
+  // as the structured business-context schema. Replaces the legacy
+  // `## Organisation` persona prose; the dashboard renders this and the
+  // operator edits it from the /role page.
+  {
+    const target = 'lib/business-context.yaml';
+    const dst = path.join(absTarget, target);
+    const body = renderBusinessContextYaml(input.organisation);
+    try {
+      await fs.writeFile(dst, body, 'utf-8');
+    } catch (e: unknown) {
+      const cause = e instanceof Error ? e.message : String(e);
+      throw new SeedError(`Failed to write ${target}: ${cause}`, 'WRITE_FAILED');
+    }
+    filesWritten.push(target);
+  }
+
   // Stub verbs.
   for (const verb of input.initial_verbs) {
     const target = path.join('verbs', `${verb.slug}.md`);
@@ -280,6 +298,9 @@ async function planSeed(input: SeedInput, templateRoot: string): Promise<SeedPla
   // Generated lib/tools.yaml — written every seed (subset of the framework
   // catalog), so include it in conflict detection.
   targets.push('lib/tools.yaml');
+  // Generated lib/business-context.yaml — written every seed from the
+  // operator's organisation input, so include it in conflict detection.
+  targets.push('lib/business-context.yaml');
   for (const verb of input.initial_verbs) {
     targets.push(path.join('verbs', `${verb.slug}.md`));
   }
@@ -347,8 +368,6 @@ export function injectVerbsTable(body: string, verbs: readonly SeedVerb[]): stri
  */
 export function injectPersona(body: string, input: SeedInput): string {
   let out = body;
-
-  out = replaceSection(out, 'Organisation', renderOrganisationSection(input.organisation));
 
   const identityBullets: string[] = [
     `- **Full name**: ${input.role_definition.role_name}`,
@@ -434,29 +453,35 @@ function renderVoiceTrait(t: VoiceTrait): string {
   return `- **${t.trait}**\n${subBullets}`;
 }
 
-function renderOrganisationSection(org: Organisation): string {
-  const lines: string[] = [];
-  lines.push(`- **Name**: ${org.name}`);
-  if (org.website) lines.push(`- **Website**: ${org.website}`);
-  if (org.sector) lines.push(`- **Sector**: ${org.sector}`);
-  if (org.size) lines.push(`- **Size**: ${org.size}`);
-  if (org.description) {
-    lines.push('');
-    lines.push(org.description);
-  }
-  if (org.moats) {
-    lines.push('');
-    lines.push('### What makes this org different');
-    lines.push('');
-    lines.push(org.moats);
-  }
-  if (org.customer_profile) {
-    lines.push('');
-    lines.push('### Who I engage with');
-    lines.push('');
-    lines.push(org.customer_profile);
-  }
-  return lines.join('\n');
+/**
+ * Maps wizard organisation fields to the structured business-context schema —
+ * an ordered list of `{ key, label, value }` fields the dashboard renders and
+ * the operator edits. The order here is the display order in the seeded file.
+ */
+const ORG_FIELD_MAP: { key: string; label: string; from: keyof Organisation }[] = [
+  { key: 'name', label: 'Name', from: 'name' },
+  { key: 'website', label: 'Website', from: 'website' },
+  { key: 'sector', label: 'Sector', from: 'sector' },
+  { key: 'size', label: 'Size', from: 'size' },
+  { key: 'what_we_do', label: 'What we do', from: 'description' },
+  { key: 'who_we_serve', label: 'Who we serve', from: 'customer_profile' },
+  { key: 'what_makes_us_different', label: 'What makes us different', from: 'moats' },
+];
+
+/**
+ * Render the operator's organisation input as `lib/business-context.yaml` — a
+ * versioned, ordered list of `{ key, label, value }` fields. Replaces the
+ * legacy `## Organisation` persona prose: org context now lives in this
+ * structured file, which the dashboard renders and the operator edits.
+ * Exported for testing.
+ */
+export function renderBusinessContextYaml(org: Organisation): string {
+  const business_context = ORG_FIELD_MAP.map(({ key, label, from }) => ({
+    key,
+    label,
+    value: (org[from] ?? '').toString(),
+  }));
+  return stringifyYaml({ version: 1, business_context });
 }
 
 function replaceSection(text: string, heading: string, replacement: string): string {
