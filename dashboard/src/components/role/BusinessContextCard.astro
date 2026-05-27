@@ -21,7 +21,7 @@
 
 <section class="sec" x-data="businessContextCard()" x-init="init()">
   <header class="sec-head">
-    <span class="sec-pill peach">BUSINESS CONTEXT</span>
+    <span class="sec-pill teal">BUSINESS CONTEXT</span>
     <span class="sec-title">Who we are</span>
     <span class="sec-counter" x-text="counter"></span>
   </header>
@@ -50,24 +50,28 @@
             <p class="empty-pixel">No business context filled in yet.</p>
           </template>
 
-          <dl class="bc-read-scalars">
-            <template x-for="field in scalarFields" :key="field.key">
-              <template x-if="field.value.trim()">
-                <div class="bc-read-scalar">
-                  <dt x-text="field.label"></dt>
-                  <dd x-text="field.value"></dd>
-                </div>
-              </template>
-            </template>
-          </dl>
+          <template x-if="hasAnyValue">
+            <div class="bc-read-callout">
+              <dl class="bc-read-scalars">
+                <template x-for="field in scalarFields" :key="field.key">
+                  <template x-if="field.value.trim()">
+                    <div class="bc-read-scalar">
+                      <dt x-text="field.label"></dt>
+                      <dd x-text="field.value"></dd>
+                    </div>
+                  </template>
+                </template>
+              </dl>
 
-          <template x-for="field in proseFields" :key="field.key">
-            <template x-if="field.value.trim()">
-              <div class="bc-read-prose">
-                <div class="bc-read-prose-label" x-text="field.label"></div>
-                <p class="bc-read-prose-value" x-text="field.value"></p>
-              </div>
-            </template>
+              <template x-for="field in proseFields" :key="field.key">
+                <template x-if="field.value.trim()">
+                  <div class="bc-read-prose">
+                    <div class="bc-read-prose-label" x-text="field.label"></div>
+                    <p class="bc-read-prose-value" x-text="field.value"></p>
+                  </div>
+                </template>
+              </template>
+            </div>
           </template>
 
           <button type="button" class="setup-add-row" @click="startEdit()">Edit</button>
@@ -295,12 +299,12 @@
 </script>
 
 <style>
-  /* Business context card — peach accent so the input focus block-shadow
+  /* Business context card — teal accent so the input focus block-shadow
      (which reads `var(--accent-soft)`) renders even though /role doesn't set
      a per-step accent the way the setup wizard does. */
   .sec {
-    --accent: var(--peach);
-    --accent-soft: var(--peach-soft);
+    --accent: var(--teal);
+    --accent-soft: var(--teal-soft);
   }
   .bc-error {
     margin-bottom: 1.2rem;
@@ -311,11 +315,22 @@
     align-items: flex-start;
     gap: 0.9rem;
   }
+  .bc-read-callout {
+    background: var(--teal-soft);
+    border-left: 4px solid var(--teal);
+    padding: 1.1em 1.4em;
+  }
   .bc-read-scalars {
     margin: 0 0 1.4rem;
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
+  }
+  /* Inside the callout the scalar list is followed by prose blocks (or is the
+     only content); drop its trailing margin when it's the callout's last child
+     so the teal box keeps even padding. */
+  .bc-read-callout > .bc-read-scalars:last-child {
+    margin-bottom: 0;
   }
   .bc-read-scalar {
     display: flex;
@@ -381,7 +396,7 @@
     border-color: var(--ink);
   }
   .bc-save:hover:not(:disabled) {
-    border-color: var(--peach);
-    color: var(--peach);
+    border-color: var(--teal);
+    color: var(--teal);
   }
 </style>
