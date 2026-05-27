@@ -1,9 +1,14 @@
 name: npm release
 
-# Publishes @praxis-framework/seed and @praxis-framework/cli to npm on
-# every push of a `v*.*.*` tag. Uses Trusted Publishing (OIDC) — no
-# long-lived NPM_TOKEN secret. Auth is granted via npm's trusted-publisher
-# config which must point at this repo + this workflow filename.
+# Publishes @praxis-framework/seed and @praxis-framework/cli to npm when a
+# GitHub Release is published. The git tag the Release creates is the single
+# source of truth for the version: the repo's package.json versions are an
+# intentional `0.0.0` placeholder and are stamped to the tag here, at publish
+# time. You never hand-bump a version — see RELEASING.md.
+#
+# Uses Trusted Publishing (OIDC) — no long-lived NPM_TOKEN secret. Auth is
+# granted via npm's trusted-publisher config which must point at this repo +
+# this workflow filename.
 #
 # One-time setup per package on npm:
 #   https://www.npmjs.com/package/<pkg>/access → Trusted publisher →
@@ -17,8 +22,8 @@ name: npm release
 # rather than relying on the version bundled with Node 20.
 
 on:
-  push:
-    tags: ['v*.*.*']
+  release:
+    types: [published]
 
 jobs:
   publish:
@@ -35,11 +40,32 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
           cache: 'npm'
 
-      - name: Upgrade npm for OIDC support
-        run: npm install -g npm@latest
+      - name: Resolve release version from tag
+        id: version
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          VERSION="${TAG#v}"
+          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error::Release tag '$TAG' is not a valid semver version (expected vX.Y.Z)."
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Upgrade npm for OIDC support
+        run: npm install -g npm@latest
+
+      - name: Stamp version from the release tag
+        # The repo carries a 0.0.0 placeholder; the tag is authoritative. Stamp
+        # every workspace to the release version and pin the cli -> seed range to
+        # the same version so a published cli depends on the matching seed.
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          npm version "$VERSION" --no-git-tag-version --workspaces --include-workspace-root --allow-same-version
+          # $VERSION is validated strict semver above, so inlining it is safe.
+          node -e "const f='cli/package.json';const fs=require('fs');const p=JSON.parse(fs.readFileSync(f,'utf8'));p.dependencies['@praxis-framework/seed']='^$VERSION';fs.writeFileSync(f, JSON.stringify(p,null,2)+'\n');"
 
       - name: Build @praxis-framework/seed
         run: npm run build --workspace=@praxis-framework/seed
