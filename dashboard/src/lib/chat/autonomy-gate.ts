@@ -17,6 +17,7 @@ const CONSTITUTIONAL_PATHS: readonly string[] = [
   'lib/compliance.yaml',
   'lib/autonomy.yaml',
   'lib/tools.yaml',
+  'lib/business-context.yaml',
 ];
 
 /**

@@ -3,6 +3,7 @@ import path from 'node:path';
 
 import { loadAutonomy, type AutonomySurface } from '@/lib/autonomy-loader.js';
 import { parsePersona } from '@/lib/persona-parser.js';
+import { loadBusinessContext, SCALAR_KEYS, type BusinessContext } from '@/lib/role/business-context.js';
 import { loadVerbs, type VerbSummary } from '@/lib/verbs-loader.js';
 
 import { personaNameFrom } from './persona-name.js';
@@ -40,10 +41,16 @@ export async function buildSystemPrompt(roleHome: string): Promise<string> {
   const name = personaNameFrom(persona);
   const opener = name.title ? `You are ${name.full} (${name.title}).` : `You are ${name.full}.`;
 
+  const businessContext = await loadBusinessContext(roleHome);
+  const businessBlock = businessContext ? renderBusinessContextSection(businessContext) : null;
+  // Structured business context supersedes the legacy persona prose section.
+  const personaBody = businessBlock ? stripMarkdownSection(personaText, 'Organisation') : personaText;
+
   const sections: string[] = [];
   sections.push(opener);
   sections.push('');
-  sections.push(personaText);
+  sections.push(personaBody);
+  if (businessBlock) sections.push('', businessBlock);
 
   const verbsBlock = await renderVerbsSection(roleHome);
   if (verbsBlock) sections.push('', verbsBlock);
@@ -77,6 +84,8 @@ export async function buildSystemPrompt(roleHome: string): Promise<string> {
     '- Give you tasks or feedback',
     '- Upload documents for context',
     '- Refine your role over time',
+    '',
+    "You're accountable for your work, not merely compliant with requests. When something you're handed sits oddly against the business you operate in or your remit, notice it and say so — as a good colleague would — before acting on it.",
     '',
     'Respond in your voice. You have thirteen tools available to you in this conversation:',
     '- `write_memory` — capture an observation worth remembering into your notebook',
@@ -236,6 +245,42 @@ function extractMarkdownSection(text: string, headingRegex: RegExp): string | nu
     }
   }
   return lines.slice(start, end).join('\n');
+}
+
+/** Remove a `## <heading>` section (heading + body up to the next ## or EOF). */
+export function stripMarkdownSection(text: string, heading: string): string {
+  const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const headingRe = new RegExp(`^##\\s+${escaped}\\b`);
+  const lines = text.split('\n');
+  let start = -1;
+  for (let i = 0; i < lines.length; i += 1) {
+    if (headingRe.test(lines[i] ?? '')) {
+      start = i;
+      break;
+    }
+  }
+  if (start < 0) return text;
+  let end = lines.length;
+  for (let i = start + 1; i < lines.length; i += 1) {
+    if (/^##\s+/.test(lines[i] ?? '')) {
+      end = i;
+      break;
+    }
+  }
+  const kept = [...lines.slice(0, start), ...lines.slice(end)];
+  return kept.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+/** Render the structured business context as a `## Business context` block, or null. */
+export function renderBusinessContextSection(bc: BusinessContext): string | null {
+  const nonEmpty = bc.business_context.filter((f) => f.value.trim().length > 0);
+  if (nonEmpty.length === 0) return null;
+  const scalars = nonEmpty.filter((f) => SCALAR_KEYS.has(f.key));
+  const prose = nonEmpty.filter((f) => !SCALAR_KEYS.has(f.key));
+  const lines: string[] = ['## Business context', ''];
+  for (const f of scalars) lines.push(`- **${f.label}**: ${f.value.trim()}`);
+  for (const f of prose) lines.push('', `### ${f.label}`, '', f.value.trim());
+  return lines.join('\n');
 }
 
 async function renderAutonomySection(roleHome: string): Promise<string | null> {

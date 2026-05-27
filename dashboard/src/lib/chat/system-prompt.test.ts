@@ -4,7 +4,12 @@ import path from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { buildSystemPrompt, parseToolsYaml } from './system-prompt.ts';
+import {
+  buildSystemPrompt,
+  parseToolsYaml,
+  renderBusinessContextSection,
+  stripMarkdownSection,
+} from './system-prompt.ts';
 
 let tempDir: string;
 
@@ -342,5 +347,40 @@ describe('parseToolsYaml', () => {
   it('skips capabilities that have no description', () => {
     const text = 'capabilities:\n  bare:\n    transport_options: [native]\n  named:\n    description: ok\n';
     expect(parseToolsYaml(text)).toEqual([{ name: 'named', description: 'ok' }]);
+  });
+});
+
+describe('stripMarkdownSection', () => {
+  it('removes a named section and its body up to the next ## or EOF', () => {
+    const md = '## Organisation\n\n- **Name**: Acme\n\nprose\n\n## Identity\n\n- **Role**: x';
+    const out = stripMarkdownSection(md, 'Organisation');
+    expect(out).not.toContain('## Organisation');
+    expect(out).toContain('## Identity');
+  });
+  it('is a no-op when the section is absent', () => {
+    const md = '## Identity\n\n- **Role**: x';
+    expect(stripMarkdownSection(md, 'Organisation')).toBe(md);
+  });
+});
+
+describe('renderBusinessContextSection', () => {
+  it('renders scalars as bullets and prose as subsections, skipping empties', () => {
+    const bc = {
+      version: 1,
+      business_context: [
+        { key: 'name', label: 'Name', value: 'Northwind' },
+        { key: 'website', label: 'Website', value: '' },
+        { key: 'what_we_do', label: 'What we do', value: 'We roast coffee.' },
+      ],
+    };
+    const out = renderBusinessContextSection(bc);
+    expect(out).toContain('## Business context');
+    expect(out).toContain('- **Name**: Northwind');
+    expect(out).not.toContain('Website');
+    expect(out).toContain('### What we do');
+    expect(out).toContain('We roast coffee.');
+  });
+  it('returns null when there are no non-empty fields', () => {
+    expect(renderBusinessContextSection({ version: 1, business_context: [] })).toBeNull();
   });
 });

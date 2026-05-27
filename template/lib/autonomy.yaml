@@ -134,6 +134,7 @@ surfaces:
 # These remain operator-only. Listed for documentation:
 #
 # - persona.md                   (constitution — voice + hard inhibitions)
+# - lib/business-context.yaml      (operator-owned; edited via the dashboard /role page)
 # - verbs/*.md (existing files)  (capability surface — behavioral risk)
 # - lib/customers.yaml           (legal/business — never cold-email a customer)
 # - lib/compliance.yaml          (legal/safety — Spam Act + opt-out gates)

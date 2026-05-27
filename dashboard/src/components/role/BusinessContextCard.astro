@@ -1,0 +1,402 @@
+---
+/**
+ * Operator-editable structured business context for the /role page.
+ *
+ * A single Alpine.js x-data island (`businessContextCard()`) that:
+ *   - GETs `/api/role/business-context` on init, storing `initialised` and a
+ *     working copy of `[{key,label,value}]` fields;
+ *   - renders a read view (empty-state on-ramp for legacy roles, otherwise the
+ *     populated fields) and an edit view (core fields fixed + add/remove custom
+ *     fields);
+ *   - PUTs `{ version: 1, business_context }` on Save, surfacing 400/422 errors
+ *     in an oxblood error banner matching the setup surface.
+ *
+ * The page is responsible for the surrounding Alpine runtime (it loads the
+ * Alpine CDN script), mirroring how EscalationActions relies on the page that
+ * mounts it. Scalar keys (name/website/sector/size) render as single-line
+ * inputs; everything else renders as a textarea, mirroring the wizard's
+ * organisation step.
+ */
+---
+
+<section class="sec" x-data="businessContextCard()" x-init="init()">
+  <header class="sec-head">
+    <span class="sec-pill teal">BUSINESS CONTEXT</span>
+    <span class="sec-title">Who we are</span>
+    <span class="sec-counter" x-text="counter"></span>
+  </header>
+
+  <template x-if="error">
+    <div class="setup-error bc-error" x-text="error"></div>
+  </template>
+
+  <!-- Read mode -->
+  <template x-if="!editing">
+    <div>
+      <!-- Legacy on-ramp: no file yet. -->
+      <template x-if="!initialised">
+        <div class="bc-empty">
+          <p class="empty-pixel">Business context isn't set up yet.</p>
+          <button type="button" class="setup-add-row" @click="startEdit()">
+            Set up business context
+          </button>
+        </div>
+      </template>
+
+      <!-- Populated: show non-empty fields. -->
+      <template x-if="initialised">
+        <div class="bc-read">
+          <template x-if="!hasAnyValue">
+            <p class="empty-pixel">No business context filled in yet.</p>
+          </template>
+
+          <template x-if="hasAnyValue">
+            <div class="bc-read-callout">
+              <dl class="bc-read-scalars">
+                <template x-for="field in scalarFields" :key="field.key">
+                  <template x-if="field.value.trim()">
+                    <div class="bc-read-scalar">
+                      <dt x-text="field.label"></dt>
+                      <dd x-text="field.value"></dd>
+                    </div>
+                  </template>
+                </template>
+              </dl>
+
+              <template x-for="field in proseFields" :key="field.key">
+                <template x-if="field.value.trim()">
+                  <div class="bc-read-prose">
+                    <div class="bc-read-prose-label" x-text="field.label"></div>
+                    <p class="bc-read-prose-value" x-text="field.value"></p>
+                  </div>
+                </template>
+              </template>
+            </div>
+          </template>
+
+          <button type="button" class="setup-add-row" @click="startEdit()">Edit</button>
+        </div>
+      </template>
+    </div>
+  </template>
+
+  <!-- Edit mode -->
+  <template x-if="editing">
+    <div class="bc-edit">
+      <template x-for="(field, idx) in fields" :key="field.key">
+        <div class="setup-field bc-edit-field">
+          <label class="setup-field-label" :for="`bc-${field.key}`">
+            <span x-text="field.label"></span>
+            <button
+              type="button"
+              class="setup-row-remove bc-remove"
+              aria-label="Remove field"
+              x-show="!isCore(field.key)"
+              @click="removeField(idx)"
+            >×</button>
+          </label>
+          <template x-if="isScalar(field.key)">
+            <input
+              class="setup-input"
+              type="text"
+              :id="`bc-${field.key}`"
+              x-model="field.value"
+              autocomplete="off"
+            />
+          </template>
+          <template x-if="!isScalar(field.key)">
+            <textarea
+              class="setup-input setup-input--prose"
+              :id="`bc-${field.key}`"
+              rows="3"
+              x-model="field.value"
+            ></textarea>
+          </template>
+        </div>
+      </template>
+
+      <button type="button" class="setup-add-row" @click="addField()">+ Add field</button>
+
+      <div class="bc-edit-actions">
+        <button
+          type="button"
+          class="setup-add-row bc-save"
+          @click="save()"
+          :disabled="saving"
+        >
+          <span x-show="!saving">Save</span>
+          <span x-show="saving">Saving…</span>
+        </button>
+        <button
+          type="button"
+          class="setup-add-row setup-add-row--danger"
+          @click="cancel()"
+          :disabled="saving"
+        >Cancel</button>
+      </div>
+    </div>
+  </template>
+</section>
+
+<script is:inline>
+  function businessContextCard() {
+    return {
+      initialised: false,
+      fields: [],
+      editing: false,
+      saving: false,
+      error: '',
+
+      // Core fields mirror CORE_FIELDS in lib/role/business-context.ts, in order.
+      coreFields: [
+        { key: 'name', label: 'Name' },
+        { key: 'website', label: 'Website' },
+        { key: 'sector', label: 'Sector' },
+        { key: 'size', label: 'Size' },
+        { key: 'what_we_do', label: 'What we do' },
+        { key: 'who_we_serve', label: 'Who we serve' },
+        { key: 'what_makes_us_different', label: 'What makes us different' },
+      ],
+      // Core keys (derived from coreFields) — used for membership checks.
+      get coreKeys() {
+        return this.coreFields.map((f) => f.key);
+      },
+      // Scalar keys mirror SCALAR_KEYS — these render single-line.
+      scalarKeys: ['name', 'website', 'sector', 'size'],
+
+      async init() {
+        await this.load();
+      },
+
+      async load() {
+        this.error = '';
+        try {
+          const res = await fetch('/api/role/business-context');
+          if (!res.ok) {
+            throw new Error('Failed to load business context (HTTP ' + res.status + ')');
+          }
+          const body = await res.json();
+          this.initialised = Boolean(body.initialised);
+          this.fields = Array.isArray(body.business_context)
+            ? body.business_context.map((f) => ({
+                key: String(f.key),
+                label: String(f.label),
+                value: typeof f.value === 'string' ? f.value : '',
+              }))
+            : [];
+        } catch (e) {
+          this.error = e.message || String(e);
+        }
+      },
+
+      isCore(key) {
+        return this.coreKeys.includes(key);
+      },
+      isScalar(key) {
+        return this.scalarKeys.includes(key);
+      },
+
+      get scalarFields() {
+        return this.fields.filter((f) => this.isScalar(f.key));
+      },
+      get proseFields() {
+        return this.fields.filter((f) => !this.isScalar(f.key));
+      },
+      get hasAnyValue() {
+        return this.fields.some((f) => f.value.trim().length > 0);
+      },
+      get counter() {
+        if (!this.initialised) return 'not set up';
+        const filled = this.fields.filter((f) => f.value.trim().length > 0).length;
+        return filled + ' of ' + this.fields.length + ' filled';
+      },
+
+      startEdit() {
+        this.error = '';
+        // Guarantee all core fields are present, in canonical order, before the
+        // edit view renders — reuse existing values where present, blank otherwise,
+        // then append any non-core (custom) fields in their current order.
+        const core = this.coreFields.map((c) => {
+          const existing = this.fields.find((f) => f.key === c.key);
+          return {
+            key: c.key,
+            label: c.label,
+            value: existing ? existing.value : '',
+          };
+        });
+        const custom = this.fields.filter((f) => !this.isCore(f.key));
+        this.fields = core.concat(custom);
+        this.editing = true;
+      },
+
+      slugify(label) {
+        return label
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '_')
+          .replace(/_+/g, '_')
+          .replace(/^_+|_+$/g, '');
+      },
+
+      addField() {
+        this.error = '';
+        const label = (window.prompt('Field label') || '').trim();
+        if (!label) return;
+        const key = this.slugify(label);
+        if (!key) {
+          this.error = 'That label produces an empty field key — try a different label.';
+          return;
+        }
+        if (this.fields.some((f) => f.key === key)) {
+          this.error = 'A field with that key already exists.';
+          return;
+        }
+        this.fields.push({ key, label, value: '' });
+      },
+
+      removeField(idx) {
+        const field = this.fields[idx];
+        if (!field || this.isCore(field.key)) return;
+        this.fields.splice(idx, 1);
+      },
+
+      async save() {
+        this.error = '';
+        this.saving = true;
+        try {
+          const res = await fetch('/api/role/business-context', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ version: 1, business_context: this.fields }),
+          });
+          if (!res.ok) {
+            const body = await res.json().catch(() => ({}));
+            let msg = body.error || 'Save failed (HTTP ' + res.status + ')';
+            if (Array.isArray(body.issues) && body.issues.length > 0) {
+              const detail = body.issues
+                .map((i) => (Array.isArray(i.path) ? i.path.join('.') + ': ' : '') + (i.message || ''))
+                .filter(Boolean)
+                .join('; ');
+              if (detail) msg = msg + ' — ' + detail;
+            }
+            throw new Error(msg);
+          }
+          this.editing = false;
+          await this.load();
+        } catch (e) {
+          this.error = e.message || String(e);
+        } finally {
+          this.saving = false;
+        }
+      },
+
+      async cancel() {
+        this.error = '';
+        this.editing = false;
+        await this.load();
+      },
+    };
+  }
+</script>
+
+<style>
+  /* Business context card — teal accent so the input focus block-shadow
+     (which reads `var(--accent-soft)`) renders even though /role doesn't set
+     a per-step accent the way the setup wizard does. */
+  .sec {
+    --accent: var(--teal);
+    --accent-soft: var(--teal-soft);
+  }
+  .bc-error {
+    margin-bottom: 1.2rem;
+  }
+  .bc-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.9rem;
+  }
+  .bc-read-callout {
+    background: var(--teal-soft);
+    border-left: 4px solid var(--teal);
+    padding: 1.1em 1.4em;
+  }
+  .bc-read-scalars {
+    margin: 0 0 1.4rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  /* Inside the callout the scalar list is followed by prose blocks (or is the
+     only content); drop its trailing margin when it's the callout's last child
+     so the teal box keeps even padding. */
+  .bc-read-callout > .bc-read-scalars:last-child {
+    margin-bottom: 0;
+  }
+  .bc-read-scalar {
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+    margin: 0;
+  }
+  .bc-read-scalar dt {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-muted);
+  }
+  .bc-read-scalar dd {
+    margin: 0;
+    font-family: var(--prose);
+    font-size: 15px;
+    color: var(--ink);
+  }
+  .bc-read-prose + .bc-read-prose {
+    margin-top: 1.1rem;
+  }
+  .bc-read-prose-label {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    margin-bottom: 0.35rem;
+  }
+  .bc-read-prose-value {
+    margin: 0;
+    font-family: var(--prose);
+    font-size: 15.5px;
+    line-height: 1.55;
+    color: var(--ink-soft);
+  }
+  .bc-read .setup-add-row {
+    margin-top: 1.6rem;
+  }
+  .bc-edit {
+    display: flex;
+    flex-direction: column;
+    gap: 1.3rem;
+  }
+  .bc-edit-field .setup-field-label {
+    justify-content: space-between;
+  }
+  .bc-remove {
+    font-size: 16px;
+    padding: 0 0.4rem;
+  }
+  .bc-edit-actions {
+    display: flex;
+    gap: 0.6rem;
+    margin-top: 0.4rem;
+    padding-top: 1.1rem;
+    border-top: 1px dashed var(--rule);
+  }
+  .bc-save {
+    border-style: solid;
+    border-color: var(--ink);
+  }
+  .bc-save:hover:not(:disabled) {
+    border-color: var(--teal);
+    color: var(--teal);
+  }
+</style>

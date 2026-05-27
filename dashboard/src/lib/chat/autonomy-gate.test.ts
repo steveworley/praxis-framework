@@ -71,6 +71,15 @@ describe('isWriteAllowed — constitutional surfaces', () => {
     const d = await isWriteAllowed(tempDir, 'lib/autonomy.yaml');
     expect(d.allowed).toBe(false);
   });
+
+  it('refuses lib/business-context.yaml even when opened as a surface', async () => {
+    await writeAutonomy(
+      ['surfaces:', '  - path: lib/business-context.yaml', '    mode: full'].join('\n'),
+    );
+    const d = await isWriteAllowed(tempDir, 'lib/business-context.yaml');
+    expect(d.allowed).toBe(false);
+    if (!d.allowed) expect(d.reason).toMatch(/constitutional/);
+  });
 });
 
 describe('isWriteAllowed — implicit autonomous surfaces', () => {

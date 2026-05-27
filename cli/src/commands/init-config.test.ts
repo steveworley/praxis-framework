@@ -69,7 +69,8 @@ describe('runInitConfig', () => {
     // Cross-check one file lands on disk with operator content injected.
     const persona = await fs.readFile(path.join(targetPath, 'persona.md'), 'utf-8');
     expect(persona).toContain('sales-lead');
-    expect(persona).toContain('Acme BD');
+    const businessContext = await fs.readFile(path.join(targetPath, 'lib', 'business-context.yaml'), 'utf-8');
+    expect(businessContext).toContain('Acme BD');
   });
 
   it('round-trips accountabilities and success_criteria from config to persona.md', async () => {

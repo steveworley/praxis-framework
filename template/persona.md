@@ -2,23 +2,6 @@
 
 The dashboard parses two specific sections from this file: `## Identity` and `## Voice & Personality`. Keep the headings exact; everything else can be styled however suits the role.
 
-## Organisation
-
-- **Name**: {organisation name}
-- **Website**: {organisation website}
-- **Sector**: {sector}
-- **Size**: {solo / small / mid / large / enterprise}
-
-{One to three sentences on what the org does.}
-
-### What makes this org different
-
-{Free text — observable moats, not aspirational ones.}
-
-### Who I engage with
-
-{Customer / counterparty profile.}
-
 ## Identity
 
 - **Full name**: {full name}
