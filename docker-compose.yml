@@ -55,6 +55,13 @@ services:
     environment:
       PRAXIS_ROLE_HOME: /role
       PRAXIS_LOG_GLOB: "${PRAXIS_LOG_GLOB:-*/logs/*.jsonl}"
+      # Gate the dashboard behind a password. Passed through from the host env
+      # (e.g. `DASHBOARD_PASSWORD=secret docker compose up`) so the secret is
+      # never baked into this file. Unset => the dashboard is open (the default,
+      # fine for the loopback-only port binding above; set it for any networked
+      # deployment). Changing the value logs everyone out. See dashboard/README
+      # § Access control.
+      DASHBOARD_PASSWORD: "${DASHBOARD_PASSWORD:-}"
       # Uncomment + extend after adding MCP services below. Each entry is
       # `name=http://service-name:port` where `service-name` matches the
       # compose service key. The `name` becomes the tool-name prefix.

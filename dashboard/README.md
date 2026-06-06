@@ -31,6 +31,26 @@ PRAXIS_ROLE_HOME=/path/to/some-role npm run dev
 | `PRAXIS_LOG_GLOB` | `**/logs/*.jsonl` | Glob for the activity feed (rooted at the role home). Globstar matches root `logs/`, single-segment `<wp>/logs/`, and Sam-style nested `<wp>/<id>/logs/`. |
 | `ANTHROPIC_API_KEY` | _(unset)_ | Required to enable the `/chat` surface. Without it, `/chat` renders a disabled-state empty pane. |
 | `PRAXIS_CHAT_MODEL` | `claude-sonnet-4-6` | Overrides the model the chat surface sends requests to. |
+| `DASHBOARD_PASSWORD` | _(unset)_ | When set, gates the entire dashboard behind a password (see [Access control](#access-control)). When unset, the dashboard is open. |
+
+## Access control
+
+By default the dashboard has no authentication — anyone who can reach the port can view and mutate role data. This is fine for local development but unsuitable for any networked deployment.
+
+Set `DASHBOARD_PASSWORD` to require a password:
+
+```
+DASHBOARD_PASSWORD=your-secret-here npm run dev
+```
+
+When set, every page **and** every `/api/*` route is gated. Unauthenticated page requests redirect to `/login`; unauthenticated API requests get a `401`. After logging in you get a `httpOnly` session cookie that lasts 7 days, and a `logout` link appears in the brand strip.
+
+Notes:
+
+- It's a single shared password — there are no per-user accounts.
+- The session cookie is derived from the password, so **changing `DASHBOARD_PASSWORD` immediately invalidates all existing sessions**.
+- The cookie is marked `Secure` when the dashboard is served over HTTPS (detected via `x-forwarded-proto`), so terminate TLS at your proxy in production.
+- Leave the variable unset to disable the gate entirely (local-dev default).
 
 ## Chat
 
