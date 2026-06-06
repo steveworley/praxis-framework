@@ -4,6 +4,8 @@ import path from 'node:path';
 
 import { renderMarkdown } from '@/lib/markdown.js';
 
+import { deriveWorkProducts, type WorkProductRef } from './work-products.ts';
+
 const CONVERSATIONS_REL = path.posix.join('memory', 'conversations');
 
 /**
@@ -73,6 +75,8 @@ export interface ThreadDetail {
  */
 export interface TurnForResponse extends Turn {
   content_html: string;
+  /** Work-products written during this turn, as chat reference chips. */
+  workProducts: WorkProductRef[];
 }
 
 /**
@@ -83,7 +87,11 @@ export interface TurnForResponse extends Turn {
  * markdown body to the clipboard).
  */
 export function serializeTurn(turn: Turn): TurnForResponse {
-  return { ...turn, content_html: renderMarkdown(turn.content) };
+  return {
+    ...turn,
+    content_html: renderMarkdown(turn.content),
+    workProducts: deriveWorkProducts(turn.toolCalls),
+  };
 }
 
 /**

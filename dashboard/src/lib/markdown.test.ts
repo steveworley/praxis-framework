@@ -67,6 +67,34 @@ describe('renderMarkdown', () => {
     expect(out).not.toContain('<script>');
     expect(out).toContain('&lt;script&gt;');
   });
+
+  it('renders a mermaid fence as a visual figure with escaped source preserved', () => {
+    const out = renderMarkdown('```mermaid\nflowchart LR\n  A-->B\n```');
+    expect(out).toContain('class="praxis-visual"');
+    expect(out).toContain('data-kind="mermaid"');
+    expect(out).toContain('class="praxis-visual-source"');
+    expect(out).toContain('flowchart LR');
+  });
+
+  it('renders a vega-lite fence as a visual figure', () => {
+    const out = renderMarkdown('```vega-lite\n{"mark":"bar"}\n```');
+    expect(out).toContain('class="praxis-visual"');
+    expect(out).toContain('data-kind="vega-lite"');
+    expect(out).toContain('{&quot;mark&quot;:&quot;bar&quot;}');
+  });
+
+  it('escapes HTML inside a visual fence (no raw script leaks)', () => {
+    const out = renderMarkdown('```mermaid\n<script>alert(1)</script>\n```');
+    expect(out).not.toContain('<script>alert(1)</script>');
+    expect(out).toContain('&lt;script&gt;');
+  });
+
+  it('leaves unknown fence languages as plain code blocks', () => {
+    const out = renderMarkdown('```python\nprint(1)\n```');
+    expect(out).not.toContain('praxis-visual');
+    expect(out).toContain('<pre>');
+    expect(out).toContain('<code');
+  });
 });
 
 describe('escapeHtml', () => {

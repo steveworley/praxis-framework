@@ -13,6 +13,8 @@ import {
   listThreads,
   loadThread,
   parseThreadFile,
+  serializeTurn,
+  type Turn,
 } from './conversation.ts';
 
 let tempDir: string;
@@ -284,6 +286,34 @@ describe('summary turn round-trip', () => {
     expect(loaded.turns[0]!.content).toContain('operator asked about Q1');
     expect(loaded.turns[1]!.role).toBe('user');
     expect(loaded.turns[1]!.content).toBe('newest message');
+  });
+});
+
+describe('serializeTurn', () => {
+  it('renders content_html and an empty workProducts list when no tool calls', () => {
+    const turn: Turn = { role: 'assistant', timestamp: '2026-06-06T10:00:00Z', content: 'hello' };
+    const out = serializeTurn(turn);
+    expect(out.content_html).toContain('hello');
+    expect(out.workProducts).toEqual([]);
+  });
+
+  it('includes a workProduct chip for a successful write_output call', () => {
+    const turn: Turn = {
+      role: 'assistant',
+      timestamp: '2026-06-06T10:00:00Z',
+      content: 'Wrote the brief.',
+      toolCalls: [
+        {
+          name: 'write_output',
+          input: {},
+          result: { ok: true, data: { path: 'output/document/q1-brief.md', type: 'document', slug: 'q1-brief', status: 'draft' } },
+        },
+      ],
+    };
+    const out = serializeTurn(turn);
+    expect(out.workProducts).toEqual([
+      { type: 'document', slug: 'q1-brief', href: '/output/document/q1-brief', label: 'document · q1-brief' },
+    ]);
   });
 });
 

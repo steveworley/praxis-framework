@@ -146,6 +146,23 @@ Two patterns we see most often, and the moves that work for each.
 ...
 ```
 
+## Visual blocks
+
+Output bodies may embed two declarative visual blocks. They render client-side
+on the work-product's detail view; on the chat surface a work-product is shown
+as a reference chip, never rendered inline.
+
+- ` ```mermaid ` — diagrams (flow, sequence, timeline, state, ER, gantt).
+- ` ```vega-lite ` — data charts from a Vega-Lite JSON spec. Data must be inline
+  (`data.values`); specs that load a remote `data.url` are refused.
+
+These two are the **only** visual block types — a closed set, like the output
+primitives themselves. Any other fenced language renders as a normal code
+block. The role authors only the declarative source text; the framework owns
+rendering, so no raw HTML ever enters the page. If a visual block can't be
+rendered (no JS, malformed source), the source stays visible with a caption —
+content is never silently hidden.
+
 ## Tools
 
 The chat surface exposes two output tools:

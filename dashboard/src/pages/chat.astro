@@ -221,6 +221,13 @@ const hasPending = kindChips.length > 0;
                 </template>
               </div>
             </template>
+            <template x-if="turn.workProducts && turn.workProducts.length">
+              <div class="chat-turn-workproducts">
+                <template x-for="(wp, wi) in turn.workProducts" :key="`${idx}-wp-${wi}`">
+                  <a class="chat-workproduct-chip" :href="wp.href" x-text="wp.label"></a>
+                </template>
+              </div>
+            </template>
           </article>
         </template>
         <template x-if="pendingAssistant">
