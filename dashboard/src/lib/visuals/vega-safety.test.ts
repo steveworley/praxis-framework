@@ -22,6 +22,18 @@ describe('parseSafeVegaSpec', () => {
     expect(r.ok).toBe(false);
   });
 
+  it('rejects a spec whose data is an array containing a remote url', () => {
+    const r = parseSafeVegaSpec('{"data":[{"url":"http://evil.test/x.json"}]}');
+    expect(r.ok).toBe(false);
+  });
+
+  it('rejects (does not throw) a pathologically deep spec', () => {
+    let deep = '{"mark":"bar"}';
+    for (let i = 0; i < 50000; i++) deep = `{"a":${deep}}`;
+    const r = parseSafeVegaSpec(deep);
+    expect(r.ok).toBe(false);
+  });
+
   it('rejects invalid JSON', () => {
     const r = parseSafeVegaSpec('{nope');
     expect(r.ok).toBe(false);

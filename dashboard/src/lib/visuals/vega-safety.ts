@@ -9,13 +9,23 @@ export type SafeSpecResult =
   | { ok: true; spec: Record<string, unknown> }
   | { ok: false; error: string };
 
-/** Recursively look for any object key named `url` under a `data` object. */
+/**
+ * Recursively look for remote data references. A node is remote when it carries
+ * a `data` property whose value is an object with a `url` key, or an array any
+ * of whose elements is an object with a `url` key. May throw (e.g. stack
+ * overflow on a pathologically deep spec); callers must guard.
+ */
 function hasRemoteData(node: unknown): boolean {
   if (Array.isArray(node)) return node.some(hasRemoteData);
   if (node && typeof node === 'object') {
     const obj = node as Record<string, unknown>;
     const data = obj['data'];
-    if (data && typeof data === 'object' && 'url' in (data as Record<string, unknown>)) {
+    if (Array.isArray(data)) {
+      const hasUrlElement = data.some(
+        (el) => el !== null && typeof el === 'object' && 'url' in (el as Record<string, unknown>),
+      );
+      if (hasUrlElement) return true;
+    } else if (data && typeof data === 'object' && 'url' in (data as Record<string, unknown>)) {
       return true;
     }
     return Object.values(obj).some(hasRemoteData);
@@ -33,7 +43,13 @@ export function parseSafeVegaSpec(source: string): SafeSpecResult {
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
     return { ok: false, error: 'Chart spec must be a JSON object.' };
   }
-  if (hasRemoteData(parsed)) {
+  let remote: boolean;
+  try {
+    remote = hasRemoteData(parsed);
+  } catch {
+    return { ok: false, error: 'Chart spec could not be validated.' };
+  }
+  if (remote) {
     return {
       ok: false,
       error: 'Chart spec may not load data from a remote url; use inline data.values.',
