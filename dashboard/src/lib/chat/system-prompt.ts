@@ -77,6 +77,8 @@ export async function buildSystemPrompt(roleHome: string): Promise<string> {
     '',
     'Every output carries a closed-enum status: `draft → review → ready → sent → done → archived`. New files default to `draft`. Use `update_output_status` to advance them (e.g. when the operator confirms a draft was sent).',
     '',
+    'Output bodies (and any markdown you write) may include two visual blocks, which render on the work-product’s detail view: a ```mermaid``` fenced block for diagrams (flow, sequence, timeline, state, ER, gantt) and a ```vega-lite``` fenced block for data charts (a Vega-Lite JSON spec with inline `data.values` — no remote `url`). These are the only visual block types. Put visuals in a work-product and reference it; they do not render inline in chat.',
+    '',
     '---',
     '',
     'You are speaking with the operator who owns you. They may:',
