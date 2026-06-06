@@ -86,14 +86,14 @@ const pageTitle = detail ? `${detail.meta.title} · Output` : `Output · Praxis`
     {notFound && <EmptyState>Output not found at this path.</EmptyState>}
     {error && <EmptyState>Could not load output: {error}</EmptyState>}
 
-    {detail && type === 'document' && <DocumentView meta={detail.meta} bodyHtml={bodyHtml} />}
-    {detail && type === 'draft' && <DraftView meta={detail.meta} bodyHtml={bodyHtml} />}
-    {detail && type === 'record' && <RecordView meta={detail.meta} bodyHtml={bodyHtml} />}
-    {detail && type === 'plan' && (
-      <PlanView meta={detail.meta} body={detail.body} bodyHtml={bodyHtml} />
-    )}
-    {detail && type === 'reference' && (
-      <ReferenceView meta={detail.meta} bodyHtml={bodyHtml} />
+    {detail && (
+      <div data-praxis-visuals>
+        {type === 'document' && <DocumentView meta={detail.meta} bodyHtml={bodyHtml} />}
+        {type === 'draft' && <DraftView meta={detail.meta} bodyHtml={bodyHtml} />}
+        {type === 'record' && <RecordView meta={detail.meta} bodyHtml={bodyHtml} />}
+        {type === 'plan' && <PlanView meta={detail.meta} body={detail.body} bodyHtml={bodyHtml} />}
+        {type === 'reference' && <ReferenceView meta={detail.meta} bodyHtml={bodyHtml} />}
+      </div>
     )}
   </main>
 </BaseLayout>
@@ -115,3 +115,8 @@ const pageTitle = detail ? `${detail.meta.title} · Output` : `Output · Praxis`
     text-decoration: underline;
   }
 </style>
+
+<script>
+  import { initVisuals } from '@/scripts/visuals.ts';
+  initVisuals();
+</script>
