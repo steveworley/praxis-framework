@@ -1,6 +1,7 @@
 import { defineMiddleware } from 'astro:middleware';
 
 import { COOKIE_NAME, isAuthEnabled, verifyToken } from '@/lib/auth';
+import { csrfBlock } from '@/lib/csrf';
 
 /**
  * Request gate for the password-protected dashboard.
@@ -26,6 +27,14 @@ function isAllowListed(pathname: string): boolean {
 }
 
 export const onRequest = defineMiddleware((context, next) => {
+  // Runtime CSRF/origin check runs before the auth gate so it protects
+  // unauthenticated POSTs (login, first-run setup wizard) even when no
+  // DASHBOARD_PASSWORD is configured.
+  const blocked = csrfBlock(context.request);
+  if (blocked) {
+    return blocked;
+  }
+
   if (!isAuthEnabled()) {
     context.locals.authEnabled = false;
     return next();

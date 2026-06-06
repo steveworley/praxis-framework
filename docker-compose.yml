@@ -62,6 +62,14 @@ services:
       # deployment). Changing the value logs everyone out. See dashboard/README
       # § Access control.
       DASHBOARD_PASSWORD: "${DASHBOARD_PASSWORD:-}"
+      # Extra origins permitted to submit forms, on top of the request's own
+      # host. A proxied POST is already treated as same-site when the browser
+      # `Origin` matches the proxy's `X-Forwarded-Host`, so this is only needed
+      # to allow ADDITIONAL origins (e.g. a separate front-end subdomain).
+      # Comma-separated; entries may be a bare host, a `*.example.com` wildcard
+      # (subdomains only), or a full origin URL. See dashboard/README
+      # § Cross-site request protection.
+      # PRAXIS_ALLOWED_ORIGINS: "app.example.com,*.preview.example.com"
       # Uncomment + extend after adding MCP services below. Each entry is
       # `name=http://service-name:port` where `service-name` matches the
       # compose service key. The `name` becomes the tool-name prefix.

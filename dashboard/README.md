@@ -32,6 +32,7 @@ PRAXIS_ROLE_HOME=/path/to/some-role npm run dev
 | `ANTHROPIC_API_KEY` | _(unset)_ | Required to enable the `/chat` surface. Without it, `/chat` renders a disabled-state empty pane. |
 | `PRAXIS_CHAT_MODEL` | `claude-sonnet-4-6` | Overrides the model the chat surface sends requests to. |
 | `DASHBOARD_PASSWORD` | _(unset)_ | When set, gates the entire dashboard behind a password (see [Access control](#access-control)). When unset, the dashboard is open. |
+| `PRAXIS_ALLOWED_ORIGINS` | _(unset)_ | Extra origins allowed to submit forms, beyond the request's own host (see [Cross-site request protection](#cross-site-request-protection)). |
 
 ## Access control
 
@@ -51,6 +52,27 @@ Notes:
 - The session cookie is derived from the password, so **changing `DASHBOARD_PASSWORD` immediately invalidates all existing sessions**.
 - The cookie is marked `Secure` when the dashboard is served over HTTPS (detected via `x-forwarded-proto`), so terminate TLS at your proxy in production.
 - Leave the variable unset to disable the gate entirely (local-dev default).
+
+## Cross-site request protection
+
+Every state-changing request (`POST`/`PUT`/`PATCH`/`DELETE`) carrying a form-style body is checked for a same-site origin before it reaches a page or API route. This blocks cross-site request forgery — including against the unauthenticated login form and first-run setup wizard, which run before the password gate.
+
+Astro ships a built-in origin check, but it derives the expected origin from build-time config (`security.allowedDomains`) and so reconstructs the origin as `https://localhost` behind a reverse proxy — rejecting every proxied form POST with `Cross-site POST form submissions are forbidden`. Because this dashboard is a prebuilt image deployed to arbitrary domains, that build-time config can't apply, so the check is reimplemented at runtime (`src/lib/csrf.ts`) and Astro's is disabled in `astro.config.mjs`.
+
+The runtime check works with **no configuration on any domain**: a request is same-site when the browser's `Origin` (or `Referer`) host matches the host the request arrived on — taken from `X-Forwarded-Host` if your proxy sets it, otherwise the `Host` header. For this to work behind a proxy, forward the real host:
+
+```
+proxy_set_header X-Forwarded-Host $host;
+proxy_set_header X-Forwarded-Proto $scheme;
+```
+
+To permit form submissions from **additional** origins (e.g. a separate front-end on another subdomain), set `PRAXIS_ALLOWED_ORIGINS` to a comma-separated allowlist. Each entry may be a bare host (`app.example.com`), a wildcard for subdomains only (`*.example.com` matches `a.example.com`, not `example.com`), or a full origin URL (`https://app.example.com`):
+
+```
+PRAXIS_ALLOWED_ORIGINS=app.example.com,*.preview.example.com
+```
+
+Requests with non-form content types (e.g. `application/json`, which a browser cannot send cross-site without a CORS preflight) are not subject to the check.
 
 ## Chat
 

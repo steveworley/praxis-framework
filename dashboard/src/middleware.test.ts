@@ -29,6 +29,11 @@ interface MockContextOptions {
   pathname: string;
   search?: string;
   cookieValue?: string | undefined;
+  method?: string;
+  origin?: string;
+  forwardedHost?: string;
+  contentType?: string;
+  referer?: string;
 }
 
 interface MockContext {
@@ -47,9 +52,25 @@ function makeContext(opts: MockContextOptions): MockContext {
     headers: { location },
   }));
   const locals: { authEnabled?: boolean } = {};
+  const headers = new Headers();
+  if (opts.origin !== undefined) {
+    headers.set('origin', opts.origin);
+  }
+  if (opts.forwardedHost !== undefined) {
+    headers.set('x-forwarded-host', opts.forwardedHost);
+  }
+  if (opts.contentType !== undefined) {
+    headers.set('content-type', opts.contentType);
+  }
+  if (opts.referer !== undefined) {
+    headers.set('referer', opts.referer);
+  }
   const context = {
     url,
-    request: new Request(url.toString()),
+    request: new Request(url.toString(), {
+      method: opts.method ?? 'GET',
+      headers,
+    }),
     locals,
     redirect,
     cookies: {
@@ -70,6 +91,34 @@ describe('onRequest (auth disabled)', () => {
   it('passes through and marks locals.authEnabled false', () => {
     delete process.env[ENV_KEY];
     const mock = makeContext({ pathname: '/chat' });
+    invoke(mock);
+    expect(mock.next).toHaveBeenCalledOnce();
+    expect(mock.locals.authEnabled).toBe(false);
+  });
+
+  it('blocks a cross-site form POST with 403 even when auth is disabled', () => {
+    delete process.env[ENV_KEY];
+    const mock = makeContext({
+      pathname: '/api/setup/role',
+      method: 'POST',
+      origin: 'https://evil.example',
+      forwardedHost: 'app.example.com',
+      contentType: 'application/x-www-form-urlencoded',
+    });
+    const result = invoke(mock) as Response;
+    expect(result.status).toBe(403);
+    expect(mock.next).not.toHaveBeenCalled();
+  });
+
+  it('lets a same-site form POST proceed into the auth logic', () => {
+    delete process.env[ENV_KEY];
+    const mock = makeContext({
+      pathname: '/api/setup/role',
+      method: 'POST',
+      origin: 'https://app.example.com',
+      forwardedHost: 'app.example.com',
+      contentType: 'application/x-www-form-urlencoded',
+    });
     invoke(mock);
     expect(mock.next).toHaveBeenCalledOnce();
     expect(mock.locals.authEnabled).toBe(false);
