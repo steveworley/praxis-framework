@@ -1,0 +1,176 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import {
+  COOKIE_NAME,
+  expectedToken,
+  isAuthEnabled,
+  MAX_AGE_SECONDS,
+  verifyPassword,
+  verifyToken,
+} from '@/lib/auth';
+
+/**
+ * Password gate entry point. Renders a single centered card with a password
+ * form on GET and processes the submission on POST. The session cookie is a
+ * password-derived token (see `@/lib/auth`), so a successful POST simply sets
+ * it and redirects to the sanitized `next` target.
+ *
+ * `next` is only honoured when it is a same-origin relative path (single
+ * leading slash, no scheme/host, not protocol-relative `//`). Anything else
+ * falls back to `/chat` to avoid open-redirect abuse.
+ */
+export const prerender = false;
+
+const SAFE_NEXT = /^\/(?!\/)/;
+const DEFAULT_NEXT = '/chat';
+
+function sanitizeNext(raw: string | null | undefined): string {
+  if (typeof raw === 'string' && SAFE_NEXT.test(raw)) {
+    return raw;
+  }
+  return DEFAULT_NEXT;
+}
+
+function isHttps(): boolean {
+  if (Astro.request.headers.get('x-forwarded-proto') === 'https') {
+    return true;
+  }
+  return new URL(Astro.request.url).protocol === 'https:';
+}
+
+let error = false;
+let next = sanitizeNext(Astro.url.searchParams.get('next'));
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  next = sanitizeNext(form.get('next')?.toString());
+  const password = form.get('password')?.toString() ?? '';
+  if (verifyPassword(password)) {
+    Astro.cookies.set(COOKIE_NAME, expectedToken(), {
+      httpOnly: true,
+      sameSite: 'lax',
+      path: '/',
+      maxAge: MAX_AGE_SECONDS,
+      secure: isHttps(),
+    });
+    return Astro.redirect(next, 302);
+  }
+  error = true;
+  Astro.response.status = 401;
+} else if (isAuthEnabled() && verifyToken(Astro.cookies.get(COOKIE_NAME)?.value)) {
+  // Already authenticated — skip the form.
+  return Astro.redirect(next, 302);
+}
+---
+
+<BaseLayout title="Sign in · Praxis">
+  <main class="login">
+    <form class="login-card" method="POST">
+      <div class="login-brand">PRAXIS</div>
+      <h1 class="login-title">Sign in</h1>
+      <p class="login-sub">This dashboard is password protected.</p>
+
+      <label class="login-label" for="password">Password</label>
+      <input
+        id="password"
+        class="login-input"
+        type="password"
+        name="password"
+        autocomplete="current-password"
+        autofocus
+        required
+      />
+      <input type="hidden" name="next" value={next} />
+
+      {error && (
+        <p class="login-error" role="alert">Incorrect password.</p>
+      )}
+
+      <button class="login-submit" type="submit">Enter</button>
+    </form>
+  </main>
+</BaseLayout>
+
+<style>
+  .login {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+  }
+  .login-card {
+    width: 100%;
+    max-width: 360px;
+    display: flex;
+    flex-direction: column;
+    background: var(--surface);
+    border: 2px solid var(--ink);
+    box-shadow: 6px 6px 0 var(--teal);
+    padding: 2rem 1.8rem;
+  }
+  .login-brand {
+    font-family: var(--pixel);
+    font-size: 16px;
+    letter-spacing: 0.18em;
+    color: var(--ink);
+    margin-bottom: 1.4rem;
+  }
+  .login-title {
+    font-family: var(--display, var(--ui));
+    font-size: 22px;
+    color: var(--ink);
+    margin-bottom: 0.2rem;
+  }
+  .login-sub {
+    font-size: 13px;
+    color: var(--ink-muted);
+    margin-bottom: 1.4rem;
+  }
+  .login-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    margin-bottom: 0.4rem;
+  }
+  .login-input {
+    font-family: var(--mono);
+    font-size: 14px;
+    color: var(--ink);
+    background: var(--bg);
+    border: 1.5px solid var(--ink);
+    padding: 0.6em 0.7em;
+    outline: none;
+  }
+  .login-input:focus {
+    border-color: var(--teal);
+    box-shadow: 0 0 0 2px var(--teal-soft);
+  }
+  .login-error {
+    color: var(--oxblood);
+    background: var(--oxblood-soft);
+    border: 1px solid var(--oxblood);
+    font-size: 12.5px;
+    padding: 0.5em 0.7em;
+    margin-top: 0.9rem;
+  }
+  .login-submit {
+    margin-top: 1.4rem;
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--bg);
+    background: var(--ink);
+    border: 1.5px solid var(--ink);
+    padding: 0.7em 1em;
+    cursor: pointer;
+  }
+  .login-submit:hover {
+    background: var(--teal);
+    border-color: var(--teal);
+    color: var(--ink);
+  }
+</style>

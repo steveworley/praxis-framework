@@ -90,6 +90,7 @@ const personaTag = (personaName ?? '').trim().toUpperCase();
   <span class="meta">
     {updatedAt && <span>updated {updatedAt}</span>}
     <button type="button" onclick="window.location.reload()">refresh</button>
+    {Astro.locals.authEnabled && <a class="logout" href="/logout">logout</a>}
   </span>
 </div>
 <div class="nav-wrap">
