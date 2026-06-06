@@ -21,7 +21,9 @@
     "astro": "^5.0.0",
     "diff": "^8.0.4",
     "markdown-it": "^14.1.1",
+    "mermaid": "^11.15.0",
     "simple-git": "^3.27.0",
+    "vega-embed": "^7.1.0",
     "yaml": "^2.6.0",
     "zod": "^3.23.8"
   },
@@ -29,6 +31,7 @@
     "@astrojs/check": "^0.9.4",
     "@types/markdown-it": "^14.1.2",
     "@types/node": "^22.10.0",
+    "jsdom": "^29.1.1",
     "typescript": "^5.6.3",
     "vitest": "^2.1.8"
   }
