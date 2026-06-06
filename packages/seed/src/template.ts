@@ -9,11 +9,13 @@ import { SeedError } from './types.js';
  *
  * Resolution order:
  *   1. Explicit override (`override` arg).
- *   2. `<package-root>/template/` — for when a published build bundles the
- *      template alongside the compiled JS (out of scope for the v0 monorepo
- *      layout, but supported so we don't paint ourselves into a corner).
- *   3. Walk up from the package directory looking for a `template/` sibling.
- *      Handles the monorepo-dev case: `packages/seed/dist/` → `packages/seed/`
+ *   2. `<here>/template/` — the bundled location. The build copies the
+ *      scaffolding to `dist/template/`, so in a published/compiled install
+ *      `here` is `dist/` and this resolves the shipped template.
+ *   3. `<package-root>/template/` — for when a published build bundles the
+ *      template alongside the package root rather than next to the compiled JS.
+ *   4. Walk up from the package directory looking for a `template/` sibling.
+ *      Handles the monorepo-dev case: `packages/seed/src/` → `packages/seed/`
  *      → `packages//` → repo-root, where `template/` lives.
  *
  * Throws `SeedError('TEMPLATE_MISSING')` if nothing matches.
@@ -29,6 +31,12 @@ export function resolveTemplatePath(override?: string): string {
   // src/template.ts (dev) → src/ → packages/seed/
   // dist/template.js (build) → dist/ → packages/seed/
   const here = fileURLToPath(new URL('.', import.meta.url));
+
+  // Bundled location: the build copies the scaffolding to dist/template/, so
+  // in a compiled install `here` is dist/ and this is the shipped template.
+  const shipped = path.join(here, 'template');
+  if (existsSync(shipped)) return shipped;
+
   const packageRoot = path.resolve(here, '..');
 
   const bundled = path.join(packageRoot, 'template');

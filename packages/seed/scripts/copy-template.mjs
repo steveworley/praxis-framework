@@ -1,12 +1,14 @@
 // Copy the framework's root-level `template/` directory into the seed
-// package's tree so it ships inside the published tarball. The seed package's
-// `files` field includes `template/`, and `src/template.ts` looks for a
-// `<package-root>/template/` directory first when resolving the template path.
+// package's BUILD OUTPUT (`dist/template/`) so it ships wherever `dist/` does
+// — the published npm tarball AND the dashboard's runtime image, which only
+// copies `packages/seed/dist`. `src/template.ts` resolves the template from
+// `<dist>/template/` first (i.e. alongside the compiled JS), so the seed
+// package is fully self-contained: no consumer needs to copy a loose
+// `template/` directory separately.
 //
-// In the dev monorepo this script keeps `packages/seed/template/` in sync
-// with the root `template/`; the copied tree is gitignored so the source of
-// truth stays at the repo root. At publish time `prepublishOnly` runs the
-// build (which runs this script), so the tarball always carries a fresh copy.
+// Runs after `tsc` (see the package `build` script), so `dist/` already exists.
+// The copied tree lives under the gitignored `dist/`, so the source of truth
+// stays at the repo root.
 
 import { cpSync, existsSync, renameSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -14,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const source = join(here, '..', '..', '..', 'template');
-const dest = join(here, '..', 'template');
+const dest = join(here, '..', 'dist', 'template');
 
 if (!existsSync(source)) {
   console.error(`copy-template: source not found at ${source}`);
