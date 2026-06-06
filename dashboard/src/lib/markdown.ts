@@ -28,6 +28,43 @@ const md: MarkdownIt = new MarkdownIt({
 });
 
 /**
+ * Bounded set of fenced-code languages that render as *visual blocks* rather
+ * than code. The role authors declarative text (mermaid source / Vega-Lite
+ * JSON); the server emits a visible placeholder carrying the ESCAPED source,
+ * and a client island on work-product surfaces upgrades it to inline SVG.
+ *
+ * This allow-list IS the bound — any other language renders as a normal code
+ * block. `html: false` is unchanged: the source is escaped text, never HTML.
+ */
+const VISUAL_FENCE_KINDS = new Set(['mermaid', 'vega-lite']);
+
+const VISUAL_FENCE_LABEL: Record<string, string> = {
+  mermaid: 'Diagram',
+  'vega-lite': 'Chart',
+};
+
+const defaultFenceRule = md.renderer.rules.fence;
+
+md.renderer.rules.fence = (tokens, idx, options, env, self) => {
+  const token = tokens[idx];
+  const kind = (token?.info ?? '').trim().split(/\s+/)[0] ?? '';
+  if (VISUAL_FENCE_KINDS.has(kind)) {
+    const source = md.utils.escapeHtml(token?.content ?? '');
+    const label = VISUAL_FENCE_LABEL[kind] ?? 'Visual';
+    return (
+      `<figure class="praxis-visual" data-kind="${kind}">` +
+      `<pre class="praxis-visual-source">${source}</pre>` +
+      `<figcaption class="praxis-visual-fallback">${label} — view on the work-product</figcaption>` +
+      `</figure>\n`
+    );
+  }
+  // Fall back to markdown-it's default fence renderer for everything else.
+  return defaultFenceRule
+    ? defaultFenceRule(tokens, idx, options, env, self)
+    : self.renderToken(tokens, idx, options);
+};
+
+/**
  * Strip framework-internal HTML-comment fences before rendering. The chat
  * surface persists tool-call metadata inside `<!-- praxis:tool_calls ... -->`
  * blocks on assistant turns; the chat API parses these separately to build
