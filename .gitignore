@@ -42,7 +42,6 @@ coverage/
 # which is already covered by the dist/ rule above.
 cli/src/**/*.js
 
-# Seed package's template copy — populated at build time by
-# packages/seed/scripts/copy-template.mjs so the tarball ships with the
-# template tree. Source of truth is the repo-root template/.
-packages/seed/template/
+# Seed template is copied to packages/seed/dist/template at build time
+# (packages/seed/scripts/copy-template.mjs); dist/ is already ignored above.
+# Source of truth is the repo-root template/.

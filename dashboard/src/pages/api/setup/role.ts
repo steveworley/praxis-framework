@@ -1,5 +1,3 @@
-import path from 'node:path';
-
 import type { APIRoute } from 'astro';
 import { z } from 'zod';
 
@@ -28,10 +26,9 @@ export const POST: APIRoute = async ({ request }) => {
   }
 
   const roleHome = getRoleHome();
-  const templateRoot = path.join(roleHome, 'template');
 
   try {
-    const result = await seedRole(parsed.data, { roleHome, templateRoot });
+    const result = await seedRole(parsed.data, { roleHome });
     return json(200, result);
   } catch (error: unknown) {
     if (error instanceof SeedError) {

@@ -53,7 +53,13 @@ export class SeedError extends Error {
 
 interface SeedEnv {
   roleHome: string;
-  templateRoot: string;
+  /**
+   * Explicit override for the framework `template/` directory. Optional: when
+   * omitted, the seed package's `resolveTemplatePath()` locates the scaffolding
+   * bundled in `@praxis-framework/seed` (dist/template/). Tests still pass it
+   * explicitly to pin the resolution to the repo-root template.
+   */
+  templateRoot?: string;
 }
 
 /**
@@ -73,7 +79,10 @@ export async function seedRole(req: SeedRequest, env: SeedEnv): Promise<SeedResu
   if (detectMode(roleHome) !== 'seed') {
     throw new SeedError('Role is already seeded — persona.md exists at the role home.', 409);
   }
-  if (!(await pathExists(templateRoot))) {
+  // Only validate an explicit override here. When templateRoot is undefined the
+  // seed package's resolveTemplatePath() locates (and throws for) the bundled
+  // template, so a pre-check would be redundant.
+  if (templateRoot !== undefined && !(await pathExists(templateRoot))) {
     throw new SeedError(`Template directory missing: ${templateRoot}`, 500);
   }
 
@@ -99,7 +108,7 @@ export async function seedRole(req: SeedRequest, env: SeedEnv): Promise<SeedResu
   // (the dashboard always wrote without a conflict check) and the `tidy`
   // step below cleans up the framework-only artefacts post-seed.
   const result = await packageSeedRole(req, roleHome, {
-    templatePath: templateRoot,
+    ...(templateRoot !== undefined ? { templatePath: templateRoot } : {}),
     overwrite: true,
   }).catch((err: unknown) => {
     // Translate package errors to dashboard errors so the API route's
