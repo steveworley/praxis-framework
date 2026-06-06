@@ -25,7 +25,8 @@ export function collectVisuals(root: ParentNode): VisualNode[] {
   for (const figure of Array.from(
     root.querySelectorAll<HTMLElement>('[data-praxis-visuals] figure.praxis-visual'),
   )) {
-    if (figure.dataset['rendered'] === 'true') continue;
+    const rendered = figure.dataset['rendered'];
+    if (rendered === 'true' || rendered === 'error') continue;
     const kind = figure.dataset['kind'] ?? '';
     const source = figure.querySelector('.praxis-visual-source')?.textContent ?? '';
     out.push({ kind, source, figure });
@@ -56,6 +57,7 @@ async function renderMermaid(nodes: VisualNode[]): Promise<void> {
       const { svg } = await mermaid.render(`praxis-mermaid-${mermaidIdSeq++}`, node.source);
       const holder = document.createElement('div');
       holder.className = 'praxis-visual-rendered';
+      // Safe: mermaid securityLevel:'strict' output is DOMPurify-sanitized (no scripts/handlers).
       holder.innerHTML = svg;
       node.figure.appendChild(holder);
       hideSourceAndCaption(node.figure);
