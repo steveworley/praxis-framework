@@ -34,8 +34,11 @@
     "scaffold"
   ],
   "scripts": {
-    "build": "tsc && node ./scripts/copy-template.mjs",
+    "prebuild": "node ./scripts/embed-template.mjs",
+    "build": "tsc",
+    "pretest": "node ./scripts/embed-template.mjs",
     "test": "vitest run",
+    "precheck": "node ./scripts/embed-template.mjs",
     "check": "tsc --noEmit",
     "prepublishOnly": "npm run build"
   },

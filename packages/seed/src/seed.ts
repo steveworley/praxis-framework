@@ -123,9 +123,37 @@ export async function seedRole(
 
   const absTarget = path.resolve(targetPath);
   const templateRoot = resolveTemplatePath(options.templatePath);
+  // When no override was supplied, `resolveTemplatePath` materialised the
+  // embedded scaffolding into a managed temp dir that we own and must clean up.
+  const ownsTemplateRoot = options.templatePath === undefined;
   const overwrite = options.overwrite ?? false;
   const dryRun = options.dryRun ?? false;
 
+  try {
+    return await seedFromTemplate(input, absTarget, templateRoot, { overwrite, dryRun });
+  } finally {
+    if (ownsTemplateRoot) {
+      await fs.rm(templateRoot, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+}
+
+interface SeedFromTemplateOptions {
+  overwrite: boolean;
+  dryRun: boolean;
+}
+
+/**
+ * Seed `absTarget` from a resolved `templateRoot` directory. Split out from
+ * `seedRole` so the public entry point can wrap this body in a `finally` that
+ * cleans up the temp template dir it materialised.
+ */
+async function seedFromTemplate(
+  input: SeedInput,
+  absTarget: string,
+  templateRoot: string,
+  { overwrite, dryRun }: SeedFromTemplateOptions,
+): Promise<SeedResult> {
   // Compute the full set of files we'd write, both template-derived and
   // generated (verbs, .gitkeep). We need this list up-front to enforce the
   // "all-or-nothing" guarantee — we check every target against existing
