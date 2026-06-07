@@ -1,24 +1,31 @@
-import { existsSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, writeFileSync, chmodSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
+import { EMBEDDED_TEMPLATE } from './template-data.generated.js';
 import { SeedError } from './types.js';
 
 /**
- * Resolve the framework `template/` directory.
+ * Resolve a praxis `template/` directory to seed a role from.
  *
- * Resolution order:
- *   1. Explicit override (`override` arg).
- *   2. `<here>/template/` — the bundled location. The build copies the
- *      scaffolding to `dist/template/`, so in a published/compiled install
- *      `here` is `dist/` and this resolves the shipped template.
- *   3. `<package-root>/template/` — for when a published build bundles the
- *      template alongside the package root rather than next to the compiled JS.
- *   4. Walk up from the package directory looking for a `template/` sibling.
- *      Handles the monorepo-dev case: `packages/seed/src/` → `packages/seed/`
- *      → `packages//` → repo-root, where `template/` lives.
+ * Two modes:
  *
- * Throws `SeedError('TEMPLATE_MISSING')` if nothing matches.
+ *   1. **Override** (`override` arg supplied): validate that the path exists
+ *      and return its absolute form. Used by tests and any caller that wants
+ *      to seed from a specific on-disk template. Throws
+ *      `SeedError('TEMPLATE_MISSING')` if the path doesn't exist.
+ *
+ *   2. **Default** (no `override`): materialise the template that is *embedded*
+ *      into this package (`template-data.generated.ts`) into a fresh temp
+ *      directory and return that directory. This makes seeding work regardless
+ *      of how the package is bundled — the dashboard bundles this package,
+ *      which breaks `import.meta.url`-based disk resolution, so the scaffolding
+ *      travels with the code as data rather than as files we have to locate.
+ *
+ *      The returned temp dir is the caller's to clean up. `seedRole` does this
+ *      best-effort when it owns the lifecycle (i.e. no `templatePath` override).
+ *
+ * Kept synchronous: callers resolve the path synchronously.
  */
 export function resolveTemplatePath(override?: string): string {
   if (override !== undefined) {
@@ -28,33 +35,12 @@ export function resolveTemplatePath(override?: string): string {
     return path.resolve(override);
   }
 
-  // src/template.ts (dev) → src/ → packages/seed/
-  // dist/template.js (build) → dist/ → packages/seed/
-  const here = fileURLToPath(new URL('.', import.meta.url));
-
-  // Bundled location: the build copies the scaffolding to dist/template/, so
-  // in a compiled install `here` is dist/ and this is the shipped template.
-  const shipped = path.join(here, 'template');
-  if (existsSync(shipped)) return shipped;
-
-  const packageRoot = path.resolve(here, '..');
-
-  const bundled = path.join(packageRoot, 'template');
-  if (existsSync(bundled)) return bundled;
-
-  // Walk up from packageRoot looking for `template/`.
-  let cursor = packageRoot;
-  // 6 levels is plenty — we're typically 2 levels deep in the monorepo.
-  for (let i = 0; i < 6; i += 1) {
-    const candidate = path.join(cursor, 'template');
-    if (existsSync(candidate)) return candidate;
-    const parent = path.dirname(cursor);
-    if (parent === cursor) break;
-    cursor = parent;
+  const tmpDir = mkdtempSync(path.join(os.tmpdir(), 'praxis-template-'));
+  for (const entry of EMBEDDED_TEMPLATE) {
+    const dst = path.join(tmpDir, entry.path);
+    mkdirSync(path.dirname(dst), { recursive: true });
+    writeFileSync(dst, Buffer.from(entry.base64, 'base64'));
+    chmodSync(dst, entry.mode);
   }
-
-  throw new SeedError(
-    'Could not locate a praxis template/ directory. Pass `templatePath` in SeedOptions to override.',
-    'TEMPLATE_MISSING',
-  );
+  return tmpDir;
 }

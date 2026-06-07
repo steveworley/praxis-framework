@@ -42,6 +42,6 @@ coverage/
 # which is already covered by the dist/ rule above.
 cli/src/**/*.js
 
-# Seed template is copied to packages/seed/dist/template at build time
-# (packages/seed/scripts/copy-template.mjs); dist/ is already ignored above.
-# Source of truth is the repo-root template/.
+# Seed scaffolding is embedded as data at build time by
+# packages/seed/scripts/embed-template.mjs. Source of truth is repo-root template/.
+packages/seed/src/template-data.generated.ts
