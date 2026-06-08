@@ -41,6 +41,13 @@ capabilities:
     default_transport: native
     always_available: true
 
+  mcp:quant:
+    description: "Manage your Quant stack and Quant's agentic platform (agents, tools, orchestrations)"
+    transport_options: [url, sse, stdio]
+    default_transport: url
+    default_auth_env: QUANT_API_TOKEN
+    docker_image: ghcr.io/quantcdn/mcp-quant:latest
+
   mcp:google-workspace:
     description: "Gmail, Calendar, Drive via Google Workspace MCP"
     transport_options: [stdio, sse, url]

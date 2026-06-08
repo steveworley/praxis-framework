@@ -2,10 +2,13 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { simpleGit } from 'simple-git';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { _resetMcpCatalog } from './mcp-catalog.ts';
+import { _resetMcpCatalog, _setTransportFactory } from './mcp-catalog.ts';
 import {
   executeCreateEscalation,
   executeLogDecision,
@@ -743,15 +746,12 @@ describe('auto-emit activity for tool calls', () => {
 });
 
 describe('executeTool — MCP dispatch', () => {
-  const originalFetch = globalThis.fetch;
-
   beforeEach(() => {
     _resetMcpCatalog();
     delete process.env['PRAXIS_MCPS'];
   });
 
   afterEach(() => {
-    globalThis.fetch = originalFetch;
     _resetMcpCatalog();
     delete process.env['PRAXIS_MCPS'];
   });
@@ -761,34 +761,29 @@ describe('executeTool — MCP dispatch', () => {
     await fs.writeFile(path.join(tempDir, 'lib', 'autonomy.yaml'), text, 'utf-8');
   }
 
-  function mockMcp(callBody: Record<string, unknown>, status = 200): ReturnType<typeof vi.fn> {
-    const mock = vi.fn(async (url: string | URL | Request) => {
-      const u = String(url);
-      if (u.endsWith('/tools/list')) {
-        return new Response(
-          JSON.stringify({
-            tools: [
-              {
-                name: 'post_message',
-                description: 'Post a Slack message',
-                inputSchema: { type: 'object', properties: {} },
-              },
-            ],
-          }),
-          { status: 200 },
-        );
-      }
-      if (u.endsWith('/tools/call')) {
-        return new Response(JSON.stringify(callBody), { status });
-      }
-      throw new Error(`Unexpected URL: ${u}`);
-    });
-    globalThis.fetch = mock as unknown as typeof fetch;
-    return mock;
+  /**
+   * Install an in-process MCP server advertising a single `post_message`
+   * method that returns `callResult`, wired to the catalog via the transport
+   * seam. Replaces the old `/tools/list` + `/tools/call` fetch mock with a
+   * real SDK round-trip.
+   */
+  function mockMcp(callResult: Record<string, unknown>): void {
+    const factory = (): Transport => {
+      const server = new McpServer({ name: 'slack-test', version: '0.0.0' });
+      server.registerTool(
+        'post_message',
+        { description: 'Post a Slack message', inputSchema: {} },
+        async () => callResult as { content: { type: 'text'; text: string }[] },
+      );
+      const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+      void server.connect(serverTransport);
+      return clientTransport;
+    };
+    _setTransportFactory(factory);
   }
 
   it('routes <server>__<method> through executeMcpCall when the server is in the catalog', async () => {
-    process.env['PRAXIS_MCPS'] = 'slack=http://mcp-slack:8080';
+    process.env['PRAXIS_MCPS'] = 'slack=http://mcp-slack:8080/mcp';
     await writeAutonomy('mcps:\n  slack: allow\n');
     mockMcp({ content: [{ type: 'text', text: 'ok' }] });
 
@@ -805,7 +800,7 @@ describe('executeTool — MCP dispatch', () => {
   });
 
   it('emits a tool_call activity entry with the mcp: <server>.<method> headline', async () => {
-    process.env['PRAXIS_MCPS'] = 'slack=http://mcp-slack:8080';
+    process.env['PRAXIS_MCPS'] = 'slack=http://mcp-slack:8080/mcp';
     await writeAutonomy('mcps:\n  slack: allow\n');
     mockMcp({ content: [{ type: 'text', text: 'ok' }] });
 
@@ -832,7 +827,6 @@ describe('executeTool — MCP dispatch', () => {
     // either, so the dispatcher should fall through to the KNOWN_TOOLS check
     // and reject with the standard "Unknown tool" message.
     process.env['PRAXIS_MCPS'] = '';
-    globalThis.fetch = vi.fn() as unknown as typeof fetch;
 
     const result = await executeTool('slack__post_message', {}, tempDir);
     expect(result.ok).toBe(false);
@@ -841,9 +835,9 @@ describe('executeTool — MCP dispatch', () => {
   });
 
   it('static tool names without `__` are routed normally', async () => {
-    process.env['PRAXIS_MCPS'] = 'slack=http://mcp-slack:8080';
+    process.env['PRAXIS_MCPS'] = 'slack=http://mcp-slack:8080/mcp';
     await writeAutonomy('mcps:\n  slack: allow\n');
-    mockMcp({});
+    mockMcp({ content: [] });
 
     const r = await executeTool(
       'write_memory',
@@ -854,7 +848,7 @@ describe('executeTool — MCP dispatch', () => {
   });
 
   it('returns the autonomy refusal when the MCP server is denied', async () => {
-    process.env['PRAXIS_MCPS'] = 'slack=http://mcp-slack:8080';
+    process.env['PRAXIS_MCPS'] = 'slack=http://mcp-slack:8080/mcp';
     await writeAutonomy('mcps:\n  slack: deny\n');
     mockMcp({ content: [] });
 

@@ -1,14 +1,81 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
+import { z } from 'zod';
+
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import {
   _getParsedEntries,
   _resetMcpCatalog,
+  _setTransportFactory,
   findMissingMcpDeclarations,
   getMcpCatalog,
   parsePraxisMcps,
 } from './mcp-catalog.ts';
 
-const originalFetch = globalThis.fetch;
+/**
+ * Tests drive the real MCP SDK rather than mocking `fetch`: a tiny in-process
+ * `McpServer` advertises a couple of tools (one normal, one returning
+ * `isError`), wired to the catalog via `InMemoryTransport.createLinkedPair()`.
+ * The catalog's transport factory is swapped (`_setTransportFactory`) so its
+ * client connects to that in-memory server instead of opening a real socket.
+ */
+
+interface ServerHarness {
+  /** Number of links handed out — one per catalog connect attempt. */
+  connectCount: number;
+}
+
+/**
+ * Build an in-process MCP server advertising `post_message` (normal) and
+ * `boom` (returns `isError: true`). Returns a transport factory the catalog
+ * can use plus a harness counting connect attempts. Each catalog connect gets
+ * a fresh linked transport pair bound to the same server instance.
+ */
+function buildMcpServer(): { factory: () => Transport; harness: ServerHarness } {
+  const harness: ServerHarness = { connectCount: 0 };
+  const factory = (): Transport => {
+    harness.connectCount += 1;
+    const server = new McpServer({ name: 'test-server', version: '0.0.0' });
+    server.registerTool(
+      'post_message',
+      {
+        description: 'Post a message to a channel',
+        inputSchema: { channel: z.string(), text: z.string() },
+      },
+      async ({ channel, text }) => ({
+        content: [{ type: 'text', text: `posted to ${channel}: ${text}` }],
+      }),
+    );
+    server.registerTool(
+      'boom',
+      { description: 'Always errors', inputSchema: {} },
+      async () => ({
+        isError: true,
+        content: [{ type: 'text', text: 'channel not found' }],
+      }),
+    );
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    void server.connect(serverTransport);
+    return clientTransport;
+  };
+  return { factory, harness };
+}
+
+/** A transport factory whose `start()` rejects — simulates an unreachable server. */
+function unreachableFactory(message: string): () => Transport {
+  return () => {
+    const transport: Transport = {
+      async start(): Promise<void> {
+        throw new Error(message);
+      },
+      async send(): Promise<void> {},
+      async close(): Promise<void> {},
+    };
+    return transport;
+  };
+}
 
 beforeEach(() => {
   _resetMcpCatalog();
@@ -16,10 +83,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  globalThis.fetch = originalFetch;
   _resetMcpCatalog();
   delete process.env['PRAXIS_MCPS'];
-  vi.useRealTimers();
 });
 
 describe('parsePraxisMcps', () => {
@@ -30,37 +95,37 @@ describe('parsePraxisMcps', () => {
   });
 
   it('parses a single entry', () => {
-    expect(parsePraxisMcps('slack=http://mcp-slack:8080')).toEqual([
-      { name: 'slack', url: 'http://mcp-slack:8080' },
+    expect(parsePraxisMcps('quant=http://mcp-quant:8080/mcp')).toEqual([
+      { name: 'quant', url: 'http://mcp-quant:8080/mcp' },
     ]);
   });
 
   it('parses multiple comma-separated entries', () => {
     expect(
-      parsePraxisMcps('slack=http://a:1,gmail=http://b:2,playwright=http://c:3'),
+      parsePraxisMcps('slack=http://a:1/mcp,gmail=http://b:2/mcp,playwright=http://c:3/mcp'),
     ).toEqual([
-      { name: 'slack', url: 'http://a:1' },
-      { name: 'gmail', url: 'http://b:2' },
-      { name: 'playwright', url: 'http://c:3' },
+      { name: 'slack', url: 'http://a:1/mcp' },
+      { name: 'gmail', url: 'http://b:2/mcp' },
+      { name: 'playwright', url: 'http://c:3/mcp' },
     ]);
   });
 
   it('trims whitespace around names and urls', () => {
-    expect(parsePraxisMcps(' slack = http://x:1 , gmail = http://y:2 ')).toEqual([
-      { name: 'slack', url: 'http://x:1' },
-      { name: 'gmail', url: 'http://y:2' },
+    expect(parsePraxisMcps(' slack = http://x:1/mcp , gmail = http://y:2/mcp ')).toEqual([
+      { name: 'slack', url: 'http://x:1/mcp' },
+      { name: 'gmail', url: 'http://y:2/mcp' },
     ]);
   });
 
   it('drops malformed entries (missing `=`, empty parts)', () => {
-    expect(parsePraxisMcps('justaname,=http://x:1,name=,ok=http://y:2')).toEqual([
-      { name: 'ok', url: 'http://y:2' },
+    expect(parsePraxisMcps('justaname,=http://x:1,name=,ok=http://y:2/mcp')).toEqual([
+      { name: 'ok', url: 'http://y:2/mcp' },
     ]);
   });
 
   it('drops names with characters outside Anthropic tool-name alphabet', () => {
-    expect(parsePraxisMcps('bad name=http://x:1,good_name=http://y:2')).toEqual([
-      { name: 'good_name', url: 'http://y:2' },
+    expect(parsePraxisMcps('bad name=http://x:1,good_name=http://y:2/mcp')).toEqual([
+      { name: 'good_name', url: 'http://y:2/mcp' },
     ]);
   });
 
@@ -79,106 +144,66 @@ describe('getMcpCatalog — env-var snapshot', () => {
   });
 
   it('re-parses when PRAXIS_MCPS changes between calls', async () => {
-    globalThis.fetch = vi.fn(async () =>
-      new Response(JSON.stringify({ tools: [] }), { status: 200 }),
-    ) as unknown as typeof fetch;
-
-    process.env['PRAXIS_MCPS'] = 'first=http://a:1';
+    process.env['PRAXIS_MCPS'] = 'first=http://a:1/mcp';
     expect(_getParsedEntries().map((e) => e.name)).toEqual(['first']);
 
-    process.env['PRAXIS_MCPS'] = 'second=http://b:2';
+    process.env['PRAXIS_MCPS'] = 'second=http://b:2/mcp';
     expect(_getParsedEntries().map((e) => e.name)).toEqual(['second']);
   });
 });
 
-describe('getMcpCatalog — tools/list fetch', () => {
-  it('marks a server connected and registers its tools on a 200 with valid body', async () => {
-    process.env['PRAXIS_MCPS'] = 'slack=http://mcp-slack:8080';
-    const fetchMock = vi.fn(async () =>
-      new Response(
-        JSON.stringify({
-          tools: [
-            {
-              name: 'post_message',
-              description: 'Post a message to a channel',
-              inputSchema: {
-                type: 'object',
-                properties: { channel: { type: 'string' }, text: { type: 'string' } },
-                required: ['channel', 'text'],
-              },
-            },
-            {
-              name: 'list_channels',
-              description: 'List channels',
-              inputSchema: { type: 'object', properties: {} },
-            },
-          ],
-        }),
-        { status: 200 },
-      ),
-    );
-    globalThis.fetch = fetchMock as unknown as typeof fetch;
+describe('getMcpCatalog — MCP connect + listTools', () => {
+  it('marks a server connected and registers its tools after a successful listTools', async () => {
+    process.env['PRAXIS_MCPS'] = 'quant=http://mcp-quant:8080/mcp';
+    const { factory } = buildMcpServer();
+    _setTransportFactory(factory);
 
     const catalog = await getMcpCatalog();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock).toHaveBeenCalledWith(
-      'http://mcp-slack:8080/tools/list',
-      expect.objectContaining({ method: 'POST' }),
-    );
     expect(catalog.servers).toHaveLength(1);
-    expect(catalog.servers[0]?.name).toBe('slack');
+    expect(catalog.servers[0]?.name).toBe('quant');
     expect(catalog.servers[0]?.status).toBe('connected');
     expect(catalog.servers[0]?.toolCount).toBe(2);
 
     expect(catalog.tools).toHaveLength(2);
-    expect(catalog.tools[0]?.toolName).toBe('slack__post_message');
-    expect(catalog.tools[0]?.serverName).toBe('slack');
-    expect(catalog.tools[0]?.methodName).toBe('post_message');
-    expect(catalog.tools[0]?.description).toBe('Post a message to a channel');
-    expect(catalog.tools[0]?.inputSchema).toEqual({
-      type: 'object',
-      properties: { channel: { type: 'string' }, text: { type: 'string' } },
-      required: ['channel', 'text'],
+    const post = catalog.tools.find((t) => t.methodName === 'post_message');
+    expect(post?.toolName).toBe('quant__post_message');
+    expect(post?.serverName).toBe('quant');
+    expect(post?.description).toBe('Post a message to a channel');
+    // inputSchema passes through verbatim — the SDK emits JSON Schema from the
+    // Zod shape, and we hand it to Anthropic unchanged.
+    const schema = post?.inputSchema as Record<string, unknown>;
+    expect(schema['type']).toBe('object');
+    expect(schema['properties']).toMatchObject({
+      channel: { type: 'string' },
+      text: { type: 'string' },
     });
   });
 
-  it('caches the result and does not re-fetch on the second call', async () => {
-    process.env['PRAXIS_MCPS'] = 'slack=http://mcp-slack:8080';
-    const fetchMock = vi.fn(async () =>
-      new Response(JSON.stringify({ tools: [] }), { status: 200 }),
-    );
-    globalThis.fetch = fetchMock as unknown as typeof fetch;
+  it('caches the result and does not reconnect on the second call', async () => {
+    process.env['PRAXIS_MCPS'] = 'quant=http://mcp-quant:8080/mcp';
+    const { factory, harness } = buildMcpServer();
+    _setTransportFactory(factory);
 
     await getMcpCatalog();
     await getMcpCatalog();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(harness.connectCount).toBe(1);
   });
 
-  it('dedupes concurrent fetches to the same server', async () => {
-    process.env['PRAXIS_MCPS'] = 'slack=http://mcp-slack:8080';
-    const pending: ((value: Response) => void)[] = [];
-    const fetchMock = vi.fn(
-      () =>
-        new Promise<Response>((resolve) => {
-          pending.push(resolve);
-        }),
-    );
-    globalThis.fetch = fetchMock as unknown as typeof fetch;
+  it('dedupes concurrent connects to the same server', async () => {
+    process.env['PRAXIS_MCPS'] = 'quant=http://mcp-quant:8080/mcp';
+    const { factory, harness } = buildMcpServer();
+    _setTransportFactory(factory);
 
-    const a = getMcpCatalog();
-    const b = getMcpCatalog();
-    // Concurrent — single in-flight fetch.
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    pending[0]?.(new Response(JSON.stringify({ tools: [] }), { status: 200 }));
-    await Promise.all([a, b]);
+    const [a, b] = await Promise.all([getMcpCatalog(), getMcpCatalog()]);
+    // A single in-flight connect serves both concurrent callers.
+    expect(harness.connectCount).toBe(1);
+    expect(a.servers[0]?.status).toBe('connected');
+    expect(b.servers[0]?.status).toBe('connected');
   });
 
-  it('marks a server unreachable on network error', async () => {
-    process.env['PRAXIS_MCPS'] = 'slack=http://mcp-slack:8080';
-    const fetchMock = vi.fn(async () => {
-      throw new Error('connect ECONNREFUSED');
-    });
-    globalThis.fetch = fetchMock as unknown as typeof fetch;
+  it('marks a server unreachable when the transport fails to connect', async () => {
+    process.env['PRAXIS_MCPS'] = 'quant=http://mcp-quant:8080/mcp';
+    _setTransportFactory(unreachableFactory('connect ECONNREFUSED'));
 
     const catalog = await getMcpCatalog();
     expect(catalog.servers).toHaveLength(1);
@@ -187,118 +212,64 @@ describe('getMcpCatalog — tools/list fetch', () => {
     expect(catalog.servers[0]?.errorMessage).toContain('ECONNREFUSED');
     expect(catalog.tools).toEqual([]);
   });
-
-  it('marks a server errored on non-200 response', async () => {
-    process.env['PRAXIS_MCPS'] = 'slack=http://mcp-slack:8080';
-    const fetchMock = vi.fn(async () =>
-      new Response('Internal Server Error', { status: 500 }),
-    );
-    globalThis.fetch = fetchMock as unknown as typeof fetch;
-
-    const catalog = await getMcpCatalog();
-    expect(catalog.servers[0]?.status).toBe('error');
-    expect(catalog.servers[0]?.errorMessage).toContain('HTTP 500');
-  });
-
-  it('drops MCP methods that would synthesise an invalid Anthropic tool name', async () => {
-    process.env['PRAXIS_MCPS'] = 'slack=http://mcp-slack:8080';
-    const fetchMock = vi.fn(async () =>
-      new Response(
-        JSON.stringify({
-          tools: [
-            { name: 'valid_method', description: 'ok', inputSchema: {} },
-            { name: 'bad method with spaces', description: 'no', inputSchema: {} },
-            { name: '', description: 'no', inputSchema: {} },
-          ],
-        }),
-        { status: 200 },
-      ),
-    );
-    globalThis.fetch = fetchMock as unknown as typeof fetch;
-
-    const catalog = await getMcpCatalog();
-    expect(catalog.tools).toHaveLength(1);
-    expect(catalog.tools[0]?.toolName).toBe('slack__valid_method');
-  });
-
-  it('falls back to an empty-object inputSchema when the MCP server omits one', async () => {
-    process.env['PRAXIS_MCPS'] = 'slack=http://mcp-slack:8080';
-    const fetchMock = vi.fn(async () =>
-      new Response(
-        JSON.stringify({
-          tools: [{ name: 'do_thing', description: 'd' }],
-        }),
-        { status: 200 },
-      ),
-    );
-    globalThis.fetch = fetchMock as unknown as typeof fetch;
-
-    const catalog = await getMcpCatalog();
-    expect(catalog.tools[0]?.inputSchema).toEqual({
-      type: 'object',
-      properties: {},
-    });
-  });
 });
 
 describe('getMcpCatalog — retry debounce', () => {
   it('does not retry an unreachable server inside the debounce window', async () => {
-    process.env['PRAXIS_MCPS'] = 'slack=http://mcp-slack:8080';
-    const fetchMock = vi.fn(async () => {
-      throw new Error('boom');
+    process.env['PRAXIS_MCPS'] = 'quant=http://mcp-quant:8080/mcp';
+    let connects = 0;
+    _setTransportFactory(() => {
+      connects += 1;
+      return {
+        async start(): Promise<void> {
+          throw new Error('boom');
+        },
+        async send(): Promise<void> {},
+        async close(): Promise<void> {},
+      };
     });
-    globalThis.fetch = fetchMock as unknown as typeof fetch;
 
     await getMcpCatalog();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(connects).toBe(1);
     // Second call within the debounce window — no retry.
     await getMcpCatalog();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(connects).toBe(1);
   });
 
-  it('retries an unreachable server after the debounce window passes', async () => {
-    process.env['PRAXIS_MCPS'] = 'slack=http://mcp-slack:8080';
-    let callCount = 0;
-    const fetchMock = vi.fn(async () => {
-      callCount += 1;
-      if (callCount === 1) throw new Error('first fail');
-      return new Response(JSON.stringify({ tools: [] }), { status: 200 });
-    });
-    globalThis.fetch = fetchMock as unknown as typeof fetch;
+  it('reconnects an unreachable server after the cache is cleared (post-debounce equivalent)', async () => {
+    process.env['PRAXIS_MCPS'] = 'quant=http://mcp-quant:8080/mcp';
+    // First attempt fails; after a reset (standing in for the debounce window
+    // elapsing) the next attempt connects to a healthy server.
+    _setTransportFactory(unreachableFactory('first fail'));
+    const first = await getMcpCatalog();
+    expect(first.servers[0]?.status).toBe('unreachable');
 
-    // First call: unreachable, lastFetchedAt stamped.
-    const original = await getMcpCatalog();
-    expect(original.servers[0]?.status).toBe('unreachable');
-
-    // Manually rewind lastFetchedAt past the debounce window via private cache
-    // — we don't expose a setter, so we rely on system clock + a real-time
-    // delay would slow the test too much. Instead, simulate by mutating the
-    // env var to force a fresh parse + cache invalidation, then re-fetching.
-    // (The debounce logic uses the cache's lastFetchedAt timestamp; clearing
-    // and re-populating gives us a clean retry.)
     _resetMcpCatalog();
+    process.env['PRAXIS_MCPS'] = 'quant=http://mcp-quant:8080/mcp';
+    const { factory } = buildMcpServer();
+    _setTransportFactory(factory);
 
     const retried = await getMcpCatalog();
     expect(retried.servers[0]?.status).toBe('connected');
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(retried.servers[0]?.toolCount).toBe(2);
   });
 });
 
 describe('findMissingMcpDeclarations', () => {
   it('returns empty when no capabilities are declared', () => {
-    process.env['PRAXIS_MCPS'] = 'slack=http://a:1';
+    process.env['PRAXIS_MCPS'] = 'slack=http://a:1/mcp';
     expect(findMissingMcpDeclarations([])).toEqual([]);
   });
 
   it('returns declared mcp:* capabilities not present in PRAXIS_MCPS', () => {
-    process.env['PRAXIS_MCPS'] = 'slack=http://a:1';
+    process.env['PRAXIS_MCPS'] = 'slack=http://a:1/mcp';
     expect(
       findMissingMcpDeclarations(['mcp:slack', 'mcp:gmail', 'mcp:playwright', 'bash']),
     ).toEqual(['gmail', 'playwright']);
   });
 
   it('returns empty when all declared mcps are configured', () => {
-    process.env['PRAXIS_MCPS'] = 'slack=http://a:1,gmail=http://b:2';
+    process.env['PRAXIS_MCPS'] = 'slack=http://a:1/mcp,gmail=http://b:2/mcp';
     expect(findMissingMcpDeclarations(['mcp:slack', 'mcp:gmail'])).toEqual([]);
   });
 
