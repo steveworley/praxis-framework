@@ -96,8 +96,8 @@
       </ul>
       <p>
         After seeding, the dashboard switches to the populated role view at
-        <code>/</code> and Claude Code sessions in the repo will load the new
-        persona.
+        <code>/</code>, and the repo now carries the persona — any agent
+        working in it adopts the new role.
       </p>
     </div>
   </div>
@@ -263,7 +263,7 @@
             You'll review and edit before seeding — nothing ships without your
             approval.
           </div>
-          <div class="setup-path-chip">Beta · uses Claude Code</div>
+          <div class="setup-path-chip">Beta · agent-assisted</div>
         </div>
       </button>
 
@@ -343,10 +343,10 @@
   <!-- Step 5 (research): Handoff & wait                                -->
   <!-- ============================================================== -->
   <div class="setup-step" x-show="step === 5 && form.path === 'research'">
-    <h1 class="setup-title">Hand off to Claude Code.</h1>
+    <h1 class="setup-title">Hand off to your coding agent.</h1>
     <p class="setup-subtitle">
-      A research brief has been written into your repo. Open Claude Code in
-      this directory and ask it to follow the brief — it'll research the org
+      A research brief has been written into your repo. Open your coding agent
+      in this directory and ask it to follow the brief — it'll research the org
       and write a persona draft back to <code>.praxis/persona-draft.md</code>.
       The wizard is watching for the file.
     </p>
@@ -616,7 +616,7 @@
   <div class="setup-step" x-show="step === 10 && form.path === 'manual'">
     <h1 class="setup-title">What playbooks do they ship with?</h1>
     <p class="setup-subtitle">
-      Verbs are markdown playbooks Claude Code reads when triggered. Stub a
+      Verbs are markdown playbooks the role follows when triggered. Stub a
       few here if you already know the shape; you can also leave this empty
       and write them by hand later. Slug plus a one-line purpose. Up to five.
     </p>
