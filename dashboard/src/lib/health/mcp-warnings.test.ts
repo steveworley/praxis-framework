@@ -2,13 +2,14 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { _resetMcpCatalog } from '@/lib/chat/mcp-catalog.ts';
+import { _resetMcpCatalog, _setTransportFactory } from '@/lib/chat/mcp-catalog.ts';
 
 import { assembleMcpWarnings } from './mcp-warnings.ts';
-
-const originalFetch = globalThis.fetch;
 
 let tempDir: string;
 
@@ -20,12 +21,41 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  globalThis.fetch = originalFetch;
   _resetMcpCatalog();
   delete process.env['PRAXIS_MCPS'];
-  vi.useRealTimers();
   await fs.rm(tempDir, { recursive: true, force: true });
 });
+
+/**
+ * Transport factory backing a healthy in-process MCP server. Registers a
+ * single no-op tool — an `McpServer` with zero tools doesn't advertise the
+ * `tools` capability, so `listTools` would fault; one tool makes the connect
+ * genuinely healthy without affecting the warning assertions.
+ */
+function healthyFactory(): () => Transport {
+  return () => {
+    const server = new McpServer({ name: 'warn-test', version: '0.0.0' });
+    server.registerTool(
+      'ping',
+      { description: 'noop', inputSchema: {} },
+      async () => ({ content: [{ type: 'text', text: 'pong' }] }),
+    );
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    void server.connect(serverTransport);
+    return clientTransport;
+  };
+}
+
+/** Transport factory whose connect rejects — a dead/unreachable server. */
+function unreachableFactory(message: string): () => Transport {
+  return () => ({
+    async start(): Promise<void> {
+      throw new Error(message);
+    },
+    async send(): Promise<void> {},
+    async close(): Promise<void> {},
+  });
+}
 
 /**
  * Write a minimal `tools.yaml` that declares the given MCP capabilities under
@@ -58,10 +88,8 @@ describe('assembleMcpWarnings', () => {
 
   it('clean state: declared MCPs all match PRAXIS_MCPS and respond healthy', async () => {
     await writeToolsYaml(['mcp:slack']);
-    process.env['PRAXIS_MCPS'] = 'slack=http://mcp-slack:8080';
-    globalThis.fetch = vi.fn(
-      async () => new Response(JSON.stringify({ tools: [] }), { status: 200 }),
-    ) as unknown as typeof fetch;
+    process.env['PRAXIS_MCPS'] = 'slack=http://mcp-slack:8080/mcp';
+    _setTransportFactory(healthyFactory());
 
     const result = await assembleMcpWarnings(tempDir);
     expect(result.missingDeclared).toEqual([]);
@@ -79,10 +107,8 @@ describe('assembleMcpWarnings', () => {
 
   it('only-unreachable: PRAXIS_MCPS points to a dead server, no MCP declarations', async () => {
     await writeToolsYaml(['fs:read']);
-    process.env['PRAXIS_MCPS'] = 'slack=http://mcp-slack:8080';
-    globalThis.fetch = vi.fn(async () => {
-      throw new Error('connect ECONNREFUSED');
-    }) as unknown as typeof fetch;
+    process.env['PRAXIS_MCPS'] = 'slack=http://mcp-slack:8080/mcp';
+    _setTransportFactory(unreachableFactory('connect ECONNREFUSED'));
 
     const result = await assembleMcpWarnings(tempDir);
     expect(result.missingDeclared).toEqual([]);
@@ -94,10 +120,8 @@ describe('assembleMcpWarnings', () => {
 
   it('both: one declared-but-missing server and one configured-but-unreachable server', async () => {
     await writeToolsYaml(['mcp:gmail', 'mcp:slack']);
-    process.env['PRAXIS_MCPS'] = 'slack=http://mcp-slack:8080';
-    globalThis.fetch = vi.fn(async () => {
-      throw new Error('boom');
-    }) as unknown as typeof fetch;
+    process.env['PRAXIS_MCPS'] = 'slack=http://mcp-slack:8080/mcp';
+    _setTransportFactory(unreachableFactory('boom'));
 
     const result = await assembleMcpWarnings(tempDir);
     expect(result.missingDeclared).toEqual(['gmail']);
@@ -106,17 +130,14 @@ describe('assembleMcpWarnings', () => {
     expect(result.unreachable[0]?.status).toBe('unreachable');
   });
 
-  it('unreachable entries omit `message` when the catalog has no error string', async () => {
-    process.env['PRAXIS_MCPS'] = 'slack=http://mcp-slack:8080';
-    // Non-200 with empty body — the catalog records an HTTP-status error
-    // message, so this exercises the message path; we then assert the message
-    // field is present and well-formed.
-    globalThis.fetch = vi.fn(
-      async () => new Response('', { status: 500 }),
-    ) as unknown as typeof fetch;
+  it('surfaces the catalog error string on an unreachable server', async () => {
+    process.env['PRAXIS_MCPS'] = 'slack=http://mcp-slack:8080/mcp';
+    // A failed MCP connect carries the transport's error message through to
+    // the warning entry, so the operator sees *why* the server is down.
+    _setTransportFactory(unreachableFactory('handshake rejected: 503'));
 
     const result = await assembleMcpWarnings(tempDir);
-    expect(result.unreachable[0]?.status).toBe('error');
-    expect(result.unreachable[0]?.message).toContain('HTTP 500');
+    expect(result.unreachable[0]?.status).toBe('unreachable');
+    expect(result.unreachable[0]?.message).toContain('handshake rejected: 503');
   });
 });
