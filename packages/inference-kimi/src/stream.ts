@@ -28,16 +28,12 @@ export async function* translateKimiStream(
   const toolCallIndexMap = new Map<number, number>(); // openai index → our block index
   let nextBlockIndex = 1; // 0 is reserved for the text block
 
-  let lastId = '';
-  let lastModel = '';
   let finalUsage: Partial<Usage> | undefined;
   let finalStopReason: StopReason = 'end_turn';
 
   for await (const chunk of stream) {
     // Emit message_start once when we get the id.
     if (!messageStarted && chunk.id) {
-      lastId = chunk.id;
-      lastModel = chunk.model;
       yield { type: 'message_start', id: chunk.id, model: chunk.model };
       messageStarted = true;
     }
@@ -139,7 +135,4 @@ export async function* translateKimiStream(
   if (finalUsage) messageDelta.usage = finalUsage;
   yield messageDelta;
   yield { type: 'message_stop' };
-
-  void lastId;
-  void lastModel;
 }

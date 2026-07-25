@@ -81,6 +81,7 @@ export class KimiProvider implements InferenceProvider {
   }
 
   has(capability: InferenceCapability): boolean {
+    // Kimi supports streaming and tools whenever it has chat (credentials present).
     void capability;
     return this.hasCredentials;
   }
