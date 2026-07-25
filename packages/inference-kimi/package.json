@@ -1,0 +1,59 @@
+{
+  "name": "@praxis-framework/inference-kimi",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Kimi (Moonshot AI) inference provider for praxis-framework. Routes praxis inference through Kimi's OpenAI-compatible API.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/steveworley/praxis-framework.git",
+    "directory": "packages/inference-kimi"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/steveworley/praxis-framework#readme",
+  "bugs": {
+    "url": "https://github.com/steveworley/praxis-framework/issues"
+  },
+  "author": "Steve Worley",
+  "keywords": [
+    "praxis",
+    "agent",
+    "kimi",
+    "moonshot",
+    "inference",
+    "llm"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "check": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "peerDependencies": {
+    "@praxis-framework/inference": "*"
+  },
+  "dependencies": {
+    "openai": "^4.101.0"
+  },
+  "devDependencies": {
+    "@praxis-framework/inference": "*",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.8"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
