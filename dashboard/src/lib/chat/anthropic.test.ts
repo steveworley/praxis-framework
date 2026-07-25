@@ -67,11 +67,42 @@ vi.mock('@praxis-framework/inference-quantcloud', async () => {
   };
 });
 
+// Stub the optional kimi package similarly.
+vi.mock('@praxis-framework/inference-kimi', async () => {
+  const { InferenceError } = await import('@praxis-framework/inference');
+  return {
+    KimiProvider: class FakeKimiProvider {
+      readonly id = 'kimi';
+      private creds: boolean;
+      constructor() {
+        const apiKey = process.env['KIMI_API_KEY'];
+        if (!apiKey) {
+          throw new InferenceError(
+            'KIMI_API_KEY environment variable is not set',
+            'auth',
+          );
+        }
+        this.creds = true;
+      }
+      has(): boolean {
+        return this.creds;
+      }
+      resolveModel(x: string): string {
+        return x;
+      }
+      async createMessage(): Promise<never> {
+        throw new Error('not implemented in test');
+      }
+    },
+  };
+});
+
 let prevKey: string | undefined;
 let prevModel: string | undefined;
 let prevProvider: string | undefined;
 let prevQuantToken: string | undefined;
 let prevQuantOrg: string | undefined;
+let prevKimiKey: string | undefined;
 
 beforeEach(async () => {
   createSpy.mockReset();
@@ -81,6 +112,7 @@ beforeEach(async () => {
   prevProvider = process.env['PRAXIS_INFERENCE_PROVIDER'];
   prevQuantToken = process.env['QUANT_API_TOKEN'];
   prevQuantOrg = process.env['QUANT_ORGANISATION'];
+  prevKimiKey = process.env['KIMI_API_KEY'];
   // The chat module caches the constructed provider — reset between tests so
   // each test sees a fresh provider built from its env-var setup.
   const { resetProviderForTesting } = await import('./anthropic.ts');
@@ -98,6 +130,8 @@ afterEach(() => {
   else process.env['QUANT_API_TOKEN'] = prevQuantToken;
   if (prevQuantOrg === undefined) delete process.env['QUANT_ORGANISATION'];
   else process.env['QUANT_ORGANISATION'] = prevQuantOrg;
+  if (prevKimiKey === undefined) delete process.env['KIMI_API_KEY'];
+  else process.env['KIMI_API_KEY'] = prevKimiKey;
 });
 
 describe('hasApiKey + resolveChatModel', () => {
@@ -162,6 +196,25 @@ describe('hasApiKey + resolveChatModel', () => {
     const msg = missingApiKeyMessage();
     expect(msg).toContain('ANTHROPIC_API_KEY');
     expect(msg).not.toContain('QUANT_API_TOKEN');
+  });
+
+  it('hasApiKey returns false under kimi provider when KIMI_API_KEY is unset, and missingApiKeyMessage names KIMI_API_KEY', async () => {
+    process.env['PRAXIS_INFERENCE_PROVIDER'] = 'kimi';
+    delete process.env['KIMI_API_KEY'];
+    process.env['ANTHROPIC_API_KEY'] = 'sk-test';
+    const { hasApiKey, missingApiKeyMessage } = await import('./anthropic.ts');
+    expect(await hasApiKey()).toBe(false);
+    const msg = missingApiKeyMessage();
+    expect(msg).toContain('KIMI_API_KEY');
+    expect(msg).not.toContain('ANTHROPIC_API_KEY');
+  });
+
+  it('hasApiKey returns true under kimi provider when KIMI_API_KEY is set', async () => {
+    process.env['PRAXIS_INFERENCE_PROVIDER'] = 'kimi';
+    process.env['KIMI_API_KEY'] = 'kimi-sk-test';
+    delete process.env['ANTHROPIC_API_KEY'];
+    const { hasApiKey } = await import('./anthropic.ts');
+    expect(await hasApiKey()).toBe(true);
   });
 });
 

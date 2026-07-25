@@ -91,6 +91,9 @@ export function missingApiKeyMessage(): string {
   if (id === 'quantcloud') {
     return 'QUANT_API_TOKEN / QUANT_ORGANISATION are not set. The chat surface is disabled.';
   }
+  if (id === 'kimi') {
+    return 'KIMI_API_KEY is not set. The chat surface is disabled.';
+  }
   return 'ANTHROPIC_API_KEY is not set. The chat surface is disabled.';
 }
 
@@ -245,6 +248,10 @@ async function loadProvider(): Promise<InferenceProvider> {
       // Lazy import so OSS users without the optional package don't pay the load.
       const mod = await import('@praxis-framework/inference-quantcloud');
       cachedProvider = new mod.QuantCloudProvider();
+    } else if (id === 'kimi') {
+      // Lazy import so users without the optional package don't pay the load.
+      const mod = await import('@praxis-framework/inference-kimi');
+      cachedProvider = new mod.KimiProvider();
     } else {
       throw new AnthropicChatError(`Unknown PRAXIS_INFERENCE_PROVIDER: ${id}`);
     }

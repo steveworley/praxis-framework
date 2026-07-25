@@ -433,6 +433,7 @@ describe('KimiProvider.resolveModel', () => {
     expect(p.resolveModel('kimi-8k')).toBe('moonshot-v1-8k');
     expect(p.resolveModel('kimi-32k')).toBe('moonshot-v1-32k');
     expect(p.resolveModel('kimi-128k')).toBe('moonshot-v1-128k');
+    expect(p.resolveModel('kimi-auto')).toBe('moonshot-v1-auto');
   });
 
   it('passes through unrecognised model ids unchanged', async () => {
@@ -458,6 +459,146 @@ describe('KimiProvider.has(capability)', () => {
     expect(p.has('chat')).toBe(true);
     expect(p.has('streaming')).toBe(true);
     expect(p.has('tools')).toBe(true);
+  });
+});
+
+describe('KimiProvider — tool-use loop (two-turn)', () => {
+  it('handles a two-turn tool conversation: assistant calls tool, user provides result, assistant responds', async () => {
+    process.env['KIMI_API_KEY'] = 'sk-test';
+
+    // Turn 1: assistant requests a tool call.
+    const turn1Response = {
+      id: 'chatcmpl-tool-1',
+      model: 'moonshot-v1-32k',
+      choices: [
+        {
+          index: 0,
+          message: {
+            role: 'assistant',
+            content: null,
+            tool_calls: [
+              {
+                id: 'call_abc',
+                type: 'function',
+                function: { name: 'get_weather', arguments: '{"city":"Paris"}' },
+              },
+            ],
+          },
+          finish_reason: 'tool_calls',
+          logprobs: null,
+        },
+      ],
+      usage: { prompt_tokens: 20, completion_tokens: 10, total_tokens: 30 },
+      created: 0,
+      object: 'chat.completion',
+    };
+
+    // Turn 2: after receiving the tool result, assistant gives a final answer.
+    const turn2Response = {
+      id: 'chatcmpl-tool-2',
+      model: 'moonshot-v1-32k',
+      choices: [
+        {
+          index: 0,
+          message: {
+            role: 'assistant',
+            content: 'The weather in Paris is sunny and 22°C.',
+            tool_calls: undefined,
+          },
+          finish_reason: 'stop',
+          logprobs: null,
+        },
+      ],
+      usage: { prompt_tokens: 40, completion_tokens: 15, total_tokens: 55 },
+      created: 0,
+      object: 'chat.completion',
+    };
+
+    createSpy.mockResolvedValueOnce(turn1Response).mockResolvedValueOnce(turn2Response);
+
+    const { KimiProvider } = await import('./provider.ts');
+    const provider = new KimiProvider();
+
+    // --- Turn 1: initial request with a tool definition ---
+    const req1 = {
+      model: 'moonshot-v1-32k',
+      system: 'You are a weather assistant.',
+      messages: [{ role: 'user' as const, content: "What's the weather in Paris?" }],
+      max_tokens: 256,
+      tools: [
+        {
+          name: 'get_weather',
+          description: 'Get current weather for a city',
+          input_schema: { type: 'object', properties: { city: { type: 'string' } } },
+        },
+      ],
+    };
+
+    const res1 = await provider.createMessage(req1);
+    expect(res1.stop_reason).toBe('tool_use');
+    expect(res1.content).toHaveLength(1);
+    expect(res1.content[0]).toMatchObject({
+      type: 'tool_use',
+      id: 'call_abc',
+      name: 'get_weather',
+      input: { city: 'Paris' },
+    });
+
+    // Verify the outgoing message structure sent to Kimi in turn 1.
+    const call1Params = createSpy.mock.calls[0]![0];
+    expect(call1Params.messages[0]).toEqual({ role: 'system', content: 'You are a weather assistant.' });
+    expect(call1Params.messages[1]).toEqual({ role: 'user', content: "What's the weather in Paris?" });
+    expect(call1Params.tools).toHaveLength(1);
+    expect(call1Params.tools[0].function.name).toBe('get_weather');
+
+    // --- Turn 2: feed the tool result back and get the final response ---
+    const toolUseBlock = res1.content[0] as Extract<(typeof res1.content)[number], { type: 'tool_use' }>;
+    const req2 = {
+      model: 'moonshot-v1-32k',
+      system: 'You are a weather assistant.',
+      messages: [
+        { role: 'user' as const, content: "What's the weather in Paris?" },
+        { role: 'assistant' as const, content: res1.content },
+        {
+          role: 'user' as const,
+          content: [
+            {
+              type: 'tool_result' as const,
+              tool_use_id: toolUseBlock.id,
+              content: 'Sunny, 22°C',
+            },
+          ],
+        },
+      ],
+      max_tokens: 256,
+    };
+
+    const res2 = await provider.createMessage(req2);
+    expect(res2.stop_reason).toBe('end_turn');
+    expect(res2.content).toHaveLength(1);
+    expect(res2.content[0]).toMatchObject({ type: 'text', text: 'The weather in Paris is sunny and 22°C.' });
+
+    // Verify the outgoing messages for turn 2 follow the correct ordering:
+    // system → user → assistant(tool_calls) → tool(result)
+    const call2Params = createSpy.mock.calls[1]![0];
+    expect(call2Params.messages).toHaveLength(4);
+    expect(call2Params.messages[0]).toEqual({ role: 'system', content: 'You are a weather assistant.' });
+    expect(call2Params.messages[1]).toEqual({ role: 'user', content: "What's the weather in Paris?" });
+    expect(call2Params.messages[2]).toMatchObject({
+      role: 'assistant',
+      tool_calls: [
+        expect.objectContaining({
+          id: 'call_abc',
+          type: 'function',
+          function: expect.objectContaining({ name: 'get_weather' }),
+        }),
+      ],
+    });
+    expect(call2Params.messages[3]).toEqual({
+      role: 'tool',
+      tool_call_id: 'call_abc',
+      content: 'Sunny, 22°C',
+    });
   });
 });
 

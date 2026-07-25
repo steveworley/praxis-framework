@@ -34,6 +34,8 @@ const MODEL_MAP: Record<string, string> = {
   'kimi-8k': 'moonshot-v1-8k',
   'kimi-32k': 'moonshot-v1-32k',
   'kimi-128k': 'moonshot-v1-128k',
+  // Auto-size alias: Moonshot picks the context window based on token count.
+  'kimi-auto': 'moonshot-v1-auto',
 };
 
 export interface KimiProviderOptions {
