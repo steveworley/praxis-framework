@@ -27,11 +27,13 @@ jobs:
 
       - name: Build inference packages
         # The dashboard imports @praxis-framework/inference (and optionally
-        # @praxis-framework/inference-quantcloud) via workspace links. Both
-        # resolve to their dist/ output, so they must be built before typecheck.
+        # @praxis-framework/inference-quantcloud and @praxis-framework/inference-kimi)
+        # via workspace links. All resolve to their dist/ output, so they must be
+        # built before typecheck.
         run: |
           npm run build --workspace=@praxis-framework/inference
           npm run build --workspace=@praxis-framework/inference-quantcloud
+          npm run build --workspace=@praxis-framework/inference-kimi
 
       - name: Typecheck (all workspaces)
         run: npm run check

@@ -241,17 +241,18 @@ let cachedProvider: InferenceProvider | null = null;
 async function loadProvider(): Promise<InferenceProvider> {
   if (cachedProvider) return cachedProvider;
   const id = providerId();
+  let provider: InferenceProvider;
   try {
     if (id === 'anthropic') {
-      cachedProvider = new AnthropicProvider();
+      provider = new AnthropicProvider();
     } else if (id === 'quantcloud') {
       // Lazy import so OSS users without the optional package don't pay the load.
       const mod = await import('@praxis-framework/inference-quantcloud');
-      cachedProvider = new mod.QuantCloudProvider();
+      provider = new mod.QuantCloudProvider();
     } else if (id === 'kimi') {
       // Lazy import so users without the optional package don't pay the load.
       const mod = await import('@praxis-framework/inference-kimi');
-      cachedProvider = new mod.KimiProvider();
+      provider = new mod.KimiProvider();
     } else {
       throw new AnthropicChatError(`Unknown PRAXIS_INFERENCE_PROVIDER: ${id}`);
     }
@@ -263,7 +264,8 @@ async function loadProvider(): Promise<InferenceProvider> {
     const message = error instanceof Error ? error.message : String(error);
     throw new AnthropicChatError(`Failed to load inference provider: ${message}`, error);
   }
-  return cachedProvider;
+  cachedProvider = provider;
+  return provider;
 }
 
 /** Test seam: reset the cached provider between tests. */
