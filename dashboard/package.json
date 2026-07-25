@@ -17,6 +17,7 @@
     "@astrojs/node": "^9.0.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@praxis-framework/inference": "*",
+    "@praxis-framework/inference-kimi": "*",
     "@praxis-framework/inference-quantcloud": "*",
     "@praxis-framework/seed": "*",
     "astro": "^5.0.0",
