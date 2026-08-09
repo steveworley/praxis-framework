@@ -1,4 +1,4 @@
-import { isMcpAllowed } from './autonomy-gate.js';
+import { isMcpToolAllowed } from './autonomy-gate.js';
 import { callMcpTool } from './mcp-catalog.js';
 import type { ToolResult } from './tools.js';
 
@@ -8,7 +8,7 @@ import type { ToolResult } from './tools.js';
  * The MCP transport itself (the stateful per-server `Client` session) is owned
  * by `mcp-catalog.ts`; this module keeps only the policy + translation layer:
  *
- *   1. Consult `isMcpAllowed(roleHome, serverName)`. Refuse on deny / missing.
+ *   1. Consult isMcpToolAllowed(roleHome, serverName, methodName). Refuse on deny / missing.
  *   2. Delegate to the catalog-owned `callMcpTool` — which reuses the warm
  *      per-server MCP client and never throws.
  *   3. Translate the outcome:
@@ -31,7 +31,7 @@ export async function executeMcpCall(
   methodName: string,
   args: unknown,
 ): Promise<ToolResult> {
-  const gate = await isMcpAllowed(roleHome, serverName);
+  const gate = await isMcpToolAllowed(roleHome, serverName, methodName);
   if (!gate.allowed) return failure(gate.reason);
 
   const outcome = await callMcpTool(serverName, methodName, args);

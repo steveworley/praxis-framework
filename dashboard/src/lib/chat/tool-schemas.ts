@@ -1,6 +1,6 @@
 import type Anthropic from '@anthropic-ai/sdk';
 
-import { isMcpAllowed } from './autonomy-gate.js';
+import { isMcpToolAllowed } from './autonomy-gate.js';
 import { getMcpCatalog } from './mcp-catalog.js';
 
 /**
@@ -654,20 +654,19 @@ export const CHAT_TOOLS: readonly Anthropic.Tool[] = [
 export async function getChatTools(roleHome: string): Promise<Anthropic.Tool[]> {
   const catalog = await getMcpCatalog();
 
-  // Resolve allow/deny per server in parallel — one autonomy.yaml read per
-  // server isn't free at scale, but `loadAutonomy` is cheap and stays warm
-  // via OS-level file cache; we don't memoise here to keep the gate honest.
-  const allowed = new Set<string>();
-  await Promise.all(
-    catalog.servers.map(async (server) => {
-      const gate = await isMcpAllowed(roleHome, server.name);
-      if (gate.allowed) allowed.add(server.name);
-    }),
+  // Resolve allow/deny per TOOL, not per server — a server may expose a
+  // partly-open surface. `loadAutonomy` is cheap and stays warm via the OS
+  // file cache; we don't memoise here to keep the gate honest.
+  const decisions = await Promise.all(
+    catalog.tools.map(async (t) => ({
+      tool: t,
+      allowed: (await isMcpToolAllowed(roleHome, t.serverName, t.methodName)).allowed,
+    })),
   );
 
-  const mcpTools: Anthropic.Tool[] = catalog.tools
-    .filter((t) => allowed.has(t.serverName))
-    .map((t) => ({
+  const mcpTools: Anthropic.Tool[] = decisions
+    .filter((d) => d.allowed)
+    .map(({ tool: t }) => ({
       name: t.toolName,
       description: t.description,
       // The MCP server's `inputSchema` is passed through verbatim — Anthropic

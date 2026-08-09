@@ -61,15 +61,29 @@ export interface AutonomySurface {
   bounds?: Record<string, Bound>;
 }
 
+/**
+ * How a role may use an MCP server.
+ *
+ *   'allow'              — every tool the server exposes
+ *   'deny'               — none
+ *   { allow: [...] }     — only the named tools; everything else denied
+ *
+ * A server absent from the map is denied. There is deliberately no `deny`
+ * list: deny-by-default plus an allow-list expresses every policy without
+ * a precedence rule.
+ */
+export type McpVerdict = 'allow' | 'deny' | { allow: string[] };
+
 export interface AutonomyConfig {
   surfaces: AutonomySurface[];
   /**
    * Per-server MCP allow/deny map. Keys are MCP server names as they appear in
    * `PRAXIS_MCPS` (the prefix in tool names like `slack__post_message`). A
    * server not listed here is **denied by default** — operators must opt in
-   * explicitly per server. See `isMcpAllowed` in `chat/autonomy-gate.ts`.
+   * explicitly per server. The predicate that enforces this — including the
+   * per-tool allow-list — is `isMcpToolAllowed` in `chat/autonomy-gate.ts`.
    */
-  mcps?: Record<string, 'allow' | 'deny'>;
+  mcps?: Record<string, McpVerdict>;
 }
 
 export interface AutonomousEdit {
@@ -121,22 +135,43 @@ export async function loadAutonomy(roleHome: string): Promise<AutonomyConfig | n
 }
 
 /**
- * Pull the top-level `mcps:` block out of `autonomy.yaml`. Shape:
+ * Pull the top-level `mcps:` block out of `autonomy.yaml`. Two shapes per
+ * server entry:
  *
  *   mcps:
  *     slack: allow
  *     gmail: allow
  *     playwright: deny
+ *     vault:
+ *       allow: [read_secret, write_secret]
  *
- * Returns `null` when the section is absent or empty. Values that aren't
- * `allow` or `deny` are dropped (default-deny applies at the call site).
+ * The scalar form (`allow` / `deny`) grants or denies every tool the server
+ * exposes. The object form's `allow:` list — flow (`[a, b]`) or block
+ * (`- a` / `- b`) — grants only the named tools; everything else on that
+ * server is denied.
+ *
+ * An object entry is dropped entirely — no entry at all, so the server falls
+ * through to default-deny at the call site — when it names no tools (empty
+ * `allow: []`, or no `allow:` key) OR when it contains anything the parser
+ * does not understand: a `deny:` key, a typo'd `alow:`, a prose `note:`, or a
+ * sequence item that isn't underneath `allow:`. Partially understanding a
+ * config is how a denial turns into a grant, so the whole entry goes. Blank
+ * lines and `#` comments inside an entry are ignored and never drop it.
+ *
+ * A server literally keyed `__proto__` is skipped, and the map is built with
+ * a null prototype, so a lookup by server name can never resolve an inherited
+ * property.
+ *
+ * Returns `null` when the section is absent or yields no entries.
  */
-export function parseMcpsBlock(text: string): Record<string, 'allow' | 'deny'> | null {
+export function parseMcpsBlock(text: string): Record<string, McpVerdict> | null {
   const lines = text.split('\n');
   let i = 0;
   let inBlock = false;
-  let blockIndent = -1;
-  const out: Record<string, 'allow' | 'deny'> = {};
+  // Null prototype: a server named `__proto__` / `toString` / `constructor`
+  // must not resolve to something inherited from `Object.prototype` at lookup
+  // time. See `isMcpAllowed`.
+  const out: Record<string, McpVerdict> = Object.create(null) as Record<string, McpVerdict>;
 
   while (i < lines.length) {
     const raw = lines[i] ?? '';
@@ -145,7 +180,6 @@ export function parseMcpsBlock(text: string): Record<string, 'allow' | 'deny'> |
     if (!inBlock) {
       if (/^mcps\s*:\s*$/.test(trimmed) && raw.length - raw.trimStart().length === 0) {
         inBlock = true;
-        blockIndent = 0;
       }
       i += 1;
       continue;
@@ -156,23 +190,108 @@ export function parseMcpsBlock(text: string): Record<string, 'allow' | 'deny'> |
       continue;
     }
     const leading = raw.length - raw.trimStart().length;
-    if (leading <= blockIndent) {
-      // Next top-level key — block ends.
-      break;
-    }
-    const match = /^([A-Za-z_][\w:.-]*)\s*:\s*(.+?)\s*$/.exec(trimmed);
-    if (match) {
-      const key = (match[1] ?? '').trim();
-      const value = stripQuotes((match[2] ?? '').trim());
-      if (value === 'allow' || value === 'deny') {
+    if (leading <= 0) break; // next top-level key — block ends
+
+    // Scalar shorthand: `name: allow` / `name: deny`.
+    const scalar = /^([A-Za-z_][\w:.-]*)\s*:\s*(.+?)\s*$/.exec(trimmed);
+    if (scalar) {
+      const key = (scalar[1] ?? '').trim();
+      const value = stripQuotes((scalar[2] ?? '').trim());
+      if (isUsableServerName(key) && (value === 'allow' || value === 'deny')) {
         out[key] = value;
       }
+      i += 1;
+      continue;
     }
+
+    // Object form: `name:` followed by a nested `allow:` list.
+    const bare = /^([A-Za-z_][\w:.-]*)\s*:\s*$/.exec(trimmed);
+    if (bare) {
+      const server = (bare[1] ?? '').trim();
+      const serverIndent = leading;
+      const tools: string[] = [];
+      /**
+       * Cleared the moment we meet a line we don't fully understand. A
+       * half-understood entry is dropped rather than partially honoured —
+       * that is what keeps a typo (or a `deny:` key) narrowing access instead
+       * of widening it.
+       */
+      let understood = true;
+      /** True only between an `allow:` header and the end of its block sequence. */
+      let inAllowSequence = false;
+      i += 1;
+
+      while (i < lines.length) {
+        const subRaw = lines[i] ?? '';
+        const subTrimmed = subRaw.trim();
+        if (subTrimmed.length === 0 || subTrimmed.startsWith('#')) {
+          i += 1;
+          continue;
+        }
+        const subIndent = subRaw.length - subRaw.trimStart().length;
+        if (subIndent <= serverIndent) break; // end of this server's entry
+
+        const flow = /^allow\s*:\s*\[(.*)\]\s*$/.exec(subTrimmed);
+        if (flow) {
+          inAllowSequence = false;
+          for (const part of (flow[1] ?? '').split(',')) {
+            const name = stripQuotes(part.trim());
+            if (name) tools.push(name);
+          }
+          i += 1;
+          continue;
+        }
+        if (/^allow\s*:\s*$/.test(subTrimmed)) {
+          inAllowSequence = true;
+          i += 1;
+          continue;
+        }
+        const item = /^-\s*(.+?)\s*$/.exec(subTrimmed);
+        if (item) {
+          if (!inAllowSequence) {
+            // A sequence item that belongs to some other key — we have no
+            // idea what it means, so the entry is not understood.
+            understood = false;
+            i += 1;
+            continue;
+          }
+          const name = stripQuotes((item[1] ?? '').trim());
+          if (name) tools.push(name);
+          i += 1;
+          continue;
+        }
+        // Anything else inside the entry: an unrecognised key (`deny:`, a
+        // typo'd `alow:`, a prose `note:`) or malformed text. Mark the entry
+        // unusable and close any open sequence, so items nested under that
+        // key are not mistaken for allow-list members.
+        understood = false;
+        inAllowSequence = false;
+        i += 1;
+      }
+
+      // No tools named means nothing is allowed, which is default-deny —
+      // so record no entry at all rather than an empty allow-list. Same for
+      // an entry we only partly understood.
+      if (understood && tools.length > 0 && isUsableServerName(server)) {
+        out[server] = { allow: tools };
+      }
+      continue;
+    }
+
     i += 1;
   }
 
   if (Object.keys(out).length === 0) return null;
   return out;
+}
+
+/**
+ * `__proto__` is not a usable MCP server name: even with a null-prototype map
+ * it is the one key that invites prototype confusion downstream, and no real
+ * server is called that. Dropping it keeps the entry at default-deny.
+ */
+function isUsableServerName(name: string): boolean {
+  return name.length > 0 && name !== '__proto__';
 }
 
 /**

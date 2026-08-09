@@ -5,7 +5,7 @@ import { simpleGit } from 'simple-git';
 
 import { assembleActivity, type ActivityEntry } from './activity-loader.js';
 import { loadAutonomy, type AutonomyConfig, type AutonomySurface } from './autonomy-loader.js';
-import { isMcpAllowed } from './chat/autonomy-gate.js';
+import { isMcpAllowed, isMcpToolAllowed } from './chat/autonomy-gate.js';
 import { getMcpCatalog, type McpServerStatus, type McpTool } from './chat/mcp-catalog.js';
 import { CHAT_TOOLS } from './chat/tool-schemas.js';
 import { getLogGlob } from './role-home.js';
@@ -64,7 +64,39 @@ export interface McpMethodCapability {
   callCount30d: number;
   /** ISO timestamp of the most recent matching entry, or null when never invoked. */
   lastInvoked: string | null;
+  /**
+   * Whether this specific method is actually callable, from
+   * {@link isMcpToolAllowed} — the identical predicate `mcp-call.ts` (the
+   * dispatcher) and `tool-schemas.ts` (the model's tool catalog) use. This is
+   * what makes a method row trustworthy on its own: it can never say
+   * "allowed" for something the dispatcher would refuse.
+   */
+  allowed: boolean;
 }
+
+/**
+ * Server-level allow state shown on the `/capabilities` page.
+ *
+ * Deliberately three states, not a boolean, and deliberately *derived* from
+ * the per-method decisions below rather than from the raw `mcps:` verdict
+ * shape in autonomy.yaml — that keeps this page from re-implementing (and
+ * risking drift from) the gate logic that lives in `autonomy-gate.ts`:
+ *
+ *   - `deny`    — {@link isMcpAllowed} refused the server outright (explicit
+ *                 `deny` or the server is undeclared — default deny).
+ *   - `allow`   — the server is usable AND every discovered method passes
+ *                 {@link isMcpToolAllowed}. Equivalent to a bare `allow` in
+ *                 autonomy.yaml, or an object verdict whose allow-list
+ *                 happens to cover the server's whole current surface.
+ *   - `partial` — the server is usable but at least one discovered method is
+ *                 refused by {@link isMcpToolAllowed} (an object verdict
+ *                 whose allow-list opens only part of the surface).
+ *
+ * `partial` MUST render distinguishably from `allow` in the UI — before this
+ * type existed, a partially-open server rendered an identical green "allow"
+ * badge to a fully-open one, overstating what the role could actually do.
+ */
+export type McpServerAllowState = 'allow' | 'partial' | 'deny';
 
 export interface McpServerCapability {
   name: string;
@@ -74,8 +106,8 @@ export interface McpServerCapability {
   errorMessage?: string;
   /** Number of methods discovered on the server (0 when unreachable). */
   methodCount: number;
-  /** Per-server allow/deny from `lib/autonomy.yaml` (default deny). */
-  allowed: boolean;
+  /** See {@link McpServerAllowState}. */
+  allowState: McpServerAllowState;
   /** One entry per discovered method, with 30-day usage stats. Empty for non-connected servers. */
   methods: McpMethodCapability[];
 }
@@ -205,10 +237,13 @@ export async function loadCapabilities(
  *   capabilities page is best-effort per section, so this falls back rather
  *   than propagating.
  * - Otherwise → `configured: true` with one entry per server, each carrying:
- *   - `allowed` from {@link isMcpAllowed} (default deny when missing from
- *     autonomy.yaml). All `isMcpAllowed` calls fire in parallel.
- *   - `methods` aggregated from the shared `activity` slice using the
- *     `<serverName>__<methodName>` tool-name convention.
+ *   - `methods` aggregated from the shared `activity` slice, each with a
+ *     per-method `allowed` from {@link isMcpToolAllowed} — the same
+ *     predicate the dispatcher enforces.
+ *   - `allowState` — see {@link McpServerAllowState} — derived from the
+ *     server-level {@link isMcpAllowed} decision plus the per-method
+ *     decisions, so `allow` can only be reported when every discovered
+ *     method is genuinely callable.
  */
 async function buildMcpReport(
   roleHome: string,
@@ -248,26 +283,53 @@ async function buildMcpReport(
     toolsByServer.set(tool.serverName, list);
   }
 
-  const servers: McpServerCapability[] = catalog.servers.map((status, idx) => {
-    const decision = allowDecisions[idx];
-    const allowed = decision?.allowed ?? false;
-    const serverTools = toolsByServer.get(status.name) ?? [];
-    const methods = buildMcpMethodCapabilities(serverTools, activity, cutoff);
-    const entry: McpServerCapability = {
-      name: status.name,
-      url: status.url,
-      status: status.status,
-      methodCount: status.toolCount,
-      allowed,
-      methods,
-    };
-    if (status.errorMessage !== undefined) {
-      entry.errorMessage = status.errorMessage;
-    }
-    return entry;
-  });
+  const servers: McpServerCapability[] = await Promise.all(
+    catalog.servers.map(async (status, idx) => {
+      const decision = allowDecisions[idx];
+      const serverAllowed = decision?.allowed ?? false;
+      const serverTools = toolsByServer.get(status.name) ?? [];
+      const methods = await buildMcpMethodCapabilities(
+        roleHome,
+        status.name,
+        serverTools,
+        activity,
+        cutoff,
+      );
+      const entry: McpServerCapability = {
+        name: status.name,
+        url: status.url,
+        status: status.status,
+        methodCount: status.toolCount,
+        allowState: deriveAllowState(serverAllowed, methods),
+        methods,
+      };
+      if (status.errorMessage !== undefined) {
+        entry.errorMessage = status.errorMessage;
+      }
+      return entry;
+    }),
+  );
 
   return { configured: true, servers };
+}
+
+/**
+ * Roll a server's coarse `isMcpAllowed` decision and its methods' individual
+ * `isMcpToolAllowed` decisions up into the single {@link McpServerAllowState}
+ * badge. A denied server is always `deny` regardless of its methods — a
+ * denied server can still be *connected* and expose a `methods` list (server
+ * reachability and autonomy gating are independent), but none of those
+ * methods are callable, so `deny` wins outright. Zero discovered methods
+ * can't disprove "fully open", so that case defaults to `allow` rather than
+ * manufacturing a false `partial`.
+ */
+function deriveAllowState(
+  serverAllowed: boolean,
+  methods: McpMethodCapability[],
+): McpServerAllowState {
+  if (!serverAllowed) return 'deny';
+  if (methods.length === 0) return 'allow';
+  return methods.every((m) => m.allowed) ? 'allow' : 'partial';
 }
 
 /**
@@ -275,35 +337,43 @@ async function buildMcpReport(
  * the same activity slice the native-tool aggregation walks. Methods land in
  * the log as `action: 'tool_call' && tool: '<serverName>__<methodName>'` —
  * the catalog's `toolName` field already matches that convention verbatim.
+ * Each method also carries `allowed` from {@link isMcpToolAllowed}, resolved
+ * in parallel across the server's methods — the same predicate the
+ * dispatcher (`mcp-call.ts`) and the model's tool catalog (`tool-schemas.ts`)
+ * both use, so this page cannot drift from what is actually enforced.
  */
-function buildMcpMethodCapabilities(
+async function buildMcpMethodCapabilities(
+  roleHome: string,
+  serverName: string,
   serverTools: McpTool[],
   activity: ActivityEntry[],
   cutoff: number,
-): McpMethodCapability[] {
-  const out: McpMethodCapability[] = [];
-  for (const tool of serverTools) {
-    let callCount30d = 0;
-    let lastInvoked: string | null = null;
-    for (const entry of activity) {
-      if (entry.action !== 'tool_call' || entry.tool !== tool.toolName) continue;
-      const ts = entry.timestamp ?? '';
-      const t = Date.parse(ts);
-      if (Number.isNaN(t)) continue;
-      if (t >= cutoff) callCount30d += 1;
-      if (lastInvoked === null || ts.localeCompare(lastInvoked) > 0) {
-        lastInvoked = ts;
+): Promise<McpMethodCapability[]> {
+  return Promise.all(
+    serverTools.map(async (tool) => {
+      let callCount30d = 0;
+      let lastInvoked: string | null = null;
+      for (const entry of activity) {
+        if (entry.action !== 'tool_call' || entry.tool !== tool.toolName) continue;
+        const ts = entry.timestamp ?? '';
+        const t = Date.parse(ts);
+        if (Number.isNaN(t)) continue;
+        if (t >= cutoff) callCount30d += 1;
+        if (lastInvoked === null || ts.localeCompare(lastInvoked) > 0) {
+          lastInvoked = ts;
+        }
       }
-    }
-    out.push({
-      toolName: tool.toolName,
-      methodName: tool.methodName,
-      description: firstLine(tool.description),
-      callCount30d,
-      lastInvoked,
-    });
-  }
-  return out;
+      const decision = await isMcpToolAllowed(roleHome, serverName, tool.methodName);
+      return {
+        toolName: tool.toolName,
+        methodName: tool.methodName,
+        description: firstLine(tool.description),
+        callCount30d,
+        lastInvoked,
+        allowed: decision.allowed,
+      };
+    }),
+  );
 }
 
 function buildChatToolCapabilities(

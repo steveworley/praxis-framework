@@ -1,6 +1,11 @@
 import path from 'node:path';
 
-import { loadAutonomy, type AutonomyMode, type AutonomySurface } from '@/lib/autonomy-loader.js';
+import {
+  loadAutonomy,
+  type AutonomyMode,
+  type AutonomySurface,
+  type McpVerdict,
+} from '@/lib/autonomy-loader.js';
 
 /**
  * Surfaces that are constitutional — the model may NEVER edit these via tool
@@ -202,13 +207,29 @@ export interface McpRefused {
 export type McpDecision = McpAllowed | McpRefused;
 
 /**
- * Decide whether the role may call an MCP server. Per-server granularity only
- * for MVP — per-method / per-recipient scoping (e.g. which Slack channels,
- * which email addresses) is intentionally out of scope.
+ * Narrow a verdict to the allow-list form, checking the shape at runtime
+ * rather than trusting the declared type. The map comes from a hand-rolled
+ * parser and is keyed by a caller-supplied server name, so a value that is
+ * an object but carries no `allow` array is possible; treating it as an
+ * allow-list would throw on `.includes`, and throwing here takes out
+ * `getChatTools` and `/capabilities` (both call this inside a `Promise.all`).
+ * A verdict we can't read falls through to default-deny.
+ */
+function hasAllowList(verdict: McpVerdict | undefined): verdict is { allow: string[] } {
+  return (
+    typeof verdict === 'object' &&
+    verdict !== null &&
+    Array.isArray((verdict as { allow?: unknown }).allow)
+  );
+}
+
+/**
+ * Server-level gate: may the role talk to this MCP server at all?
  *
- * Default deny: a server NOT listed under `mcps:` in `lib/autonomy.yaml` is
- * refused. The refusal message names the server and points the operator at
- * autonomy.yaml so it's actionable rather than mysterious.
+ * An entry carrying an allow-list is usable at server level — the per-tool
+ * decision belongs to `isMcpToolAllowed`. Keeping them separate means the
+ * health/warning surfaces can still say "connected and permitted" for a
+ * server whose surface is only partly open.
  */
 export async function isMcpAllowed(
   roleHome: string,
@@ -220,6 +241,7 @@ export async function isMcpAllowed(
   const autonomy = await loadAutonomy(roleHome);
   const verdict = autonomy?.mcps?.[serverName];
   if (verdict === 'allow') return { allowed: true };
+  if (hasAllowList(verdict)) return { allowed: true };
   if (verdict === 'deny') {
     return {
       allowed: false,
@@ -233,6 +255,45 @@ export async function isMcpAllowed(
     reason:
       `MCP server '${serverName}' is not declared in lib/autonomy.yaml. ` +
       `Add \`mcps:\n  ${serverName}: allow\` to enable it. Default is deny.`,
+  };
+}
+
+/**
+ * Tool-level gate: may the role call this specific tool on this server?
+ *
+ * This is the predicate the catalog and the dispatcher both use. Allowing a
+ * server whose surface mixes reads with consequential writes is too coarse
+ * a decision — the role does not own that server's tool list, so the gate
+ * lives here.
+ */
+export async function isMcpToolAllowed(
+  roleHome: string,
+  serverName: string,
+  toolName: string,
+): Promise<McpDecision> {
+  if (typeof toolName !== 'string' || toolName.length === 0) {
+    return { allowed: false, reason: 'MCP tool name missing.' };
+  }
+  const server = await isMcpAllowed(roleHome, serverName);
+  if (!server.allowed) return server;
+
+  const autonomy = await loadAutonomy(roleHome);
+  const verdict = autonomy?.mcps?.[serverName];
+  if (verdict === 'allow') return { allowed: true };
+  if (hasAllowList(verdict)) {
+    if (verdict.allow.includes(toolName)) return { allowed: true };
+    return {
+      allowed: false,
+      reason:
+        `MCP tool '${serverName}__${toolName}' is not in the allow list for ` +
+        `'${serverName}' in lib/autonomy.yaml. Allowed: ${verdict.allow.join(', ')}.`,
+    };
+  }
+  return {
+    allowed: false,
+    reason:
+      `MCP server '${serverName}' is not declared in lib/autonomy.yaml. ` +
+      `Default is deny.`,
   };
 }
 

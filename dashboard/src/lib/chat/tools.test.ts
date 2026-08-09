@@ -9,6 +9,7 @@ import { simpleGit } from 'simple-git';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { _resetMcpCatalog, _setTransportFactory } from './mcp-catalog.ts';
+import { getChatTools } from './tool-schemas.ts';
 import {
   executeCreateEscalation,
   executeLogDecision,
@@ -865,4 +866,34 @@ describe('executeTool — MCP dispatch', () => {
     const dd = String(d.getDate()).padStart(2, '0');
     return `${yyyy}-${mm}-${dd}`;
   }
+
+  it('exposes only the allow-listed tools of a server', async () => {
+    // Stub a server exposing write_secret and delete_secret,
+    // then allow only the first.
+    process.env['PRAXIS_MCPS'] = 'vault=http://mcp-vault:8080/mcp';
+    const factory = (): Transport => {
+      const server = new McpServer({ name: 'vault-test', version: '0.0.0' });
+      server.registerTool(
+        'write_secret',
+        { description: 'Create an action', inputSchema: {} },
+        async () => ({ content: [] }),
+      );
+      server.registerTool(
+        'delete_secret',
+        { description: 'Update control status', inputSchema: {} },
+        async () => ({ content: [] }),
+      );
+      const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+      void server.connect(serverTransport);
+      return clientTransport;
+    };
+    _setTransportFactory(factory);
+
+    await writeAutonomy('mcps:\n  vault:\n    allow: [write_secret]\n');
+
+    const tools = await getChatTools(tempDir);
+    const names = tools.map((t) => t.name);
+    expect(names).toContain('vault__write_secret');
+    expect(names).not.toContain('vault__delete_secret');
+  });
 });
