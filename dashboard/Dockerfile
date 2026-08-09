@@ -34,6 +34,7 @@ COPY cli/package.json ./cli/
 COPY packages/seed/package.json ./packages/seed/
 COPY packages/inference/package.json ./packages/inference/
 COPY packages/inference-quantcloud/package.json ./packages/inference-quantcloud/
+COPY packages/inference-kimi/package.json ./packages/inference-kimi/
 
 RUN npm ci --no-audit --no-fund
 
@@ -41,6 +42,7 @@ RUN npm ci --no-audit --no-fund
 COPY packages/seed ./packages/seed
 COPY packages/inference ./packages/inference
 COPY packages/inference-quantcloud ./packages/inference-quantcloud
+COPY packages/inference-kimi ./packages/inference-kimi
 COPY dashboard ./dashboard
 
 # The seed package's build step (`scripts/copy-template.mjs`) copies the
@@ -50,10 +52,12 @@ COPY dashboard ./dashboard
 COPY template ./template
 
 # Build workspaces the dashboard depends on first. Order matters:
-# inference is imported by both inference-quantcloud and the dashboard;
-# seed and inference-quantcloud are imported by the dashboard.
+# inference is imported by inference-quantcloud, inference-kimi and the
+# dashboard; seed, inference-quantcloud and inference-kimi are imported by
+# the dashboard.
 RUN npm run build --workspace=@praxis-framework/inference
 RUN npm run build --workspace=@praxis-framework/inference-quantcloud
+RUN npm run build --workspace=@praxis-framework/inference-kimi
 RUN npm run build --workspace=@praxis-framework/seed
 RUN npm run build --workspace=praxis-dashboard
 
@@ -85,6 +89,8 @@ COPY --from=builder /repo/packages/inference/package.json ./packages/inference/p
 COPY --from=builder /repo/packages/inference/dist ./packages/inference/dist
 COPY --from=builder /repo/packages/inference-quantcloud/package.json ./packages/inference-quantcloud/package.json
 COPY --from=builder /repo/packages/inference-quantcloud/dist ./packages/inference-quantcloud/dist
+COPY --from=builder /repo/packages/inference-kimi/package.json ./packages/inference-kimi/package.json
+COPY --from=builder /repo/packages/inference-kimi/dist ./packages/inference-kimi/dist
 COPY --from=builder /repo/dashboard/package.json ./dashboard/package.json
 COPY --from=builder /repo/dashboard/dist ./dashboard/dist
 COPY --from=builder /repo/dashboard/node_modules ./dashboard/node_modules
