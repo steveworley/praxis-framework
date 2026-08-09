@@ -357,6 +357,191 @@ describe('parseMcpsBlock', () => {
   });
 });
 
+describe('parseMcpsBlock — per-tool allow lists', () => {
+  it('keeps the scalar shorthand working', () => {
+    const out = parseMcpsBlock(['mcps:', '  slack: allow', '  playwright: deny'].join('\n'));
+    expect(out).toEqual({ slack: 'allow', playwright: 'deny' });
+  });
+
+  it('parses a flow-sequence allow list', () => {
+    const out = parseMcpsBlock(
+      ['mcps:', '  vault:', '    allow: [read_secret, write_secret]'].join('\n'),
+    );
+    expect(out).toEqual({ vault: { allow: ['read_secret', 'write_secret'] } });
+  });
+
+  it('parses a block-sequence allow list', () => {
+    const out = parseMcpsBlock(
+      ['mcps:', '  vault:', '    allow:', '      - read_secret', '      - write_secret'].join('\n'),
+    );
+    expect(out).toEqual({ vault: { allow: ['read_secret', 'write_secret'] } });
+  });
+
+  it('mixes scalar and object entries', () => {
+    const out = parseMcpsBlock(
+      ['mcps:', '  slack: allow', '  vault:', '    allow: [write_secret]', '  playwright: deny'].join('\n'),
+    );
+    expect(out).toEqual({
+      slack: 'allow',
+      vault: { allow: ['write_secret'] },
+      playwright: 'deny',
+    });
+  });
+
+  it('strips quotes from tool names', () => {
+    const out = parseMcpsBlock(
+      ['mcps:', '  vault:', '    allow: ["read_secret", \'write_secret\']'].join('\n'),
+    );
+    expect(out).toEqual({ vault: { allow: ['read_secret', 'write_secret'] } });
+  });
+
+  it('drops an object entry with an empty allow list (default-deny)', () => {
+    const out = parseMcpsBlock(['mcps:', '  vault:', '    allow: []'].join('\n'));
+    expect(out).toBeNull();
+  });
+
+  it('drops an object entry with no allow key at all (default-deny)', () => {
+    const out = parseMcpsBlock(['mcps:', '  vault:', '    note: nothing here'].join('\n'));
+    expect(out).toBeNull();
+  });
+
+  it('stops at the next top-level key', () => {
+    const out = parseMcpsBlock(
+      ['mcps:', '  vault:', '    allow: [write_secret]', 'surfaces:', '  - path: memory/'].join('\n'),
+    );
+    expect(out).toEqual({ vault: { allow: ['write_secret'] } });
+  });
+
+  it('ignores comments inside an object entry', () => {
+    const out = parseMcpsBlock(
+      ['mcps:', '  vault:', '    # only the safe ones', '    allow: [write_secret]'].join('\n'),
+    );
+    expect(out).toEqual({ vault: { allow: ['write_secret'] } });
+  });
+});
+
+describe('parseMcpsBlock — an entry it does not fully understand is dropped', () => {
+  it('drops the entry when a deny: key carries a sequence', () => {
+    // The near-universal allow/deny idiom. The items under `deny:` must never
+    // be read as allow-list members — that would invert a denial into a grant.
+    const out = parseMcpsBlock(
+      [
+        'mcps:',
+        '  vault:',
+        '    allow:',
+        '      - read_secret',
+        '    deny:',
+        '      - delete_secret',
+      ].join('\n'),
+    );
+    expect(out).toBeNull();
+  });
+
+  it("drops the entry when a typo'd key carries a sequence", () => {
+    const out = parseMcpsBlock(
+      ['mcps:', '  vault:', '  ', '    alow:', '      - read_secret'].join('\n'),
+    );
+    expect(out).toBeNull();
+  });
+
+  it('drops the entry when a prose key carries a sequence', () => {
+    const out = parseMcpsBlock(
+      [
+        'mcps:',
+        '  vault:',
+        '    allow:',
+        '      - read_secret',
+        '    note:',
+        '      - never call delete_secret',
+      ].join('\n'),
+    );
+    expect(out).toBeNull();
+  });
+
+  it('drops only the unreadable entry, leaving its siblings intact', () => {
+    const out = parseMcpsBlock(
+      [
+        'mcps:',
+        '  slack: allow',
+        '  vault:',
+        '    allow:',
+        '      - read_secret',
+        '    deny:',
+        '      - delete_secret',
+        '  gmail: deny',
+      ].join('\n'),
+    );
+    expect(out).toEqual({ slack: 'allow', gmail: 'deny' });
+  });
+
+  it('drops the entry when a sequence item precedes any allow: key', () => {
+    const out = parseMcpsBlock(['mcps:', '  vault:', '      - read_secret'].join('\n'));
+    expect(out).toBeNull();
+  });
+
+  it('drops the entry when a stray item trails a flow allow list', () => {
+    const out = parseMcpsBlock(
+      ['mcps:', '  vault:', '    allow: [read_secret]', '    - delete_secret'].join('\n'),
+    );
+    expect(out).toBeNull();
+  });
+
+  it('still parses the valid shapes after the tightening', () => {
+    const flow = parseMcpsBlock(
+      ['mcps:', '  vault:', '    allow: [read_secret, write_secret]'].join('\n'),
+    );
+    expect(flow).toEqual({ vault: { allow: ['read_secret', 'write_secret'] } });
+
+    const block = parseMcpsBlock(
+      [
+        'mcps:',
+        '  slack: allow',
+        '  vault:',
+        '    # only the safe ones',
+        '    allow:',
+        '',
+        '      - read_secret',
+        '      - write_secret',
+        '  playwright: deny',
+      ].join('\n'),
+    );
+    expect(block).toEqual({
+      slack: 'allow',
+      vault: { allow: ['read_secret', 'write_secret'] },
+      playwright: 'deny',
+    });
+  });
+});
+
+describe('parseMcpsBlock — prototype keys', () => {
+  it('records no entry for a __proto__ server name in scalar form', () => {
+    expect(parseMcpsBlock(['mcps:', '  __proto__: allow'].join('\n'))).toBeNull();
+  });
+
+  it('records no entry for a __proto__ server name in object form', () => {
+    expect(
+      parseMcpsBlock(['mcps:', '  __proto__:', '    allow: [anything]'].join('\n')),
+    ).toBeNull();
+  });
+
+  it('does not let a __proto__ entry reshape the map for other servers', () => {
+    const out = parseMcpsBlock(
+      ['mcps:', '  __proto__:', '    allow: [anything]', '  slack: allow'].join('\n'),
+    );
+    expect(out).toEqual({ slack: 'allow' });
+    expect(out?.['allow']).toBeUndefined();
+    expect(out?.['vault']).toBeUndefined();
+  });
+
+  it('does not resolve inherited properties for unlisted server names', () => {
+    const out = parseMcpsBlock(['mcps:', '  slack: allow'].join('\n'));
+    expect(out).not.toBeNull();
+    expect(out?.['__proto__']).toBeUndefined();
+    expect(out?.['toString']).toBeUndefined();
+    expect(out?.['constructor']).toBeUndefined();
+  });
+});
+
 describe('recentAutonomousEdits', () => {
   async function initRepo(dir: string): Promise<void> {
     const git = simpleGit(dir);

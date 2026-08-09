@@ -385,8 +385,8 @@ function outcomeBadge(o: VerbOutcomeCounts): string {
                           <div class="cap-row-head">
                             <code class="cap-name">{s.name}</code>
                             <span class={`mcp-status mcp-status-${s.status}`}>{s.status}</span>
-                            <span class={`mcp-allow ${s.allowed ? 'mcp-allow-yes' : 'mcp-allow-no'}`}>
-                              {s.allowed ? 'allow' : 'deny'}
+                            <span class={`mcp-allow mcp-allow-${s.allowState}`}>
+                              {s.allowState}
                             </span>
                             <span class="cap-usage">
                               <span class="mcp-url">{s.url}</span>
@@ -401,9 +401,12 @@ function outcomeBadge(o: VerbOutcomeCounts): string {
                           {s.methods.length > 0 && (
                             <div class="mcp-methods">
                               {s.methods.map((m) => (
-                                <div class="mcp-method">
+                                <div class:list={['mcp-method', !m.allowed && 'mcp-method-denied']}>
                                   <div class="cap-row-head">
                                     <code class="cap-name">{m.methodName}</code>
+                                    {!m.allowed && (
+                                      <span class="mcp-method-badge">not permitted</span>
+                                    )}
                                     <span class="cap-usage">
                                       {m.callCount30d === 0 ? (
                                         <em class="never">never invoked (30d)</em>
@@ -698,10 +701,14 @@ function outcomeBadge(o: VerbOutcomeCounts): string {
       border-radius: 2px;
       border: 1px solid var(--rule);
     }
-    .mcp-allow-yes {
+    .mcp-allow-allow {
       color: var(--ink);
     }
-    .mcp-allow-no {
+    .mcp-allow-partial {
+      color: var(--warn);
+      border-color: var(--warn);
+    }
+    .mcp-allow-deny {
       color: var(--ink-faint);
       font-style: italic;
     }
@@ -725,6 +732,19 @@ function outcomeBadge(o: VerbOutcomeCounts): string {
     }
     .mcp-method {
       font-size: 12px;
+    }
+    .mcp-method-denied {
+      opacity: 0.6;
+    }
+    .mcp-method-badge {
+      font-family: var(--mono);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.05rem 0.35rem;
+      border-radius: 2px;
+      border: 1px solid var(--danger);
+      color: var(--danger);
     }
   </style>
 </BaseLayout>

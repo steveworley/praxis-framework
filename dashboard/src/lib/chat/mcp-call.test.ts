@@ -224,4 +224,11 @@ describe('executeMcpCall — refusals', () => {
     if (result.ok) return;
     expect(result.error).toMatch(/failed|unreachable/);
   });
+
+  it('refuses a tool that is not in the server allow list', async () => {
+    await writeAutonomy('mcps:\n  slack:\n    allow: [safe_tool]\n');
+    const result = await executeMcpCall(tempDir, 'slack', 'post_message', {});
+    expect(result.ok).toBe(false);
+    expect((result as { error: string }).error).toContain('post_message');
+  });
 });

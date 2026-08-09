@@ -4,7 +4,7 @@ import path from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { isMcpAllowed, isWriteAllowed } from './autonomy-gate.ts';
+import { isMcpAllowed, isMcpToolAllowed, isWriteAllowed } from './autonomy-gate.ts';
 
 let tempDir: string;
 
@@ -251,5 +251,102 @@ describe('isMcpAllowed', () => {
     await writeAutonomy(['mcps:', '  slack: allow'].join('\n'));
     const d = await isMcpAllowed(tempDir, '');
     expect(d.allowed).toBe(false);
+  });
+});
+
+describe('isMcpToolAllowed', () => {
+  it('allows every tool when the server is a bare allow', async () => {
+    await writeAutonomy('mcps:\n  slack: allow\n');
+    expect((await isMcpToolAllowed(tempDir, 'slack', 'post_message')).allowed).toBe(true);
+  });
+
+  it('denies every tool when the server is a bare deny', async () => {
+    await writeAutonomy('mcps:\n  slack: deny\n');
+    expect((await isMcpToolAllowed(tempDir, 'slack', 'post_message')).allowed).toBe(false);
+  });
+
+  it('allows a tool named in the allow list', async () => {
+    await writeAutonomy('mcps:\n  vault:\n    allow: [write_secret]\n');
+    expect((await isMcpToolAllowed(tempDir, 'vault', 'write_secret')).allowed).toBe(true);
+  });
+
+  it('denies a tool absent from the allow list', async () => {
+    await writeAutonomy('mcps:\n  vault:\n    allow: [write_secret]\n');
+    const decision = await isMcpToolAllowed(tempDir, 'vault', 'delete_secret');
+    expect(decision.allowed).toBe(false);
+    if (!decision.allowed) {
+      expect(decision.reason).toContain('delete_secret');
+      expect(decision.reason).toContain('write_secret');
+    }
+  });
+
+  it('denies an undeclared server', async () => {
+    await writeAutonomy('mcps:\n  slack: allow\n');
+    expect((await isMcpToolAllowed(tempDir, 'vault', 'write_secret')).allowed).toBe(false);
+  });
+
+  it('denies when autonomy.yaml has no mcps block', async () => {
+    await writeAutonomy('# no mcps block\n');
+    expect((await isMcpToolAllowed(tempDir, 'vault', 'write_secret')).allowed).toBe(false);
+  });
+});
+
+describe('isMcpAllowed with an object entry', () => {
+  it('treats a server carrying an allow list as usable at server level', async () => {
+    await writeAutonomy('mcps:\n  vault:\n    allow: [write_secret]\n');
+    expect((await isMcpAllowed(tempDir, 'vault')).allowed).toBe(true);
+  });
+});
+
+describe('the gate never reads more permission than the config states', () => {
+  it('denies a tool listed under a deny: key rather than granting it', async () => {
+    await writeAutonomy(
+      [
+        'mcps:',
+        '  vault:',
+        '    allow:',
+        '      - read_secret',
+        '    deny:',
+        '      - delete_secret',
+        '',
+      ].join('\n'),
+    );
+    // The whole entry is unreadable, so `vault` falls through to
+    // default-deny — including the tool the operator meant to allow.
+    expect((await isMcpToolAllowed(tempDir, 'vault', 'delete_secret')).allowed).toBe(
+      false,
+    );
+    expect((await isMcpToolAllowed(tempDir, 'vault', 'read_secret')).allowed).toBe(false);
+    expect((await isMcpAllowed(tempDir, 'vault')).allowed).toBe(false);
+  });
+
+  it("denies a tool nested under a typo'd key rather than granting it", async () => {
+    await writeAutonomy('mcps:\n  vault:\n    alow:\n      - read_secret\n');
+    expect((await isMcpToolAllowed(tempDir, 'vault', 'read_secret')).allowed).toBe(false);
+    expect((await isMcpAllowed(tempDir, 'vault')).allowed).toBe(false);
+  });
+
+  it('denies a __proto__ server name instead of throwing', async () => {
+    await writeAutonomy('mcps:\n  slack: allow\n');
+    const tool = await isMcpToolAllowed(tempDir, '__proto__', 'anything');
+    expect(tool.allowed).toBe(false);
+    expect((await isMcpAllowed(tempDir, '__proto__')).allowed).toBe(false);
+  });
+
+  it('denies inherited object keys used as server names instead of throwing', async () => {
+    await writeAutonomy('mcps:\n  slack: allow\n');
+    for (const name of ['toString', 'constructor', 'hasOwnProperty']) {
+      expect((await isMcpToolAllowed(tempDir, name, 'anything')).allowed).toBe(false);
+    }
+  });
+
+  it('denies when a __proto__ entry tries to reshape the map', async () => {
+    await writeAutonomy(
+      'mcps:\n  __proto__:\n    allow: [anything]\n  slack: allow\n',
+    );
+    expect((await isMcpToolAllowed(tempDir, 'allow', 'anything')).allowed).toBe(false);
+    expect((await isMcpToolAllowed(tempDir, 'vault', 'anything')).allowed).toBe(false);
+    // The legitimate entry alongside it still works.
+    expect((await isMcpToolAllowed(tempDir, 'slack', 'post_message')).allowed).toBe(true);
   });
 });

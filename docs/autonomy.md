@@ -142,6 +142,86 @@ The file is a flat top-level `key: value` map. The role can only adjust keys dec
 ### `gated` (default)
 The role never edits autonomously. Everything is gated unless explicitly opened in `lib/autonomy.yaml`.
 
+## MCP servers
+
+The four modes above govern files inside the role home. MCP servers are a
+separate axis: they are capabilities reached over the network, wired into the
+role by the operator through `PRAXIS_MCPS` in `docker-compose.yml`, and
+declared under a top-level `mcps:` block in `lib/autonomy.yaml`.
+
+**A server not listed under `mcps:` is denied.** Wiring a server into the
+compose stack makes it *reachable*; it does not make it *permitted*. Those are
+deliberately two decisions — an operator adding a service should not silently
+widen what the role may do.
+
+```yaml
+mcps:
+  slack: allow          # every tool this server exposes
+  gmail: allow
+  playwright: deny      # explicit denial, same effect as omission
+```
+
+`deny` and omission behave identically. Listing a server explicitly as `deny`
+is worth doing when the server is wired into compose and you want the reason
+visible to the next reader.
+
+### Per-tool allow lists
+
+A bare `allow` opens every tool a server exposes. That is too coarse when a
+server's surface mixes reads with consequential writes — and the role does not
+own that surface, so the gate has to live here.
+
+Give the server an allow-list instead:
+
+```yaml
+mcps:
+  slack: allow
+  vault:
+    allow: [read_secret, list_secrets, write_secret]
+```
+
+Both sequence styles parse:
+
+```yaml
+  vault:
+    allow:
+      - read_secret
+      - write_secret
+```
+
+Semantics:
+
+- A server absent from `mcps:` is **denied**.
+- A tool absent from its server's `allow` list is **denied**.
+- An entry naming no tools — `allow: []`, or a bare `vault:` with nothing
+  nested — is dropped, so the server falls through to default-deny.
+- An entry carrying any key the parser does not recognise — a typo'd `alow:`,
+  a prose `note:`, a `deny:` — is dropped whole, including whatever its valid
+  `allow:` list named. A typo narrows access; it never widens it.
+
+There is no `deny:` list inside the object form. Deny-by-default plus an
+allow-list already expresses every policy, and a subtractive list would add a
+precedence question with no matching need. Writing one anyway does not
+subtract — it drops the entry, so the server ends up fully denied.
+
+### Where it is enforced
+
+Two points, deliberately redundant:
+
+1. **The tool catalog** — a denied tool never appears in the model's tool list,
+   so it cannot be called by mistake or by persuasion.
+2. **The dispatcher** — a denied tool is refused even if it is somehow called.
+
+The first is what makes the gate effective; the second is what makes it
+trustworthy. A refusal names the tool and lists what *is* permitted, so the
+model can pick a different action rather than retrying blindly.
+
+### What this is not
+
+This gate governs what the role may *call*. It says nothing about what the
+server itself permits — an MCP server enforcing its own scopes still does so.
+Where both apply, the narrower wins, and neither is a substitute for the other.
+
 ## The three guarantees
 
 Whatever surfaces are open, three things hold:

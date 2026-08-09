@@ -287,6 +287,9 @@ describe('loadCapabilities — mcps', () => {
       ],
     });
     vi.spyOn(autonomyGate, 'isMcpAllowed').mockResolvedValue({ allowed: true });
+    // Fully open — every discovered method passes the per-tool gate too, so
+    // this test's assertions stay about usage aggregation, not allow-state.
+    vi.spyOn(autonomyGate, 'isMcpToolAllowed').mockResolvedValue({ allowed: true });
 
     const report = await loadCapabilities(tempDir, now);
     expect(report.mcps.configured).toBe(true);
@@ -295,7 +298,7 @@ describe('loadCapabilities — mcps', () => {
     const echo = report.mcps.servers[0]!;
     expect(echo.name).toBe('echo');
     expect(echo.status).toBe('connected');
-    expect(echo.allowed).toBe(true);
+    expect(echo.allowState).toBe('allow');
     expect(echo.methodCount).toBe(3);
     expect(echo.methods).toHaveLength(3);
 
@@ -364,8 +367,104 @@ describe('loadCapabilities — mcps', () => {
     expect(report.mcps.configured).toBe(true);
     if (!report.mcps.configured) return;
     const byName = new Map(report.mcps.servers.map((s) => [s.name, s]));
-    expect(byName.get('slack')?.allowed).toBe(true);
-    expect(byName.get('gmail')?.allowed).toBe(false);
+    expect(byName.get('slack')?.allowState).toBe('allow');
+    expect(byName.get('gmail')?.allowState).toBe('deny');
+  });
+
+  it('reports allowState: deny for a refused server even though its methods are still enumerated', async () => {
+    const now = new Date('2026-05-13T10:00:00Z');
+    vi.spyOn(mcpCatalog, 'getMcpCatalog').mockResolvedValue({
+      servers: [
+        {
+          name: 'gmail',
+          url: 'http://mcp-gmail:8080',
+          status: 'connected',
+          toolCount: 1,
+        },
+      ],
+      tools: [
+        {
+          serverName: 'gmail',
+          methodName: 'send_message',
+          toolName: 'gmail__send_message',
+          description: 'Send an email.',
+          inputSchema: { type: 'object' },
+        },
+      ],
+    });
+    vi.spyOn(autonomyGate, 'isMcpAllowed').mockResolvedValue({
+      allowed: false,
+      reason: 'denied in autonomy.yaml',
+    });
+    // Not consulted for a server-denied verdict's outcome (deny wins outright),
+    // but still exercised — buildMcpMethodCapabilities doesn't special-case a
+    // refused server.
+    vi.spyOn(autonomyGate, 'isMcpToolAllowed').mockResolvedValue({
+      allowed: false,
+      reason: "MCP server 'gmail' is not declared in lib/autonomy.yaml. Default is deny.",
+    });
+
+    const report = await loadCapabilities(tempDir, now);
+    expect(report.mcps.configured).toBe(true);
+    if (!report.mcps.configured) return;
+    const gmail = report.mcps.servers[0]!;
+    expect(gmail.allowState).toBe('deny');
+  });
+
+  it('reports allowState: partial when a per-tool allow-list opens only part of the surface, and marks the denied method', async () => {
+    const now = new Date('2026-05-13T10:00:00Z');
+    vi.spyOn(mcpCatalog, 'getMcpCatalog').mockResolvedValue({
+      servers: [
+        {
+          name: 'vault',
+          url: 'http://mcp-vault:8080',
+          status: 'connected',
+          toolCount: 2,
+        },
+      ],
+      tools: [
+        {
+          serverName: 'vault',
+          methodName: 'write_secret',
+          toolName: 'vault__write_secret',
+          description: 'Create an action.',
+          inputSchema: { type: 'object' },
+        },
+        {
+          serverName: 'vault',
+          methodName: 'delete_secret',
+          toolName: 'vault__delete_secret',
+          description: 'Update control status.',
+          inputSchema: { type: 'object' },
+        },
+      ],
+    });
+    // Server-level: an object verdict is usable at server level (Task 2).
+    vi.spyOn(autonomyGate, 'isMcpAllowed').mockResolvedValue({ allowed: true });
+    // Tool-level: only write_secret is in the declared allow-list.
+    vi.spyOn(autonomyGate, 'isMcpToolAllowed').mockImplementation(
+      async (_roleHome, _serverName, methodName) => {
+        if (methodName === 'write_secret') return { allowed: true };
+        return {
+          allowed: false,
+          reason: `MCP tool 'vault__${methodName}' is not in the allow list for 'vault' in lib/autonomy.yaml. Allowed: write_secret.`,
+        };
+      },
+    );
+
+    const report = await loadCapabilities(tempDir, now);
+    expect(report.mcps.configured).toBe(true);
+    if (!report.mcps.configured) return;
+    const vault = report.mcps.servers[0]!;
+    // The whole point of the fix: a partial allow-list must not render as a
+    // bare "allow" — it needs to be structurally distinguishable.
+    expect(vault.allowState).toBe('partial');
+    expect(vault.allowState).not.toBe('allow');
+    expect(vault.allowState).not.toBe('deny');
+
+    const byMethod = new Map(vault.methods.map((m) => [m.methodName, m]));
+    expect(byMethod.get('write_secret')?.allowed).toBe(true);
+    expect(byMethod.get('delete_secret')?.allowed).toBe(false);
   });
 
   it('falls back to configured:false when the catalog fetch throws', async () => {

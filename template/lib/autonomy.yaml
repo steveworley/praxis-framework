@@ -140,16 +140,22 @@ surfaces:
 # - lib/compliance.yaml          (legal/safety — Spam Act + opt-out gates)
 # - CLAUDE.md                    (constitution — global behavior)
 
-# === MCP servers — per-server allow/deny ===
+# === MCP servers — per-server allow/deny, with optional per-tool lists ===
 #
 # The dashboard discovers MCP servers via the `PRAXIS_MCPS` env var (set in
 # docker-compose.yml). Each server contributes one tool per method it
-# exposes; this block decides which servers the role may actually call.
+# exposes; this block decides which of those the role may actually call.
 #
 # Default for unlisted servers is `deny` — operators opt in explicitly per
-# server. Per-method / per-recipient scoping (e.g. which Slack channels,
-# which email addresses) is intentionally out of scope here; if you need
-# tighter gating, configure it in the MCP server itself.
+# server. A server may be opened whole (`slack: allow`) or only in part, by
+# naming the tools under an `allow:` list — everything unnamed on that server
+# is denied. There is no `deny:` list: deny-by-default plus an allow-list
+# already expresses every policy, and an entry carrying a key the parser does
+# not recognise (including `deny:`) is dropped entirely, so it falls back to
+# deny rather than granting anything.
+#
+# Per-recipient scoping (e.g. which Slack channels, which email addresses) is
+# still out of scope here — configure that in the MCP server itself.
 #
 # Uncomment and adapt:
 #
@@ -157,3 +163,7 @@ surfaces:
 #   slack: allow
 #   gmail: allow
 #   playwright: deny
+#
+#   # Or open only part of a server's surface — everything unnamed is denied:
+#   # vault:
+#   #   allow: [read_secret, list_secrets, write_secret]
