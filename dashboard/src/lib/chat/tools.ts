@@ -19,6 +19,7 @@ import {
   executeUpdateOutputStatus,
   executeWriteOutput,
 } from './output-tools.js';
+import { executeReadRoleFile } from './read-role-file.js';
 import { executeRunVerb } from './run-verb.js';
 import { localDateString, localIsoString } from './time-helpers.js';
 
@@ -406,6 +407,7 @@ export type ToolName =
   | 'propose_verb'
   | 'run_verb'
   | 'complete_verb'
+  | 'read_role_file'
   | 'append_entry'
   | 'enrich_entry'
   | 'adjust_param'
@@ -421,6 +423,7 @@ const KNOWN_TOOLS: ReadonlySet<string> = new Set([
   'propose_verb',
   'run_verb',
   'complete_verb',
+  'read_role_file',
   'append_entry',
   'enrich_entry',
   'adjust_param',
@@ -441,6 +444,16 @@ const SELF_LOGGING_TOOLS: ReadonlySet<string> = new Set([
   'run_verb',
   'complete_verb',
 ]);
+
+/**
+ * Result-data fields left out of the auto-emitted activity entry. The model
+ * still receives them in its tool_result; they just don't land in
+ * `logs/<date>.jsonl` or its audit commit. `read_role_file` returns whole
+ * file bodies, which would otherwise be copied into the log on every read.
+ */
+const ACTIVITY_OMITTED_FIELDS: Readonly<Record<string, readonly string[]>> = {
+  read_role_file: ['content'],
+};
 
 /**
  * Dispatch a tool call. Always returns a ToolResult — never throws. The
@@ -515,6 +528,9 @@ async function emitActivityForResult(
 ): Promise<ToolResult> {
   if (result.ok && !SELF_LOGGING_TOOLS.has(name)) {
     const payload: Record<string, unknown> = { ...result.data };
+    for (const field of ACTIVITY_OMITTED_FIELDS[name] ?? []) {
+      delete payload[field];
+    }
     const shortSha = result.data['commit_short_sha'];
     if (typeof shortSha === 'string') {
       payload['artifact_commit'] = shortSha;
@@ -550,6 +566,8 @@ async function dispatchTool(
       return executeRunVerb(roleHome, input);
     case 'complete_verb':
       return executeCompleteVerb(roleHome, input);
+    case 'read_role_file':
+      return executeReadRoleFile(roleHome, input);
     case 'append_entry':
       return executeAppendEntry(roleHome, input);
     case 'enrich_entry':

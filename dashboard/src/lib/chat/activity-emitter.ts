@@ -175,6 +175,10 @@ export function headlineFor(
       const slug = stringField(payload, 'slug');
       return slug ? `propose ${slug}` : toolName;
     }
+    case 'read_role_file': {
+      const p = stringField(payload, 'path');
+      return p ? `read ${p}` : toolName;
+    }
     case 'append_entry': {
       const p = stringField(payload, 'path');
       return p ? `append to ${stripExt(p)}` : toolName;

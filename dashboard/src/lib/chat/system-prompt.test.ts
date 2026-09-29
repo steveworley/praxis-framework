@@ -253,7 +253,7 @@ describe('buildSystemPrompt', () => {
     await seedPersona();
     const prompt = await buildSystemPrompt(tempDir);
     expect(prompt).toContain('`enrich_entry`');
-    expect(prompt).toContain('thirteen tools available');
+    expect(prompt).toContain('fourteen tools available');
   });
 
   it('lists run_verb and complete_verb in the operator-greeting tool block', async () => {
@@ -261,6 +261,15 @@ describe('buildSystemPrompt', () => {
     const prompt = await buildSystemPrompt(tempDir);
     expect(prompt).toContain('`run_verb`');
     expect(prompt).toContain('`complete_verb`');
+  });
+
+  it('tells the model it can read role-home reference files with read_role_file', async () => {
+    await seedPersona();
+    const prompt = await buildSystemPrompt(tempDir);
+    expect(prompt).toContain('`read_role_file`');
+    expect(prompt).toContain('### Reading your reference files');
+    expect(prompt).toContain('Call `read_role_file(path)`');
+    expect(prompt).toContain('rather than from memory');
   });
 
   it('includes the Running a verb guidance section', async () => {

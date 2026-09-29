@@ -101,11 +101,12 @@ docker compose up    # bind-mounts source for HMR via the dev Dockerfile
 
 **The dashboard is the primary runtime.** Open `http://localhost:4321/chat` and talk to the role — the model is fed the role's interior as a system prompt (persona body, live verbs, hard rules, autonomy stance, tool catalog). Tool use is enabled, gated by `lib/autonomy.yaml` + `CONSTITUTIONAL_PATHS`. Conversations persist as markdown under `memory/conversations/`. Every change the role makes is a git commit, visible in `/role`'s recent-edits panel.
 
-The chat surface exposes thirteen typed tools, grouped by intent:
+The chat surface exposes fourteen typed tools, grouped by intent:
 
 - **Growth** — `write_memory`, `archive_memory`, `consolidate_memory`, `create_escalation`, `propose_verb`, `log_decision`, `run_verb`, `complete_verb`. The role's observational + verb-invocation surfaces.
 - **Lib surgery** — `append_entry`, `enrich_entry`, `adjust_param`. Operator-opened YAML under the modes declared in `lib/autonomy.yaml`.
 - **Work product** — `write_output`, `update_output_status`. The framework's typed `output/` taxonomy.
+- **Reference** — `read_role_file`. Read-only access to role-home files (`lib/*`, verbs, memory, outputs, escalations, logs, `persona.md`, `CLAUDE.md`) so the role resolves rules from the file, not from memory. Secrets are always refused.
 
 Constitutional surfaces stay gated regardless of yaml. The chat is never the place to mutate the role's constitution — that's what `/triage/draft/<id>` co-authoring is for (operator-driven, model-assisted).
 

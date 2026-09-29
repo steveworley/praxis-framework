@@ -517,6 +517,31 @@ export const RUN_VERB_TOOL: Anthropic.Tool = {
   },
 };
 
+export const READ_ROLE_FILE_TOOL: Anthropic.Tool = {
+  name: 'read_role_file',
+  description:
+    'Read a text file from your role home — your reference data under `lib/` ' +
+    '(e.g. `lib/compliance.yaml`, `lib/obligations.yaml`), verbs, memory, ' +
+    'outputs, escalations, logs, `persona.md` or `CLAUDE.md`. Use it to ' +
+    'resolve a rule or fact from the file itself instead of recalling it from ' +
+    'memory. Read-only: it never changes a file, and works on constitutional ' +
+    'files you cannot write. Secrets (`.env*`, `.tokens/`, `.git/`, `state/`, ' +
+    'key and credential files) and paths outside the allow list are refused. ' +
+    'Content over 64 KiB is truncated with a notice.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      path: {
+        type: 'string',
+        description:
+          'Path relative to the role home, e.g. `lib/compliance.yaml`. No ' +
+          'absolute paths or `..` segments.',
+      },
+    },
+    required: ['path'],
+  },
+};
+
 export const COMPLETE_VERB_TOOL: Anthropic.Tool = {
   name: 'complete_verb',
   description:
@@ -612,7 +637,9 @@ export const UPDATE_OUTPUT_STATUS_TOOL: Anthropic.Tool = {
  * The full toolset, in the order the model sees them. Memory first — most
  * common action; logging last — least conversational. The verb-invocation
  * pair (`run_verb`, `complete_verb`) sits next to `propose_verb` because
- * they share the verb-as-delegation framing. The lib-surgery tools
+ * they share the verb-as-delegation framing. `read_role_file` follows as the
+ * only read-only built-in, just ahead of the lib-surgery tools that act on
+ * the same files. The lib-surgery tools
  * (`append_entry`, `enrich_entry`, `adjust_param`) sit together after the
  * verb tools and before the output tools. The output tools sit between the
  * role-growth tools and the audit tools — they're work product, not
@@ -626,6 +653,7 @@ export const CHAT_TOOLS: readonly Anthropic.Tool[] = [
   PROPOSE_VERB_TOOL,
   RUN_VERB_TOOL,
   COMPLETE_VERB_TOOL,
+  READ_ROLE_FILE_TOOL,
   APPEND_ENTRY_TOOL,
   ENRICH_ENTRY_TOOL,
   ADJUST_PARAM_TOOL,
