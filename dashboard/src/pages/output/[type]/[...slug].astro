@@ -9,6 +9,7 @@ import RouteHeader from '@/components/RouteHeader.astro';
 import BaseLayout from '@/layouts/BaseLayout.astro';
 import { personaNameFrom } from '@/lib/chat/persona-name';
 import { renderMarkdown } from '@/lib/markdown';
+import { loadReadyCommit } from '@/lib/output/approval';
 import {
   OutputNotFoundError,
   OutputValidationError,
@@ -68,6 +69,12 @@ const updatedAt = nowIso();
 
 const bodyHtml = detail ? renderMarkdown(detail.body) : '';
 
+// Approved drafts show who set `ready` — one `git log -G` over the file.
+const readyCommit =
+  detail && detail.meta.type === 'draft' && detail.meta.status === 'ready'
+    ? await loadReadyCommit(roleHome, detail.meta.path)
+    : null;
+
 const pageTitle = detail ? `${detail.meta.title} · Output` : `Output · Praxis`;
 ---
 
@@ -89,7 +96,7 @@ const pageTitle = detail ? `${detail.meta.title} · Output` : `Output · Praxis`
     {detail && (
       <div data-praxis-visuals>
         {type === 'document' && <DocumentView meta={detail.meta} bodyHtml={bodyHtml} />}
-        {type === 'draft' && <DraftView meta={detail.meta} bodyHtml={bodyHtml} />}
+        {type === 'draft' && <DraftView meta={detail.meta} bodyHtml={bodyHtml} readyCommit={readyCommit} />}
         {type === 'record' && <RecordView meta={detail.meta} bodyHtml={bodyHtml} />}
         {type === 'plan' && <PlanView meta={detail.meta} body={detail.body} bodyHtml={bodyHtml} />}
         {type === 'reference' && <ReferenceView meta={detail.meta} bodyHtml={bodyHtml} />}

@@ -193,12 +193,24 @@ Three page levels:
 | Type | Renderer | What it shows |
 |---|---|---|
 | `document` | `DocumentView` | Title + status pill + audience meta + prose body |
-| `draft` | `DraftView` | Envelope head (To / Via / Subject), body in a quoted inset, "Mark as sent" action that POSTs the status update |
+| `draft` | `DraftView` | Envelope head (To / Via / Subject), body in a quoted inset, **Approve** (draft / review → `ready`) and **Mark as sent** (draft / review / ready → `sent`) actions that POST the status update. A `ready` draft shows who set it and when. |
 | `record` | `RecordView` | Entity-prominent header (`entity_type · entity_id`), observed_at inline |
 | `plan` | `PlanView` | Goal + owner + progress bar (parsed from `- [ ]` / `- [x]` count in the body) |
 | `reference` | `ReferenceView` | Topic + tag pills + prose body |
 
 The chat tools `write_output` and `update_output_status` write the same files this surface reads. Both commit through the audit module, so every output mutation appears in `git log` with the role's authorship.
+
+### Approving a draft
+
+`ready` set by the operator means **approved to act on**. The **Approve** button on a draft POSTs `{status: 'ready'}` to `/api/output/draft/<slug>`, which commits as the operator's git identity (`operator(output): status <slug>: <prev> → ready`).
+
+The status field alone is not proof of approval. The role can also set `ready` through `update_output_status`, and that commit is authored by `Praxis Role <role@praxis.local>`. A role that acts only on approved drafts (for example, sending an email reply once the operator signs off) should check the author of the commit that set `ready`, not just the frontmatter:
+
+```sh
+git log -1 --format='%an <%ae>' -G"^status:[[:space:]]*['\"]?ready['\"]?[[:space:]]*$" -- output/draft/<slug>.md
+```
+
+Treat the draft as approved only when that author is not `role@praxis.local`. The draft view applies the same rule: a `ready` draft shows "Approved by <operator> · <date>" for an operator commit, and "Marked ready by the role · not operator-approved" when the role set it.
 
 ## Audit trail
 
