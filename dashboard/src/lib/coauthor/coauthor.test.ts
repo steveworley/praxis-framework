@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   CoauthorValidationError,
+  MAX_PROPOSAL_ITERATIONS,
   applyChange,
   classifyAndAssertPath,
   proposeChange,
@@ -310,6 +311,24 @@ describe('proposeChange', () => {
     await expect(
       proposeChange(tempDir, { escalation_id: '2026-05-08-tone' }),
     ).rejects.toBeInstanceOf(CoauthorValidationError);
+  });
+
+  it('keeps its own iteration cap even when PRAXIS_MAX_TOOL_ITERATIONS is raised', async () => {
+    const prev = process.env['PRAXIS_MAX_TOOL_ITERATIONS'];
+    process.env['PRAXIS_MAX_TOOL_ITERATIONS'] = '50';
+    try {
+      createSpy.mockImplementation(async () =>
+        toolUseResponse([
+          { path: 'persona.md', new_content: '# Persona — Sam\n\nLooping.\n', rationale: 'again' },
+        ]),
+      );
+      const result = await proposeChange(tempDir, { escalation_id: '2026-05-08-tone' });
+      expect(createSpy).toHaveBeenCalledTimes(MAX_PROPOSAL_ITERATIONS);
+      expect(result.truncated).toBe(true);
+    } finally {
+      if (prev === undefined) delete process.env['PRAXIS_MAX_TOOL_ITERATIONS'];
+      else process.env['PRAXIS_MAX_TOOL_ITERATIONS'] = prev;
+    }
   });
 
   it('honours an operator hint in the prompt', async () => {

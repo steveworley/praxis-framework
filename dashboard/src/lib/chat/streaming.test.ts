@@ -25,6 +25,7 @@ vi.mock('@anthropic-ai/sdk', () => {
 
 let prevKey: string | undefined;
 let prevProvider: string | undefined;
+let prevMaxIterations: string | undefined;
 
 function asyncIterable<T>(items: T[]): AsyncIterable<T> {
   return {
@@ -39,6 +40,8 @@ beforeEach(() => {
   streamSpy.mockReset();
   prevKey = process.env['ANTHROPIC_API_KEY'];
   prevProvider = process.env['PRAXIS_INFERENCE_PROVIDER'];
+  prevMaxIterations = process.env['PRAXIS_MAX_TOOL_ITERATIONS'];
+  delete process.env['PRAXIS_MAX_TOOL_ITERATIONS'];
   process.env['ANTHROPIC_API_KEY'] = 'sk-test';
 });
 
@@ -47,6 +50,8 @@ afterEach(() => {
   else process.env['ANTHROPIC_API_KEY'] = prevKey;
   if (prevProvider === undefined) delete process.env['PRAXIS_INFERENCE_PROVIDER'];
   else process.env['PRAXIS_INFERENCE_PROVIDER'] = prevProvider;
+  if (prevMaxIterations === undefined) delete process.env['PRAXIS_MAX_TOOL_ITERATIONS'];
+  else process.env['PRAXIS_MAX_TOOL_ITERATIONS'] = prevMaxIterations;
 });
 
 describe('streamMessageWithTools', () => {
@@ -157,5 +162,56 @@ describe('streamMessageWithTools', () => {
     expect(complete?.result.toolCalls[0]!.name).toBe('write_memory');
     expect(complete?.result.toolCalls[0]!.result.ok).toBe(true);
     expect(exec).toHaveBeenCalledWith('write_memory', { body: 'hi' });
+  });
+});
+
+describe('streamMessageWithTools — iteration cap', () => {
+  function toolUseStream(n: number): AsyncIterable<unknown> {
+    return asyncIterable([
+      { type: 'message_start', message: { id: `m${n}`, model: 'claude-sonnet-4-6' } },
+      {
+        type: 'content_block_start',
+        index: 0,
+        content_block: { type: 'tool_use', id: `toolu_${n}`, name: 'noop', input: {} },
+      },
+      { type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: '{}' } },
+      { type: 'content_block_stop', index: 0 },
+      { type: 'message_delta', delta: { stop_reason: 'tool_use' }, usage: { input_tokens: 1, output_tokens: 1 } },
+      { type: 'message_stop' },
+    ]);
+  }
+
+  it('enforces PRAXIS_MAX_TOOL_ITERATIONS as the cap and flags truncated', async () => {
+    process.env['PRAXIS_MAX_TOOL_ITERATIONS'] = '4';
+    let n = 0;
+    streamSpy.mockImplementation(() => {
+      n += 1;
+      return toolUseStream(n);
+    });
+    const exec = vi.fn().mockResolvedValue({ ok: true, contentText: 'ok' });
+    const { streamMessageWithTools, resetProviderForTesting } = await import('./anthropic.ts');
+    resetProviderForTesting();
+
+    const events: Array<{ type: string; [k: string]: unknown }> = [];
+    for await (const ev of streamMessageWithTools(
+      'sys',
+      [],
+      'go',
+      [{ name: 'noop', input_schema: { type: 'object' } }],
+      exec,
+    )) {
+      events.push(ev as { type: string; [k: string]: unknown });
+    }
+
+    expect(streamSpy).toHaveBeenCalledTimes(4);
+    expect(exec).toHaveBeenCalledTimes(4);
+    expect(events.filter((e) => e.type === 'tool_start')).toHaveLength(4);
+    const complete = events.filter((e) => e.type === 'complete') as Array<{
+      type: 'complete';
+      result: { toolCalls: unknown[]; truncated: boolean };
+    }>;
+    expect(complete).toHaveLength(1);
+    expect(complete[0]!.result.toolCalls).toHaveLength(4);
+    expect(complete[0]!.result.truncated).toBe(true);
   });
 });

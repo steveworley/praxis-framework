@@ -31,6 +31,7 @@ PRAXIS_ROLE_HOME=/path/to/some-role npm run dev
 | `PRAXIS_LOG_GLOB` | `**/logs/*.jsonl` | Glob for the activity feed (rooted at the role home). Globstar matches root `logs/`, single-segment `<wp>/logs/`, and Sam-style nested `<wp>/<id>/logs/`. |
 | `ANTHROPIC_API_KEY` | _(unset)_ | Required to enable the `/chat` surface. Without it, `/chat` renders a disabled-state empty pane. |
 | `PRAXIS_CHAT_MODEL` | `claude-sonnet-4-6` | Overrides the model the chat surface sends requests to. |
+| `PRAXIS_MAX_TOOL_ITERATIONS` | `10` | Maximum model/tool round trips in one chat turn before the loop stops and the reply is flagged `truncated`. Raise it for verbs that chain other verbs. Positive integers only; invalid values (0, negatives, floats, non-numeric) log a warning and fall back to 10; values above 100 are clamped to 100. Coauthor proposals keep their own cap of 8. |
 | `DASHBOARD_PASSWORD` | _(unset)_ | When set, gates the entire dashboard behind a password (see [Access control](#access-control)). When unset, the dashboard is open. |
 | `PRAXIS_ALLOWED_ORIGINS` | _(unset)_ | Extra origins allowed to submit forms, beyond the request's own host (see [Cross-site request protection](#cross-site-request-protection)). |
 

@@ -103,6 +103,7 @@ let prevProvider: string | undefined;
 let prevQuantToken: string | undefined;
 let prevQuantOrg: string | undefined;
 let prevKimiKey: string | undefined;
+let prevMaxIterations: string | undefined;
 
 beforeEach(async () => {
   createSpy.mockReset();
@@ -113,6 +114,8 @@ beforeEach(async () => {
   prevQuantToken = process.env['QUANT_API_TOKEN'];
   prevQuantOrg = process.env['QUANT_ORGANISATION'];
   prevKimiKey = process.env['KIMI_API_KEY'];
+  prevMaxIterations = process.env['PRAXIS_MAX_TOOL_ITERATIONS'];
+  delete process.env['PRAXIS_MAX_TOOL_ITERATIONS'];
   // The chat module caches the constructed provider — reset between tests so
   // each test sees a fresh provider built from its env-var setup.
   const { resetProviderForTesting } = await import('./anthropic.ts');
@@ -132,6 +135,9 @@ afterEach(() => {
   else process.env['QUANT_ORGANISATION'] = prevQuantOrg;
   if (prevKimiKey === undefined) delete process.env['KIMI_API_KEY'];
   else process.env['KIMI_API_KEY'] = prevKimiKey;
+  if (prevMaxIterations === undefined) delete process.env['PRAXIS_MAX_TOOL_ITERATIONS'];
+  else process.env['PRAXIS_MAX_TOOL_ITERATIONS'] = prevMaxIterations;
+  vi.restoreAllMocks();
 });
 
 describe('hasApiKey + resolveChatModel', () => {
@@ -439,5 +445,157 @@ describe('sendMessageWithTools — tool-use loop', () => {
       content: Array<{ is_error: boolean }>;
     };
     expect(lastMsg.content[0]!.is_error).toBe(true);
+  });
+});
+
+describe('resolveMaxToolIterations', () => {
+  it('defaults to 10 when PRAXIS_MAX_TOOL_ITERATIONS is unset', async () => {
+    const { resolveMaxToolIterations } = await import('./anthropic.ts');
+    expect(resolveMaxToolIterations()).toBe(10);
+  });
+
+  it('treats an empty value as unset without warning', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    process.env['PRAXIS_MAX_TOOL_ITERATIONS'] = '';
+    const { resolveMaxToolIterations } = await import('./anthropic.ts');
+    expect(resolveMaxToolIterations()).toBe(10);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('reads a valid positive integer override', async () => {
+    process.env['PRAXIS_MAX_TOOL_ITERATIONS'] = '25';
+    const { resolveMaxToolIterations } = await import('./anthropic.ts');
+    expect(resolveMaxToolIterations()).toBe(25);
+  });
+
+  it('tolerates surrounding whitespace', async () => {
+    process.env['PRAXIS_MAX_TOOL_ITERATIONS'] = ' 12 ';
+    const { resolveMaxToolIterations } = await import('./anthropic.ts');
+    expect(resolveMaxToolIterations()).toBe(12);
+  });
+
+  it('reads the env var per call rather than at module load', async () => {
+    const { resolveMaxToolIterations } = await import('./anthropic.ts');
+    process.env['PRAXIS_MAX_TOOL_ITERATIONS'] = '3';
+    expect(resolveMaxToolIterations()).toBe(3);
+    process.env['PRAXIS_MAX_TOOL_ITERATIONS'] = '4';
+    expect(resolveMaxToolIterations()).toBe(4);
+  });
+
+  it.each(['0', '-5', 'abc', '1.5', '1e2', '+7', '0x10'])(
+    'falls back to the default and warns for invalid value %j',
+    async (raw) => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      process.env['PRAXIS_MAX_TOOL_ITERATIONS'] = raw;
+      const { resolveMaxToolIterations, resetMaxToolIterationsWarningsForTesting } =
+        await import('./anthropic.ts');
+      resetMaxToolIterationsWarningsForTesting();
+      expect(resolveMaxToolIterations()).toBe(10);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0]![0])).toContain('PRAXIS_MAX_TOOL_ITERATIONS');
+    },
+  );
+
+  it('warns only once for a repeated invalid value', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    process.env['PRAXIS_MAX_TOOL_ITERATIONS'] = 'nope';
+    const { resolveMaxToolIterations, resetMaxToolIterationsWarningsForTesting } =
+      await import('./anthropic.ts');
+    resetMaxToolIterationsWarningsForTesting();
+    resolveMaxToolIterations();
+    resolveMaxToolIterations();
+    resolveMaxToolIterations();
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('accepts the upper bound exactly', async () => {
+    process.env['PRAXIS_MAX_TOOL_ITERATIONS'] = '100';
+    const { resolveMaxToolIterations } = await import('./anthropic.ts');
+    expect(resolveMaxToolIterations()).toBe(100);
+  });
+
+  it('clamps values above the upper bound to 100 and warns', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    process.env['PRAXIS_MAX_TOOL_ITERATIONS'] = '5000';
+    const { resolveMaxToolIterations, resetMaxToolIterationsWarningsForTesting } =
+      await import('./anthropic.ts');
+    resetMaxToolIterationsWarningsForTesting();
+    expect(resolveMaxToolIterations()).toBe(100);
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('sendMessageWithTools — iteration cap', () => {
+  const tool = {
+    name: 'noop',
+    description: 'noop',
+    input_schema: { type: 'object' as const, properties: {} },
+  };
+
+  function runawayToolUse(): void {
+    let n = 0;
+    createSpy.mockImplementation(async () => {
+      n += 1;
+      return {
+        stop_reason: 'tool_use',
+        content: [{ type: 'tool_use', id: `toolu_${n}`, name: 'noop', input: {} }],
+      };
+    });
+  }
+
+  it('stops after the default 10 round trips and flags truncated', async () => {
+    process.env['ANTHROPIC_API_KEY'] = 'sk-test';
+    runawayToolUse();
+    const exec = vi.fn().mockResolvedValue({ ok: true, contentText: 'ok' });
+    const { sendMessageWithTools } = await import('./anthropic.ts');
+    const result = await sendMessageWithTools('sys', [], 'go', [tool], exec);
+    expect(createSpy).toHaveBeenCalledTimes(10);
+    expect(exec).toHaveBeenCalledTimes(10);
+    expect(result.truncated).toBe(true);
+  });
+
+  it('enforces PRAXIS_MAX_TOOL_ITERATIONS as the cap', async () => {
+    process.env['ANTHROPIC_API_KEY'] = 'sk-test';
+    process.env['PRAXIS_MAX_TOOL_ITERATIONS'] = '3';
+    runawayToolUse();
+    const exec = vi.fn().mockResolvedValue({ ok: true, contentText: 'ok' });
+    const { sendMessageWithTools } = await import('./anthropic.ts');
+    const result = await sendMessageWithTools('sys', [], 'go', [tool], exec);
+    expect(createSpy).toHaveBeenCalledTimes(3);
+    expect(result.toolCalls).toHaveLength(3);
+    expect(result.truncated).toBe(true);
+  });
+
+  it('lets a raised cap run past the old hard-coded 10', async () => {
+    process.env['ANTHROPIC_API_KEY'] = 'sk-test';
+    process.env['PRAXIS_MAX_TOOL_ITERATIONS'] = '15';
+    let n = 0;
+    createSpy.mockImplementation(async () => {
+      n += 1;
+      if (n === 12) return { stop_reason: 'end_turn', content: [{ type: 'text', text: 'done' }] };
+      return {
+        stop_reason: 'tool_use',
+        content: [{ type: 'tool_use', id: `toolu_${n}`, name: 'noop', input: {} }],
+      };
+    });
+    const exec = vi.fn().mockResolvedValue({ ok: true, contentText: 'ok' });
+    const { sendMessageWithTools } = await import('./anthropic.ts');
+    const result = await sendMessageWithTools('sys', [], 'go', [tool], exec);
+    expect(createSpy).toHaveBeenCalledTimes(12);
+    expect(result.text).toBe('done');
+    expect(result.truncated).toBe(false);
+  });
+
+  it('prefers options.maxToolIterations over the env var', async () => {
+    process.env['ANTHROPIC_API_KEY'] = 'sk-test';
+    process.env['PRAXIS_MAX_TOOL_ITERATIONS'] = '50';
+    runawayToolUse();
+    const exec = vi.fn().mockResolvedValue({ ok: true, contentText: 'ok' });
+    const { sendMessageWithTools } = await import('./anthropic.ts');
+    const result = await sendMessageWithTools('sys', [], 'go', [tool], exec, {
+      maxToolIterations: 2,
+    });
+    expect(createSpy).toHaveBeenCalledTimes(2);
+    expect(result.truncated).toBe(true);
   });
 });
