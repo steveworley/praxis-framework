@@ -2,7 +2,10 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
+import { simpleGit } from 'simple-git';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+
+import { loadReadyCommit } from '@/lib/output/approval';
 
 import { GET as listGet } from './index.ts';
 import {
@@ -205,5 +208,81 @@ describe('POST /api/output/[type]/[...slug]', () => {
   it('returns 404 for missing target', async () => {
     const res = await callStatus('document', 'nope', { status: 'sent' });
     expect(res.status).toBe(404);
+  });
+});
+
+describe('POST /api/output/[type]/[...slug] — operator re-approval of a role-set ready', () => {
+  const REL = 'output/draft/cold-mary.md';
+  const OPERATOR = { name: 'Steve Operator', email: 'steve@example.test' };
+
+  async function commitAll(author: string, subject: string): Promise<void> {
+    const git = simpleGit(tempDir);
+    await git.raw(['add', '-A', '.']);
+    await git.raw(['-c', 'commit.gpgsign=false', 'commit', `--author=${author}`, '-m', subject]);
+  }
+
+  async function setStatusOnDisk(status: string): Promise<void> {
+    const abs = path.join(tempDir, REL);
+    const text = await fs.readFile(abs, 'utf-8');
+    await fs.writeFile(abs, text.replace(/^status: .*$/m, `status: ${status}`), 'utf-8');
+  }
+
+  beforeEach(async () => {
+    const git = simpleGit(tempDir);
+    await git.init();
+    await git.addConfig('user.name', OPERATOR.name, false, 'local');
+    await git.addConfig('user.email', OPERATOR.email, false, 'local');
+    await git.addConfig('commit.gpgsign', 'false', false, 'local');
+    await commitAll('Praxis Role <role@praxis.local>', 'role(output): write draft cold-mary');
+    await setStatusOnDisk('ready');
+    await commitAll('Praxis Role <role@praxis.local>', 'role(output): status cold-mary: draft → ready');
+  });
+
+  it('starts from a ready the role set itself', async () => {
+    expect((await loadReadyCommit(tempDir, REL))?.byOperator).toBe(false);
+  });
+
+  it('records a new operator commit that sets ready, visible to git log -G', async () => {
+    const res = await callStatus('draft', 'cold-mary', { status: 'ready' });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      meta: { status: string };
+      previous_status: string;
+      commit_sha?: string;
+    };
+    expect(body.meta.status).toBe('ready');
+    expect(body.previous_status).toBe('ready');
+
+    const ready = await loadReadyCommit(tempDir, REL);
+    expect(ready?.byOperator).toBe(true);
+    expect(ready?.authorEmail).toBe(OPERATOR.email);
+
+    const head = (await simpleGit(tempDir).revparse(['HEAD'])).trim();
+    expect(body.commit_sha).toBe(head);
+    const subjects = (
+      await simpleGit(tempDir).raw(['log', '-2', '--pretty=format:%ae %s'])
+    ).split('\n');
+    expect(subjects).toEqual([
+      `${OPERATOR.email} operator(output): status cold-mary: review → ready`,
+      `${OPERATOR.email} operator(output): status cold-mary: ready → review`,
+    ]);
+  });
+
+  it('leaves the file ready on disk', async () => {
+    await callStatus('draft', 'cold-mary', { status: 'ready' });
+    const written = await fs.readFile(path.join(tempDir, REL), 'utf-8');
+    expect(written).toMatch(/^status: ready$/m);
+  });
+
+  it('does not add the review hop for other statuses', async () => {
+    await setStatusOnDisk('review');
+    await commitAll('Praxis Role <role@praxis.local>', 'role(output): status cold-mary: ready → review');
+    await callStatus('draft', 'cold-mary', { status: 'ready' });
+    const subjects = (
+      await simpleGit(tempDir).raw(['log', '-1', '--pretty=format:%s'])
+    ).trim();
+    expect(subjects).toBe('operator(output): status cold-mary: review → ready');
+    const count = (await simpleGit(tempDir).raw(['rev-list', '--count', 'HEAD'])).trim();
+    expect(count).toBe('4');
   });
 });

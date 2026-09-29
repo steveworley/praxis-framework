@@ -1,26 +1,40 @@
 ---
 import OutputDetail from './OutputDetail.astro';
+import { draftActionsFor, type ReadyCommit } from '@/lib/output/approval';
 import type { OutputSummary } from '@/lib/output/types';
+import { formatIsoDate, formatIsoTime } from '@/lib/ui/time';
 
 /**
  * Email-envelope view for a `draft` output. Renders the To / Channel /
- * Subject header rows above the body, with a "Mark as sent" action when
- * the status is still draft / review / ready. The action POSTs to
- * /api/output/[type]/[...slug] with {status: 'sent'} — the framework does
- * NOT send anything; the operator handles delivery, this just records that
- * delivery happened.
+ * Subject header rows above the body, then the operator actions:
+ *
+ *  - **Approve** (draft / review, or a `ready` the role set itself) POSTs
+ *    {status: 'ready'} — an operator-attributed commit that roles treat as
+ *    "approved to act on".
+ *  - **Mark as sent** (draft / review / ready) POSTs {status: 'sent'} — the
+ *    framework does NOT send anything; the operator handles delivery, this
+ *    just records that delivery happened.
+ *
+ * When the status is `ready`, an approval line shows who set it and when,
+ * from the git history of the file (`readyCommit`), and flags a `ready` the
+ * role set itself.
  */
 interface Props {
   meta: OutputSummary;
   bodyHtml: string;
+  /** Commit that set `status: ready`; null when unknown or not ready. */
+  readyCommit?: ReadyCommit | null;
 }
 
-const { meta, bodyHtml } = Astro.props;
+const { meta, bodyHtml, readyCommit = null } = Astro.props;
 const recipient = typeof meta.extras['recipient'] === 'string' ? meta.extras['recipient'] : null;
 const channel = typeof meta.extras['channel'] === 'string' ? meta.extras['channel'] : null;
 const subject = typeof meta.extras['subject'] === 'string' ? meta.extras['subject'] : null;
 
-const canMarkSent = meta.status !== 'sent' && meta.status !== 'archived';
+const { canApprove, canMarkSent, approved } = draftActionsFor(meta.status, readyCommit);
+const readyWhen = readyCommit
+  ? `${formatIsoDate(readyCommit.date)} ${formatIsoTime(readyCommit.date)}`
+  : '';
 const updateUrl = `/api/output/${meta.type}/${meta.slug}`;
 ---
 
@@ -56,11 +70,34 @@ const updateUrl = `/api/output/${meta.type}/${meta.slug}`;
 
     <div class="prose" set:html={bodyHtml}></div>
 
-    {canMarkSent && (
+    {approved && (
+      <p class:list={['approval', readyCommit && !readyCommit.byOperator && 'not-operator']}>
+        {!readyCommit && 'Approved'}
+        {readyCommit?.byOperator && (
+          <>
+            Approved by {readyCommit.authorName} · {readyWhen}
+          </>
+        )}
+        {readyCommit && !readyCommit.byOperator && (
+          <>
+            Marked ready by the role · {readyWhen} · not operator-approved
+          </>
+        )}
+      </p>
+    )}
+
+    {(canApprove || canMarkSent) && (
       <div class="out-actions">
-        <button type="button" class="action-btn" data-action="mark-sent">
-          Mark as sent
-        </button>
+        {canApprove && (
+          <button type="button" class="action-btn" data-action="set-status" data-status="ready">
+            Approve
+          </button>
+        )}
+        {canMarkSent && (
+          <button type="button" class="action-btn" data-action="set-status" data-status="sent">
+            Mark as sent
+          </button>
+        )}
         <span class="action-hint" data-status-msg></span>
       </div>
     )}
@@ -71,29 +108,33 @@ const updateUrl = `/api/output/${meta.type}/${meta.slug}`;
   (function () {
     const wrap = document.currentScript?.previousElementSibling;
     if (!wrap || !(wrap instanceof HTMLElement)) return;
-    const button = wrap.querySelector('[data-action="mark-sent"]');
-    if (!(button instanceof HTMLElement)) return;
+    const buttons = wrap.querySelectorAll('[data-action="set-status"]');
     const msg = wrap.querySelector('[data-status-msg]');
     const url = wrap.dataset['updateUrl'];
     if (!url) return;
-    button.addEventListener('click', async () => {
-      if (msg) msg.textContent = 'updating…';
-      button.setAttribute('disabled', 'disabled');
-      try {
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status: 'sent' }),
-        });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          throw new Error(err.error || `Update failed (${res.status})`);
+    buttons.forEach((button) => {
+      if (!(button instanceof HTMLElement)) return;
+      const status = button.dataset['status'];
+      if (!status) return;
+      button.addEventListener('click', async () => {
+        if (msg) msg.textContent = 'updating…';
+        buttons.forEach((b) => b.setAttribute('disabled', 'disabled'));
+        try {
+          const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status }),
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || `Update failed (${res.status})`);
+          }
+          window.location.reload();
+        } catch (e) {
+          if (msg) msg.textContent = e instanceof Error ? e.message : String(e);
+          buttons.forEach((b) => b.removeAttribute('disabled'));
         }
-        window.location.reload();
-      } catch (e) {
-        if (msg) msg.textContent = e instanceof Error ? e.message : String(e);
-        button.removeAttribute('disabled');
-      }
+      });
     });
   })();
 </script>
@@ -127,6 +168,14 @@ const updateUrl = `/api/output/${meta.type}/${meta.slug}`;
     max-width: 680px;
     padding: 0.2rem 0 0.2rem 0.4rem;
     border-left: 2px solid var(--rule);
+  }
+  .approval {
+    margin: 1.6rem 0 0;
+    font-size: 13px;
+    color: var(--ink);
+  }
+  .approval.not-operator {
+    color: var(--ink-muted);
   }
   .out-actions {
     margin-top: 1.6rem;

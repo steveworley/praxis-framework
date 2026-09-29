@@ -5,7 +5,7 @@ import path from 'node:path';
 import type { APIRoute } from 'astro';
 import { z } from 'zod';
 
-import { commitChange } from '@/lib/audit';
+import { commitChange, type CommitResult } from '@/lib/audit';
 import { localIsoString } from '@/lib/chat/time-helpers';
 import { parseFrontmatter } from '@/lib/frontmatter';
 import { renderMarkdown } from '@/lib/markdown';
@@ -35,8 +35,9 @@ export const prerender = false;
  *
  * The status mutation is an operator-attributed audit commit. The chat
  * tool `update_output_status` does the same work for the role; this
- * endpoint is what the dashboard's "Mark as sent" / "Mark as done"
- * controls hit.
+ * endpoint is what the dashboard's "Approve" / "Mark as sent" / "Mark as
+ * done" controls hit. POSTing `ready` over an already-`ready` file is an
+ * operator re-approval and lands as two commits (ready → review → ready).
  */
 
 export const GET: APIRoute = async ({ params }) => {
@@ -87,45 +88,20 @@ export const POST: APIRoute = async ({ params, request }) => {
   try {
     const detail = await loadOutput(roleHome, typeParam, slugParam);
     const relPath = detail.meta.path;
-    const abs = path.join(roleHome, relPath);
-    const text = await fs.readFile(abs, 'utf-8');
-    const { frontmatter, body } = parseFrontmatter(text);
-    const previousStatus = frontmatter['status'] ?? 'draft';
+    const slug = detail.meta.slug;
 
-    const isoNow = localIsoString(new Date());
-    const updated: Record<string, string> = {
-      ...frontmatter,
-      status: newStatus,
-      updated: isoNow,
-    };
-
-    const ordered: Array<[string, string]> = [];
-    const seen = new Set<string>();
-    for (const key of ['type', 'slug', 'status']) {
-      if (updated[key] !== undefined) {
-        ordered.push([key, updated[key]]);
-        seen.add(key);
-      }
-    }
-    const tail: Array<[string, string]> = [];
-    for (const [k, v] of Object.entries(updated)) {
-      if (seen.has(k) || k === 'updated') continue;
-      tail.push([k, v]);
-    }
-    ordered.push(...tail);
-    if (updated['updated'] !== undefined) ordered.push(['updated', updated['updated']]);
-
-    const newContent =
-      renderFrontmatter(ordered) + (body.startsWith('\n') ? body : `\n${body}`);
-    await atomicWrite(abs, newContent);
-
-    const commit = await commitChange({
-      roleHome,
-      actor: 'operator',
-      filePaths: [relPath],
-      scope: 'output',
-      subject: `status ${detail.meta.slug}: ${previousStatus} → ${newStatus}`,
-    });
+    // Operator re-approval: POSTing `ready` over a file that is already
+    // `ready` (typically one the role set itself) must leave a commit that
+    // changes the `status: ready` line, because approval is read from the
+    // author of that commit (`git log -G`, see lib/output/approval.ts). A
+    // ready → ready rewrite only touches `updated`, so hop through `review`:
+    // two operator commits, the second of which is the approving one.
+    const reapprove = newStatus === 'ready' && detail.meta.status === 'ready';
+    const hop = reapprove ? await writeStatus(roleHome, relPath, slug, 'review') : null;
+    const result = await writeStatus(roleHome, relPath, slug, newStatus);
+    const previousStatus = hop?.previousStatus ?? result.previousStatus;
+    const commit = result.commit;
+    const commitWarning = commit.warning ?? hop?.commit.warning;
 
     const refreshed = await loadOutput(roleHome, typeParam, slugParam);
     const responseBody: Record<string, unknown> = {
@@ -136,7 +112,7 @@ export const POST: APIRoute = async ({ params, request }) => {
       previous_status: previousStatus,
     };
     if (commit.committed && commit.sha) responseBody['commit_sha'] = commit.sha;
-    if (commit.warning) responseBody['commit_warning'] = commit.warning;
+    if (commitWarning) responseBody['commit_warning'] = commitWarning;
     return json(200, responseBody);
   } catch (error: unknown) {
     if (error instanceof OutputNotFoundError) return json(404, { error: error.message });
@@ -144,6 +120,62 @@ export const POST: APIRoute = async ({ params, request }) => {
     return json(500, { error: errorMessage(error) });
   }
 };
+
+interface StatusWrite {
+  previousStatus: string;
+  commit: CommitResult;
+}
+
+/**
+ * Rewrite one output file's `status` (and `updated`) in a stable field order,
+ * then land an operator-attributed audit commit for it.
+ */
+async function writeStatus(
+  roleHome: string,
+  relPath: string,
+  slug: string,
+  newStatus: OutputStatus,
+): Promise<StatusWrite> {
+  const abs = path.join(roleHome, relPath);
+  const text = await fs.readFile(abs, 'utf-8');
+  const { frontmatter, body } = parseFrontmatter(text);
+  const previousStatus = frontmatter['status'] ?? 'draft';
+
+  const isoNow = localIsoString(new Date());
+  const updated: Record<string, string> = {
+    ...frontmatter,
+    status: newStatus,
+    updated: isoNow,
+  };
+
+  const ordered: Array<[string, string]> = [];
+  const seen = new Set<string>();
+  for (const key of ['type', 'slug', 'status']) {
+    if (updated[key] !== undefined) {
+      ordered.push([key, updated[key]]);
+      seen.add(key);
+    }
+  }
+  const tail: Array<[string, string]> = [];
+  for (const [k, v] of Object.entries(updated)) {
+    if (seen.has(k) || k === 'updated') continue;
+    tail.push([k, v]);
+  }
+  ordered.push(...tail);
+  if (updated['updated'] !== undefined) ordered.push(['updated', updated['updated']]);
+
+  const newContent = renderFrontmatter(ordered) + (body.startsWith('\n') ? body : `\n${body}`);
+  await atomicWrite(abs, newContent);
+
+  const commit = await commitChange({
+    roleHome,
+    actor: 'operator',
+    filePaths: [relPath],
+    scope: 'output',
+    subject: `status ${slug}: ${previousStatus} → ${newStatus}`,
+  });
+  return { previousStatus, commit };
+}
 
 function renderFrontmatter(fields: Array<[string, string]>): string {
   const lines = ['---'];
