@@ -146,6 +146,32 @@ Two patterns we see most often, and the moves that work for each.
 ...
 ```
 
+### Extra fields
+
+A role can add its own frontmatter through `write_output`'s optional `extra_fields` map. Use it for values a later tool reads back from the file. For example, a role drafting a reply to a vulnerability reporter can record the Gmail thread id, so that its approval-gated send tool knows which thread to reply on.
+
+```markdown
+---
+type: draft
+slug: reply-vdp-2026-014
+status: review
+recipient: reporter@example.com
+channel: email
+subject: 'Re: XSS in search form'
+gmail_thread_id: 18f2a9c0b1d2e3f4
+created: 2026-09-29T13:00:00+10:00
+updated: 2026-09-29T13:00:00+10:00
+---
+```
+
+Rules (the whole call is refused if any entry breaks one; nothing is dropped or overridden):
+
+- **Keys** match `^[a-z][a-z0-9_]{0,39}$`, and may not be a universal field or any type's known field: `type`, `slug`, `status`, `created`, `updated`, `title`, `audience`, `recipient`, `channel`, `subject`, `entity_type`, `entity_id`, `observed_at`, `goal`, `owner`, `topic`, `tags`. The list is reserved across all types, so `title` is refused on a draft too. Known fields go in `fields`.
+- **Values** are non-empty strings of at most 500 characters, with no newlines or other control characters and no leading or trailing whitespace. A value must also come back unchanged after the frontmatter writer quotes it and the parser reads it. In practice that refuses a single quote in a value that starts with punctuation or contains `:` or `#`.
+- **At most 10** extra fields per file.
+
+Extra fields are written after the type's fields and before `created` / `updated`, in the order given. Both status paths (the role's `update_output_status` and the operator's `POST /api/output/...`) keep them. The loader exposes them as `meta.extraFields`, meaning every frontmatter key outside the reserved list, including hand-added ones. The draft view shows them read-only as extra envelope rows.
+
 ## Visual blocks
 
 Output bodies may embed two declarative visual blocks. They render client-side
@@ -167,7 +193,7 @@ content is never silently hidden.
 
 The chat surface exposes two output tools:
 
-- **`write_output`** — creates a new file. Validates type / slug / status / required fields, resolves the path via the registry, refuses if the file already exists.
+- **`write_output`** — creates a new file. Validates type / slug / status / required fields, resolves the path via the registry, refuses if the file already exists. Optional `extra_fields` carries role-defined frontmatter (see [Extra fields](#extra-fields)).
 - **`update_output_status`** — flips an existing file's `status` to a new value from the closed enum. Refuses if the file doesn't exist.
 
 Both commit via the audit module: `role(output): write <type> <slug>` and `role(output): status <slug>: <prev> → <next>`. From the dashboard side, the operator's status updates land as `operator(output): status <slug>: <prev> → <next>`.
@@ -183,7 +209,7 @@ Both commit via the audit module: `role(output): write <type> <slug>` and `role(
 | Type | Renderer | Layout |
 |---|---|---|
 | `document` | `DocumentView.astro` | Title + status pill + audience meta + prose body |
-| `draft` | `DraftView.astro` | Email envelope (To / Via / Subject), body in a quoted inset, "Mark as sent" action |
+| `draft` | `DraftView.astro` | Email envelope (To / Via / Subject, then any extra fields read-only), body in a quoted inset, "Mark as sent" action |
 | `record` | `RecordView.astro` | Entity-prominent header (`entity_type · entity_id`), observed_at, body |
 | `plan` | `PlanView.astro` | Goal + owner + progress bar (parsed from checklist), markdown body |
 | `reference` | `ReferenceView.astro` | Topic + tag pills + body |

@@ -106,6 +106,26 @@ export const OUTPUT_TYPES: { readonly [K in OutputType]: OutputTypeSpec } = {
   },
 } as const;
 
+// ---- Role-defined extra fields --------------------------------------------
+
+/** Frontmatter fields every output entry carries, whatever its type. */
+export const UNIVERSAL_FIELDS = ['type', 'slug', 'status', 'created', 'updated'] as const;
+
+/**
+ * Keys `write_output`'s `extra_fields` may not use: the universal fields plus
+ * every type-specific field of every type. Reserving across types (not just
+ * the one being written) keeps a key's meaning stable framework-wide.
+ */
+export const RESERVED_OUTPUT_KEYS: ReadonlySet<string> = new Set([
+  ...UNIVERSAL_FIELDS,
+  ...Object.values(OUTPUT_TYPES).flatMap((spec) => [...spec.required, ...spec.optional]),
+]);
+
+/** Lowercase snake_case, starting with a letter, at most 40 characters. */
+export const EXTRA_FIELD_KEY_RE = /^[a-z][a-z0-9_]{0,39}$/;
+export const MAX_EXTRA_FIELDS = 10;
+export const MAX_EXTRA_FIELD_VALUE_LENGTH = 500;
+
 // ---- Frontmatter shapes -------------------------------------------------
 
 interface CommonMeta {
@@ -173,6 +193,11 @@ export interface OutputSummary {
   title: string;
   /** Type-specific extras, e.g. {recipient, channel} for drafts. */
   extras: Record<string, string | string[]>;
+  /**
+   * Frontmatter fields outside the registry (not in RESERVED_OUTPUT_KEYS),
+   * in file order. Written by `write_output`'s `extra_fields` or by hand.
+   */
+  extraFields: Record<string, string>;
 }
 
 // ---- Zod schemas for runtime validation ---------------------------------

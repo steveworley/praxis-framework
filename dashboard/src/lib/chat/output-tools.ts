@@ -8,9 +8,13 @@ import { commitChange, type CommitResult } from '../audit.js';
 import { parseFrontmatter } from '../frontmatter.js';
 import {
   ChannelSchema,
+  EXTRA_FIELD_KEY_RE,
+  MAX_EXTRA_FIELD_VALUE_LENGTH,
+  MAX_EXTRA_FIELDS,
   OUTPUT_TYPE_ENUM,
   OUTPUT_TYPES,
   OutputPathError,
+  RESERVED_OUTPUT_KEYS,
   resolveOutputPath,
   StatusSchema,
   fieldsSchemaFor,
@@ -69,6 +73,12 @@ export const WriteOutputInput = z.object({
   body: z.string().min(1),
   status: StatusSchema.optional(),
   fields: FieldsSchema.optional(),
+  /**
+   * Role-defined frontmatter fields beyond the type's registry (e.g. an
+   * external thread id a role's own tool reads later). Key, value, and count
+   * rules live in `validateExtraFields`.
+   */
+  extra_fields: z.record(z.string(), z.string()).optional(),
 });
 export type WriteOutputArgs = z.infer<typeof WriteOutputInput>;
 
@@ -104,6 +114,10 @@ export async function executeWriteOutput(
       `write_output: ${type} fields invalid: ${formatZodError(fieldsParsed.error)}`,
     );
   }
+
+  const extraFields = data.extra_fields ?? {};
+  const extraFieldsError = validateExtraFields(extraFields);
+  if (extraFieldsError) return fail(`write_output: ${extraFieldsError}`);
 
   // Resolve target path. For records we need entity_type/entity_id segments
   // from the validated fields.
@@ -157,6 +171,12 @@ export async function executeWriteOutput(
     }
   }
 
+  // Role-defined extras after the known fields, in the order supplied.
+  const extraKeys = Object.keys(extraFields);
+  for (const key of extraKeys) {
+    frontmatterFields.push([key, extraFields[key] ?? '']);
+  }
+
   frontmatterFields.push(['created', isoNow]);
   frontmatterFields.push(['updated', isoNow]);
 
@@ -170,6 +190,7 @@ export async function executeWriteOutput(
     type,
     slug: data.slug,
     status,
+    ...(extraKeys.length > 0 ? { extra_fields: extraKeys } : {}),
   });
   const commit = await commitChange({
     roleHome,
@@ -280,6 +301,50 @@ export async function executeUpdateOutputStatus(
     subject: `status ${data.slug}: ${previousStatus} → ${data.status}`,
   });
   return withAuditCommit(success, commit);
+}
+
+// ---- extra_fields validation --------------------------------------------
+
+/**
+ * Validate `write_output`'s `extra_fields`. Returns a model-readable error for
+ * the first problem found, or null when every entry is acceptable. The whole
+ * call is refused on any problem; nothing is dropped or overridden.
+ *
+ * The round-trip check is the backstop for the minimal frontmatter parser: it
+ * trims values and strips outer quotes but does not unescape `''`, so a value
+ * is only accepted if rendering and re-parsing it gives back the same string.
+ * That also guarantees the value survives the status-update paths, which
+ * parse and re-render the whole block.
+ */
+function validateExtraFields(extraFields: Record<string, string>): string | null {
+  const entries = Object.entries(extraFields);
+  if (entries.length > MAX_EXTRA_FIELDS) {
+    return `extra_fields: at most ${MAX_EXTRA_FIELDS} fields allowed, got ${entries.length}.`;
+  }
+  for (const [key, value] of entries) {
+    if (!EXTRA_FIELD_KEY_RE.test(key)) {
+      return `extra_fields: key '${key}' must match ${EXTRA_FIELD_KEY_RE} (lowercase snake_case, starting with a letter, at most 40 characters).`;
+    }
+    if (RESERVED_OUTPUT_KEYS.has(key)) {
+      return `extra_fields: key '${key}' is reserved (universal or type-specific output field). Put known fields in \`fields\`; reserved keys: ${[...RESERVED_OUTPUT_KEYS].join(', ')}.`;
+    }
+    const where = `extra_fields.${key}`;
+    if (value.length === 0) return `${where}: value must not be empty.`;
+    if (value.length > MAX_EXTRA_FIELD_VALUE_LENGTH) {
+      return `${where}: value must be at most ${MAX_EXTRA_FIELD_VALUE_LENGTH} characters, got ${value.length}.`;
+    }
+    if (/[\u0000-\u001f\u007f]/.test(value)) {
+      return `${where}: value must be a single line with no newlines, tabs or other control characters.`;
+    }
+    if (value.trim() !== value) {
+      return `${where}: value must not have leading or trailing whitespace.`;
+    }
+    const reparsed = parseFrontmatter(`${renderFrontmatter([[key, value]])}\n`).frontmatter[key];
+    if (reparsed !== value) {
+      return `${where}: value would not survive frontmatter serialisation unchanged. Avoid single quotes in values that start with punctuation or contain ':' or '#'.`;
+    }
+  }
+  return null;
 }
 
 // ---- Shared helpers -----------------------------------------------------

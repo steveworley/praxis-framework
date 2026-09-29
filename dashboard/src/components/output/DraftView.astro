@@ -66,6 +66,12 @@ const updateUrl = `/api/output/${meta.type}/${meta.slug}`;
           <dd>{subject}</dd>
         </>
       )}
+      {Object.entries(meta.extraFields).map(([key, value]) => (
+        <>
+          <dt class="extra-key">{key}</dt>
+          <dd class="extra-value">{value}</dd>
+        </>
+      ))}
     </dl>
 
     <div class="prose" set:html={bodyHtml}></div>
@@ -142,7 +148,7 @@ const updateUrl = `/api/output/${meta.type}/${meta.slug}`;
 <style>
   .envelope {
     display: grid;
-    grid-template-columns: 70px 1fr;
+    grid-template-columns: minmax(70px, max-content) 1fr;
     gap: 0.35rem 1rem;
     margin: 0 0 1.4rem;
     padding: 0.9rem 1.1rem;
@@ -160,6 +166,17 @@ const updateUrl = `/api/output/${meta.type}/${meta.slug}`;
   .envelope dd {
     margin: 0;
     color: var(--ink);
+  }
+  /* Role-defined extra fields: shown as-is (snake_case key, raw value). */
+  .envelope .extra-key {
+    text-transform: none;
+    letter-spacing: 0;
+    font-family: var(--mono);
+  }
+  .envelope .extra-value {
+    font-size: 12.5px;
+    color: var(--ink-muted);
+    overflow-wrap: anywhere;
   }
   /* The draft body wears the canonical `.prose` class — typography lives in
      global.css. The envelope-letter feel comes from the rule-bar on the left

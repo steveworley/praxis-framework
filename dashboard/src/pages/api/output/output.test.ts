@@ -179,6 +179,48 @@ describe('GET /api/output/[type]/[...slug]', () => {
   });
 });
 
+describe('POST /api/output/[type]/[...slug] with extra fields', () => {
+  it('keeps role-defined extra fields when the operator changes status', async () => {
+    const draftPath = path.join(tempDir, 'output/draft/reply-reporter.md');
+    await fs.writeFile(
+      draftPath,
+      [
+        '---',
+        'type: draft',
+        'slug: reply-reporter',
+        'status: review',
+        'recipient: reporter@example.com',
+        'channel: email',
+        'subject: Re: report',
+        "gmail_thread_id: 'thread:18f2a9c0'",
+        'reporter_ref: VDP-2026-014',
+        'created: 2026-09-29T13:00:00+10:00',
+        'updated: 2026-09-29T13:00:00+10:00',
+        '---',
+        '',
+        'Thanks for the report.',
+      ].join('\n'),
+      'utf-8',
+    );
+
+    const res = await callStatus('draft', 'reply-reporter', { status: 'ready' });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      meta: { status: string; extraFields: Record<string, string> };
+    };
+    expect(body.meta.status).toBe('ready');
+    expect(body.meta.extraFields).toEqual({
+      gmail_thread_id: 'thread:18f2a9c0',
+      reporter_ref: 'VDP-2026-014',
+    });
+
+    const lines = (await fs.readFile(draftPath, 'utf-8')).split('\n');
+    expect(lines).toContain("gmail_thread_id: 'thread:18f2a9c0'");
+    expect(lines).toContain('reporter_ref: VDP-2026-014');
+    expect(lines).toContain('status: ready');
+  });
+});
+
 describe('POST /api/output/[type]/[...slug]', () => {
   it('updates status and returns the updated meta', async () => {
     const res = await callStatus('draft', 'cold-mary', { status: 'sent' });

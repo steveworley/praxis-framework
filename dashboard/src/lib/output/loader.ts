@@ -5,6 +5,7 @@ import { parseFrontmatter } from '../frontmatter.js';
 import {
   OUTPUT_TYPE_ENUM,
   OUTPUT_TYPES,
+  RESERVED_OUTPUT_KEYS,
   SLUG_RE,
   STATUS_ENUM,
   type OutputStatus,
@@ -225,6 +226,11 @@ function projectSummary(
     extras['entity_id'] = segments[1] ?? '';
   }
 
+  const extraFields: Record<string, string> = {};
+  for (const [key, value] of Object.entries(fm)) {
+    if (!RESERVED_OUTPUT_KEYS.has(key)) extraFields[key] = value;
+  }
+
   const title = deriveTitle(type, slug, extras);
 
   return {
@@ -236,6 +242,7 @@ function projectSummary(
     path: relPath,
     title,
     extras,
+    extraFields,
   };
 }
 
