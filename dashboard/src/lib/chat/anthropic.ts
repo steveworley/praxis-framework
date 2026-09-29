@@ -16,13 +16,21 @@ import type { PersistedToolCall, Turn } from './conversation.js';
 
 const DEFAULT_MODEL = 'claude-sonnet-4-6';
 const DEFAULT_MAX_TOKENS = 2048;
-const MAX_TOOL_ITERATIONS = 10;
+const DEFAULT_MAX_TOOL_ITERATIONS = 10;
+/** Ceiling on PRAXIS_MAX_TOOL_ITERATIONS so a typo can't run an effectively unbounded loop. */
+const MAX_TOOL_ITERATIONS_CEILING = 100;
 
 export interface SendMessageOptions {
   /** Override the default model. Falls back to PRAXIS_CHAT_MODEL env var, then the hard default. */
   model?: string;
   /** Override max_tokens. Defaults to 2048. */
   maxTokens?: number;
+  /**
+   * Override the tool-use iteration cap for this call. Falls back to
+   * PRAXIS_MAX_TOOL_ITERATIONS, then 10. For callers that deliberately sit
+   * below the chat cap (e.g. coauthor).
+   */
+  maxToolIterations?: number;
 }
 
 export class MissingApiKeyError extends Error {
@@ -52,6 +60,47 @@ export function resolveChatModel(override?: string): string {
   const fromEnv = process.env['PRAXIS_CHAT_MODEL'];
   if (fromEnv && fromEnv.length > 0) return fromEnv;
   return DEFAULT_MODEL;
+}
+
+const warnedMaxToolIterations = new Set<string>();
+
+function warnMaxToolIterationsOnce(raw: string, message: string): void {
+  if (warnedMaxToolIterations.has(raw)) return;
+  warnedMaxToolIterations.add(raw);
+  console.warn(message);
+}
+
+/**
+ * Resolve the chat tool-use iteration cap from PRAXIS_MAX_TOOL_ITERATIONS.
+ * Read per call (not at module load) so tests can set it. Unset or empty
+ * gives 10. Only plain positive integers are accepted; anything else (0,
+ * negatives, floats, non-numeric) logs one warning per distinct value and
+ * falls back to 10. Values above 100 are clamped to 100.
+ */
+export function resolveMaxToolIterations(): number {
+  const raw = process.env['PRAXIS_MAX_TOOL_ITERATIONS']?.trim();
+  if (!raw) return DEFAULT_MAX_TOOL_ITERATIONS;
+  const parsed = /^\d+$/.test(raw) ? Number(raw) : 0;
+  if (parsed < 1) {
+    warnMaxToolIterationsOnce(
+      raw,
+      `PRAXIS_MAX_TOOL_ITERATIONS=${JSON.stringify(raw)} is not a positive integer; using the default of ${DEFAULT_MAX_TOOL_ITERATIONS}.`,
+    );
+    return DEFAULT_MAX_TOOL_ITERATIONS;
+  }
+  if (parsed > MAX_TOOL_ITERATIONS_CEILING) {
+    warnMaxToolIterationsOnce(
+      raw,
+      `PRAXIS_MAX_TOOL_ITERATIONS=${raw} exceeds the maximum of ${MAX_TOOL_ITERATIONS_CEILING}; clamping to ${MAX_TOOL_ITERATIONS_CEILING}.`,
+    );
+    return MAX_TOOL_ITERATIONS_CEILING;
+  }
+  return parsed;
+}
+
+/** Test-only: forget which values have already been warned about. */
+export function resetMaxToolIterationsWarningsForTesting(): void {
+  warnedMaxToolIterations.clear();
 }
 
 /**
@@ -171,8 +220,9 @@ export async function sendMessageWithTools(
   const toolCalls: PersistedToolCall[] = [];
   let finalText = '';
   let truncated = false;
+  const maxIterations = options.maxToolIterations ?? resolveMaxToolIterations();
 
-  for (let iter = 0; iter < MAX_TOOL_ITERATIONS; iter += 1) {
+  for (let iter = 0; iter < maxIterations; iter += 1) {
     const response = await callProvider(provider, {
       model: resolveChatModel(options.model),
       max_tokens: options.maxTokens ?? DEFAULT_MAX_TOKENS,
@@ -224,7 +274,7 @@ export async function sendMessageWithTools(
     messages.push({ role: 'assistant', content: response.content });
     messages.push({ role: 'user', content: resultBlocks });
 
-    if (iter === MAX_TOOL_ITERATIONS - 1) {
+    if (iter === maxIterations - 1) {
       truncated = true;
     }
   }
@@ -333,8 +383,9 @@ export async function* streamMessageWithTools(
   const toolCalls: PersistedToolCall[] = [];
   let finalText = '';
   let truncated = false;
+  const maxIterations = options.maxToolIterations ?? resolveMaxToolIterations();
 
-  for (let iter = 0; iter < MAX_TOOL_ITERATIONS; iter += 1) {
+  for (let iter = 0; iter < maxIterations; iter += 1) {
     const req: InferenceRequest = {
       model: resolveChatModel(options.model),
       max_tokens: options.maxTokens ?? DEFAULT_MAX_TOKENS,
@@ -416,7 +467,7 @@ export async function* streamMessageWithTools(
     messages.push({ role: 'assistant', content: response.content });
     messages.push({ role: 'user', content: resultBlocks });
 
-    if (iter === MAX_TOOL_ITERATIONS - 1) truncated = true;
+    if (iter === maxIterations - 1) truncated = true;
   }
 
   yield { type: 'complete', result: { text: finalText, toolCalls, truncated } };

@@ -70,6 +70,9 @@ services:
       # (subdomains only), or a full origin URL. See dashboard/README
       # § Cross-site request protection.
       # PRAXIS_ALLOWED_ORIGINS: "app.example.com,*.preview.example.com"
+      # Max model/tool round trips per chat turn (default 10, clamped to 100).
+      # Raise it for verbs that chain other verbs. Empty => default.
+      PRAXIS_MAX_TOOL_ITERATIONS: "${PRAXIS_MAX_TOOL_ITERATIONS:-}"
       # Uncomment + extend after adding MCP services below. Each entry is
       # `name=http://service-name:port` where `service-name` matches the
       # compose service key. The `name` becomes the tool-name prefix.

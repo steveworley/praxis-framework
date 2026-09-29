@@ -25,6 +25,8 @@ services:
       PRAXIS_ROLE_HOME: /role
       PRAXIS_LOG_GLOB: "**/logs/*.jsonl"
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Max model/tool round trips per chat turn (default 10, clamped to 100).
+      PRAXIS_MAX_TOOL_ITERATIONS: ${PRAXIS_MAX_TOOL_ITERATIONS:-}
       # PRAXIS_MCPS: ""    # name=url[,name=url] — wire MCP servers here
     networks:
       - praxis

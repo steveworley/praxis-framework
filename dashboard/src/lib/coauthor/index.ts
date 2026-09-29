@@ -41,10 +41,11 @@ const GATED_LIB_FILES = new Set([
 
 /**
  * Cap on tool-call iterations during a single propose call. Most real
- * proposals will be 1–3 files; we cap at 6 to leave headroom for the model to
- * reconsider while logging a warning if it bloats past that. The framework's
- * MAX_TOOL_ITERATIONS on the chat side is 10 — we sit deliberately lower so a
- * runaway tool loop here doesn't burn a long context window.
+ * proposals will be 1–3 files; we cap at 8 to leave headroom for the model to
+ * reconsider while logging a warning if it bloats past that. The chat loop's
+ * cap defaults to 10 (PRAXIS_MAX_TOOL_ITERATIONS) — we sit deliberately lower,
+ * and pass this as `maxToolIterations` so raising the chat cap doesn't raise
+ * it, so a runaway tool loop here doesn't burn a long context window.
  */
 const MAX_PROPOSAL_ITERATIONS = 8;
 
@@ -282,6 +283,7 @@ export async function proposeChange(
       // Proposals can return large file contents — raise the cap beyond the
       // chat default so a multi-file rewrite isn't truncated.
       maxTokens: 8192,
+      maxToolIterations: MAX_PROPOSAL_ITERATIONS,
     },
   );
 
