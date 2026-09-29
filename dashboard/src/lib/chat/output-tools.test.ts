@@ -4,10 +4,13 @@ import path from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { parseFrontmatter } from '../frontmatter.js';
+import { RESERVED_OUTPUT_KEYS } from '../output/types.js';
 import {
   executeUpdateOutputStatus,
   executeWriteOutput,
 } from './output-tools.js';
+import { WRITE_OUTPUT_TOOL } from './tool-schemas.js';
 
 let tempDir: string;
 
@@ -256,5 +259,209 @@ describe('executeUpdateOutputStatus', () => {
       entity_id: 'acme',
     });
     expect(r.ok).toBe(true);
+  });
+});
+
+describe('executeWriteOutput extra_fields', () => {
+  const NOW = new Date('2026-09-29T03:00:00Z');
+
+  function frontmatterKeys(text: string): string[] {
+    const block = text.split('\n---')[0] ?? '';
+    return block
+      .split('\n')
+      .slice(1)
+      .map((line) => line.slice(0, line.indexOf(':')));
+  }
+
+  function draftWith(extra: unknown, slug = 'reply-reporter'): Record<string, unknown> {
+    return {
+      type: 'draft',
+      slug,
+      body: 'Thanks for the report.',
+      fields: { recipient: 'reporter@example.com', channel: 'email', subject: 'Re: report' },
+      extra_fields: extra,
+    };
+  }
+
+  async function readDraft(slug = 'reply-reporter'): Promise<string> {
+    return fs.readFile(path.join(tempDir, `output/draft/${slug}.md`), 'utf-8');
+  }
+
+  it('writes extra fields after the known fields and before the timestamps', async () => {
+    const r = await executeWriteOutput(
+      tempDir,
+      draftWith({ gmail_thread_id: '18f2a9c0b1d2e3f4', reporter_ref: 'VDP-2026-014' }),
+      NOW,
+    );
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.data['extra_fields']).toEqual(['gmail_thread_id', 'reporter_ref']);
+
+    const written = await readDraft();
+    expect(frontmatterKeys(written)).toEqual([
+      'type',
+      'slug',
+      'status',
+      'recipient',
+      'channel',
+      'subject',
+      'gmail_thread_id',
+      'reporter_ref',
+      'created',
+      'updated',
+    ]);
+    expect(written).toMatch(/^gmail_thread_id: 18f2a9c0b1d2e3f4$/m);
+    expect(written).toMatch(/^reporter_ref: VDP-2026-014$/m);
+  });
+
+  it('round-trips values that need quoting through the frontmatter parser', async () => {
+    const value = 'thread:abc #1 "quoted"';
+    const r = await executeWriteOutput(tempDir, draftWith({ external_ref: value }), NOW);
+    expect(r.ok).toBe(true);
+    const { frontmatter } = parseFrontmatter(await readDraft());
+    expect(frontmatter['external_ref']).toBe(value);
+  });
+
+  it('produces byte-identical output when extra_fields is absent or empty', async () => {
+    const base = draftWith(undefined, 'no-extras');
+    delete base['extra_fields'];
+    const a = await executeWriteOutput(tempDir, base, NOW);
+    const b = await executeWriteOutput(tempDir, draftWith({}, 'empty-extras'), NOW);
+    expect(a.ok).toBe(true);
+    expect(b.ok).toBe(true);
+    if (!a.ok) return;
+    expect(a.data['extra_fields']).toBeUndefined();
+
+    const withoutExtras = await readDraft('no-extras');
+    const withEmpty = await readDraft('empty-extras');
+    expect(withEmpty.replace(/empty-extras/g, 'no-extras')).toBe(withoutExtras);
+    expect(frontmatterKeys(withoutExtras)).toEqual([
+      'type',
+      'slug',
+      'status',
+      'recipient',
+      'channel',
+      'subject',
+      'created',
+      'updated',
+    ]);
+  });
+
+  it.each([
+    ['uppercase', 'Thread_id'],
+    ['leading digit', '1thread'],
+    ['leading underscore', '_thread'],
+    ['hyphen', 'thread-id'],
+    ['colon', 'thread:id'],
+    ['too long', `a${'b'.repeat(40)}`],
+  ])('refuses a malformed key (%s)', async (_label, key) => {
+    const r = await executeWriteOutput(tempDir, draftWith({ [key]: 'x' }), NOW);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/extra_fields/);
+    await expect(readDraft()).rejects.toThrow();
+  });
+
+  it('accepts a key at the 40-character limit', async () => {
+    const r = await executeWriteOutput(tempDir, draftWith({ [`a${'b'.repeat(39)}`]: 'x' }), NOW);
+    expect(r.ok).toBe(true);
+  });
+
+  it.each([
+    'type',
+    'slug',
+    'status',
+    'created',
+    'updated',
+    'recipient',
+    'channel',
+    'subject',
+    // Known fields of other types are reserved too.
+    'title',
+    'audience',
+    'entity_type',
+    'entity_id',
+    'observed_at',
+    'goal',
+    'owner',
+    'topic',
+    'tags',
+  ])('refuses the reserved key %s', async (key) => {
+    const r = await executeWriteOutput(tempDir, draftWith({ [key]: 'x' }), NOW);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(new RegExp(`'${key}'.*reserved`));
+    await expect(readDraft()).rejects.toThrow();
+  });
+
+  it('refuses more than 10 extra fields', async () => {
+    const extra: Record<string, string> = {};
+    for (let i = 0; i < 11; i++) extra[`field_${i}`] = 'x';
+    const r = await executeWriteOutput(tempDir, draftWith(extra), NOW);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/at most 10/);
+  });
+
+  it('accepts exactly 10 extra fields', async () => {
+    const extra: Record<string, string> = {};
+    for (let i = 0; i < 10; i++) extra[`field_${i}`] = 'x';
+    const r = await executeWriteOutput(tempDir, draftWith(extra), NOW);
+    expect(r.ok).toBe(true);
+  });
+
+  it.each([
+    ['newline', 'a\nstatus: sent'],
+    ['carriage return', 'a\rb'],
+    ['tab', 'a\tb'],
+    ['empty', ''],
+    ['over 500 chars', 'x'.repeat(501)],
+    ['leading whitespace', ' abc'],
+    ['trailing whitespace', 'abc '],
+    ['quote that would be escaped', "it's: broken"],
+  ])('refuses a value with %s', async (_label, value) => {
+    const r = await executeWriteOutput(tempDir, draftWith({ external_ref: value }), NOW);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/extra_fields\.external_ref/);
+    await expect(readDraft()).rejects.toThrow();
+  });
+
+  it('accepts a value at the 500-character limit', async () => {
+    const r = await executeWriteOutput(tempDir, draftWith({ external_ref: 'x'.repeat(500) }), NOW);
+    expect(r.ok).toBe(true);
+  });
+
+  it('refuses non-string values', async () => {
+    const r = await executeWriteOutput(tempDir, draftWith({ external_ref: 42 }), NOW);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/extra_fields/);
+  });
+
+  it('keeps extra fields through update_output_status', async () => {
+    await executeWriteOutput(tempDir, draftWith({ gmail_thread_id: 'thread:18f2a9c0' }), NOW);
+    const before = await readDraft();
+
+    const r = await executeUpdateOutputStatus(
+      tempDir,
+      { type: 'draft', slug: 'reply-reporter', status: 'ready' },
+      new Date('2026-09-30T03:00:00Z'),
+    );
+    expect(r.ok).toBe(true);
+
+    const after = await readDraft();
+    expect(after).toMatch(/^status: ready$/m);
+    const extraLine = before.split('\n').find((l) => l.startsWith('gmail_thread_id:'));
+    expect(extraLine).toBe("gmail_thread_id: 'thread:18f2a9c0'");
+    expect(after.split('\n')).toContain(extraLine);
+    expect(frontmatterKeys(after)).toEqual(frontmatterKeys(before));
+  });
+});
+
+describe('WRITE_OUTPUT_TOOL schema', () => {
+  it('documents extra_fields with every reserved key', () => {
+    const props = WRITE_OUTPUT_TOOL.input_schema.properties as Record<
+      string,
+      { description?: string }
+    >;
+    const description = props['extra_fields']?.description ?? '';
+    for (const key of RESERVED_OUTPUT_KEYS) expect(description).toContain(key);
+    expect(WRITE_OUTPUT_TOOL.input_schema.required).not.toContain('extra_fields');
   });
 });

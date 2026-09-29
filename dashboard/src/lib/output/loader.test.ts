@@ -234,3 +234,38 @@ describe('loadOutput', () => {
     );
   });
 });
+
+describe('extraFields', () => {
+  it('is empty when the file carries only known fields', async () => {
+    const detail = await loadOutput(tempDir, 'document', 'q1-brief');
+    expect(detail.meta.extraFields).toEqual({});
+  });
+
+  it('exposes non-reserved frontmatter fields in file order', async () => {
+    await fs.writeFile(
+      path.join(tempDir, 'output/draft/reply-reporter.md'),
+      [
+        '---',
+        'type: draft',
+        'slug: reply-reporter',
+        'status: draft',
+        'subject: Re: report',
+        'reporter_ref: VDP-2026-014',
+        "gmail_thread_id: 'thread:18f2a9c0'",
+        'created: 2026-09-29T13:00:00+10:00',
+        'updated: 2026-09-29T13:00:00+10:00',
+        '---',
+        '',
+        'Body.',
+      ].join('\n'),
+      'utf-8',
+    );
+    const detail = await loadOutput(tempDir, 'draft', 'reply-reporter');
+    expect(Object.entries(detail.meta.extraFields)).toEqual([
+      ['reporter_ref', 'VDP-2026-014'],
+      ['gmail_thread_id', 'thread:18f2a9c0'],
+    ]);
+    // Known fields stay in `extras`, not `extraFields`.
+    expect(detail.meta.extras['subject']).toBe('Re: report');
+  });
+});

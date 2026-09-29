@@ -119,7 +119,7 @@ The chat surface is where the non-technical operator's role *grows*. Every chat 
 | Lib surgery | `append_entry` | operator-opened `append-only` YAML surface (e.g. `lib/research-strategies.yaml`) |
 | Lib surgery | `enrich_entry` | operator-opened `inline-enrichment` YAML surface (e.g. `lib/team.yaml`) |
 | Lib surgery | `adjust_param` | operator-opened `bounded` YAML surface (e.g. `lib/warmup.yaml`) |
-| Work product | `write_output` | `output/<type>/<slug>.md` (records nest under `<entity_type>/<entity_id>/`) |
+| Work product | `write_output` | `output/<type>/<slug>.md` (records nest under `<entity_type>/<entity_id>/`); optional `extra_fields` adds role-defined frontmatter, see [output.md](output.md#extra-fields) |
 | Work product | `update_output_status` | status frontmatter on an existing `output/<type>/<slug>.md` |
 | Reference | `read_role_file` | nothing (read-only) — returns a role-home text file |
 

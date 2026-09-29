@@ -1,5 +1,11 @@
 import type Anthropic from '@anthropic-ai/sdk';
 
+import {
+  EXTRA_FIELD_KEY_RE,
+  MAX_EXTRA_FIELD_VALUE_LENGTH,
+  MAX_EXTRA_FIELDS,
+  RESERVED_OUTPUT_KEYS,
+} from '../output/types.js';
 import { isMcpToolAllowed } from './autonomy-gate.js';
 import { getMcpCatalog } from './mcp-catalog.js';
 
@@ -353,7 +359,10 @@ export const WRITE_OUTPUT_TOOL: Anthropic.Tool = {
     "tool refuses if the file already exists — pick a different slug, or use " +
     'update_output_status to change an existing file\'s lifecycle stage. The ' +
     'file lives at `output/<type>/<slug>.md` (or, for records, ' +
-    '`output/record/<entity_type>/<entity_id>/<slug>.md`).',
+    '`output/record/<entity_type>/<entity_id>/<slug>.md`). Use ' +
+    '`extra_fields` for frontmatter your own tools need later that the ' +
+    'type does not define, e.g. the external thread id a send tool uses ' +
+    'to reply once the draft is approved.',
   input_schema: {
     type: 'object',
     properties: {
@@ -399,6 +408,20 @@ export const WRITE_OUTPUT_TOOL: Anthropic.Tool = {
           '<slug>.md`); entity_type and entity_id must be slug-shaped\n' +
           '- plan: required {goal}; optional {owner}\n' +
           '- reference: required {topic}; optional {tags} (array of strings)',
+      },
+      extra_fields: {
+        type: 'object',
+        additionalProperties: { type: 'string' },
+        description:
+          'Optional role-defined frontmatter, written after the type fields ' +
+          'and kept through status changes. Use it for values a later tool ' +
+          'reads back from the file, such as an external thread or ticket id. ' +
+          `Keys: lowercase snake_case matching ${EXTRA_FIELD_KEY_RE.source}, and ` +
+          `not a universal or type field name (${[...RESERVED_OUTPUT_KEYS].join(', ')}). ` +
+          'Values: non-empty single-line strings, at most ' +
+          `${MAX_EXTRA_FIELD_VALUE_LENGTH} characters, no leading/trailing ` +
+          `whitespace. At most ${MAX_EXTRA_FIELDS} fields. Any violation ` +
+          'refuses the whole call.',
       },
     },
     required: ['type', 'slug', 'body'],
