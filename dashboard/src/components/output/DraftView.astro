@@ -8,8 +8,9 @@ import { formatIsoDate, formatIsoTime } from '@/lib/ui/time';
  * Email-envelope view for a `draft` output. Renders the To / Channel /
  * Subject header rows above the body, then the operator actions:
  *
- *  - **Approve** (draft / review) POSTs {status: 'ready'} — an operator-
- *    attributed commit that roles treat as "approved to act on".
+ *  - **Approve** (draft / review, or a `ready` the role set itself) POSTs
+ *    {status: 'ready'} — an operator-attributed commit that roles treat as
+ *    "approved to act on".
  *  - **Mark as sent** (draft / review / ready) POSTs {status: 'sent'} — the
  *    framework does NOT send anything; the operator handles delivery, this
  *    just records that delivery happened.
@@ -30,7 +31,7 @@ const recipient = typeof meta.extras['recipient'] === 'string' ? meta.extras['re
 const channel = typeof meta.extras['channel'] === 'string' ? meta.extras['channel'] : null;
 const subject = typeof meta.extras['subject'] === 'string' ? meta.extras['subject'] : null;
 
-const { canApprove, canMarkSent, approved } = draftActionsFor(meta.status);
+const { canApprove, canMarkSent, approved } = draftActionsFor(meta.status, readyCommit);
 const readyWhen = readyCommit
   ? `${formatIsoDate(readyCommit.date)} ${formatIsoTime(readyCommit.date)}`
   : '';

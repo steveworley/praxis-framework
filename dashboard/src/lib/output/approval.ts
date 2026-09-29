@@ -29,9 +29,19 @@ export interface DraftActions {
   approved: boolean;
 }
 
-export function draftActionsFor(status: OutputStatus): DraftActions {
+/**
+ * Approve is offered on `draft` / `review`, and on a `ready` the role set
+ * itself (`readyCommit.byOperator === false`) so the operator can still give
+ * the approval a send gate checks for. An unknown approver on `ready` (no
+ * repo / history) doesn't offer it — there's nothing to show it's missing.
+ */
+export function draftActionsFor(
+  status: OutputStatus,
+  readyCommit: Pick<ReadyCommit, 'byOperator'> | null = null,
+): DraftActions {
+  const roleSetReady = status === 'ready' && readyCommit !== null && !readyCommit.byOperator;
   return {
-    canApprove: status === 'draft' || status === 'review',
+    canApprove: status === 'draft' || status === 'review' || roleSetReady,
     canMarkSent: status === 'draft' || status === 'review' || status === 'ready',
     approved: status === 'ready',
   };

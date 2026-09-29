@@ -26,6 +26,23 @@ describe('draftActionsFor', () => {
   it.each(cases)('status %s → %o', (status, expected) => {
     expect(draftActionsFor(status)).toEqual(expected);
   });
+
+  it('offers Approve on ready when the ready commit was not by the operator', () => {
+    expect(draftActionsFor('ready', { byOperator: false }).canApprove).toBe(true);
+  });
+
+  it('hides Approve on ready when the operator already approved', () => {
+    expect(draftActionsFor('ready', { byOperator: true }).canApprove).toBe(false);
+  });
+
+  it('hides Approve on ready when the approver is unknown', () => {
+    expect(draftActionsFor('ready', null).canApprove).toBe(false);
+  });
+
+  it('ignores the ready commit for non-ready statuses', () => {
+    expect(draftActionsFor('sent', { byOperator: false }).canApprove).toBe(false);
+    expect(draftActionsFor('draft', { byOperator: true }).canApprove).toBe(true);
+  });
 });
 
 describe('loadReadyCommit', () => {
