@@ -83,7 +83,7 @@ All endpoints return JSON. Read endpoints exist for parity / external consumers,
 | Memory | `memory/**/*.md` | Recency-sorted; filterable by category subdir |
 | Escalations | `escalations/*.md` | Sorted by status (open first) → urgency → date desc; filterable by status |
 | Activity | files matching `PRAXIS_LOG_GLOB` | Recent verb runs |
-| Capabilities | `tool-schemas.ts` + `verbs/*.md` + `lib/*` + activity log + git history | Four-section now-state snapshot of *what the role can do*: 13 native chat tools, MCP servers (placeholder until issue #25 lands), live verbs, and operator-opened reference data. Each capability carries 30-day usage and last-invoked, joined from the same activity feed `/activity` reads. |
+| Capabilities | `tool-schemas.ts` + `verbs/*.md` + `lib/*` + activity log + git history | Four-section now-state snapshot of *what the role can do*: 14 native chat tools, MCP servers (placeholder until issue #25 lands), live verbs, and operator-opened reference data. Each capability carries 30-day usage and last-invoked, joined from the same activity feed `/activity` reads. |
 | Health | memory + escalations + logs + git history + persona | Read-only aggregations over the same sources: weekly memory writes, escalation file/resolve/decline buckets, median time-to-triage, 30-day tool-call distribution, role-author commit count + revert ratio, plus a **Performance against criteria** panel that joins declared `success_criteria` from `persona.md` to the role's `Criteria self-assessment YYYY-MM-DD` memory entries (latest status + reasoning + trend strip per criterion). No charts — small monospace tables and `▁▃▅▇` block-glyph sparklines. |
 
 The dashboard handles missing files gracefully — section-by-section error handling, one failed loader doesn't blank the page.
@@ -108,7 +108,7 @@ Attachments uploaded from the composer land at `<role-home>/lib/uploads/<thread_
 
 ### The learning loop
 
-The chat surface is where the non-technical operator's role *grows*. Every chat turn runs an Anthropic tool-use loop with a typed toolset exposed to the model, sorted into three groups by intent:
+The chat surface is where the non-technical operator's role *grows*. Every chat turn runs an Anthropic tool-use loop with a typed toolset exposed to the model, sorted into four groups by intent:
 
 | Group | Tool | Writes to |
 |---|---|---|
@@ -121,8 +121,18 @@ The chat surface is where the non-technical operator's role *grows*. Every chat 
 | Lib surgery | `adjust_param` | operator-opened `bounded` YAML surface (e.g. `lib/warmup.yaml`) |
 | Work product | `write_output` | `output/<type>/<slug>.md` (records nest under `<entity_type>/<entity_id>/`) |
 | Work product | `update_output_status` | status frontmatter on an existing `output/<type>/<slug>.md` |
+| Reference | `read_role_file` | nothing (read-only) — returns a role-home text file |
 
-Every tool call is gated by `lib/autonomy.yaml` *and* a hard-coded constitutional list. Constitutional surfaces — `persona.md`, `CLAUDE.md`, `lib/customers.yaml`, `lib/compliance.yaml`, `lib/autonomy.yaml`, `lib/tools.yaml`, plus direct `.md` children of `verbs/` (live playbooks, not `verbs/proposed/`) — are refused regardless of yaml. Other `lib/*` files are operator-opened: the role can write to them in whichever mode `lib/autonomy.yaml` declares.
+Every write tool call is gated by `lib/autonomy.yaml` *and* a hard-coded constitutional list. Constitutional surfaces — `persona.md`, `CLAUDE.md`, `lib/customers.yaml`, `lib/compliance.yaml`, `lib/autonomy.yaml`, `lib/tools.yaml`, plus direct `.md` children of `verbs/` (live playbooks, not `verbs/proposed/`) — are refused regardless of yaml. Other `lib/*` files are operator-opened: the role can write to them in whichever mode `lib/autonomy.yaml` declares.
+
+`read_role_file` is read-only and is not gated by `lib/autonomy.yaml`: reading a constitutional file such as `lib/compliance.yaml` is how the role obeys it. Reads follow a fixed policy instead:
+
+- **Always denied** (checked against every path segment, case-insensitive): `.env` and `.env.*`, anything under a `.tokens/`, `.git/` or `state/` directory, and names matching `*.pem`, `*.key`, `*credentials*`, `*-sa-key.json` or `id_*`.
+- **Allowed**: `persona.md`, `CLAUDE.md`, and files under `lib/`, `verbs/`, `memory/`, `output/`, `escalations/`, `logs/`. Everything else is denied.
+- **Containment**: absolute paths and `..` segments are refused; a symlink must resolve inside the role home, and its resolved path is re-checked against the deny and allow rules.
+- **Shape**: directories, missing files and binary files are refused. Text over 64 KiB is truncated, with `truncated: true` and a notice in the result.
+
+Each read lands in the activity log as a `tool_call` entry (`read <path>`) carrying the path and byte counts. The file content itself is not copied into the log.
 
 Tool calls persist on the assistant turn as an HTML-comment-fenced JSON block inside the thread markdown file; the dashboard renders them inline below the turn label. Refusals (gated surface, duplicate slug, malformed input) render in the warning colour and tell the model why — the model can adjust and try again.
 
@@ -163,7 +173,7 @@ The applied escalation isn't auto-resolved — the operator can comment on it (o
 
 `/capabilities` answers a question the other read-only routes don't: **what *can* the role do, and how often is each capability used?** The screen is a now-state snapshot that joins four scattered sources into one view, each row carrying 30-day usage and a last-invoked stamp:
 
-- **Chat tools** — the 13 native tools the chat surface exposes (memory writes, escalations, proposed verbs, output writes, verb invocation, decision logging, lib surgery). Usage is counted from the activity log: most tools auto-instrument as `tool_call`, while `log_decision` / `run_verb` / `complete_verb` emit their own action verbs. The lib-surgery tools (`append_entry`, `enrich_entry`, `adjust_param`) report `implicit-full` because their effective autonomy is per-file — read the per-file modes in the Reference data section.
+- **Chat tools** — the 14 native tools the chat surface exposes (memory writes, escalations, proposed verbs, output writes, verb invocation, decision logging, lib surgery, role-file reads). Usage is counted from the activity log: most tools auto-instrument as `tool_call`, while `log_decision` / `run_verb` / `complete_verb` emit their own action verbs. The lib-surgery tools (`append_entry`, `enrich_entry`, `adjust_param`) report `implicit-full` because their effective autonomy is per-file — read the per-file modes in the Reference data section.
 - **MCP servers** — placeholder until issue #25 lands MCP infrastructure. The section's data shape is wired so the follow-up issue can populate it without restructuring the loader.
 - **Verbs** — live verbs from `verbs/<slug>.md` joined to `verb_started` / `verb_completed` activity entries. Each row carries the 30-day invocation count, a compact outcome distribution badge (`Ns Np Nf Ns` for success/partial/failed/skipped), and the last-invoked age.
 - **Reference data** — `lib/*` files excluding the constitutional set (`customers.yaml`, `compliance.yaml`, `autonomy.yaml`, `tools.yaml`). Each row shows the autonomy mode declared in `lib/autonomy.yaml` (or `unopened` when the file isn't declared), a per-mode hint (`max N pending` for append-only, `editable fields per entry` for inline-enrichment, `params: <key> [min..max step N]` for bounded), and the most recent role-author git commit touching the file.

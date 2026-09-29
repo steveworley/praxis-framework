@@ -419,6 +419,33 @@ describe('executeTool dispatch', () => {
     );
     expect(r.ok).toBe(true);
   });
+
+  it('routes read_role_file through the dispatcher', async () => {
+    await fs.mkdir(path.join(tempDir, 'lib'), { recursive: true });
+    await fs.writeFile(path.join(tempDir, 'lib', 'compliance.yaml'), 'rules: []\n', 'utf-8');
+    const r = await executeTool('read_role_file', { path: 'lib/compliance.yaml' }, tempDir);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.data['content']).toBe('rules: []\n');
+  });
+
+  it('read_role_file is not gated by autonomy.yaml write modes', async () => {
+    // compliance.yaml is constitutional (never writable) and autonomy.yaml
+    // gates lib/ entirely — reading must still succeed.
+    await fs.mkdir(path.join(tempDir, 'lib'), { recursive: true });
+    await fs.writeFile(path.join(tempDir, 'lib', 'compliance.yaml'), 'rules: []\n', 'utf-8');
+    await fs.writeFile(
+      path.join(tempDir, 'lib', 'autonomy.yaml'),
+      'surfaces:\n  - path: lib/\n    mode: gated\n',
+      'utf-8',
+    );
+    const r = await executeTool('read_role_file', { path: 'lib/compliance.yaml' }, tempDir);
+    expect(r.ok).toBe(true);
+  });
+
+  it('exposes read_role_file in the chat tool list', async () => {
+    const tools = await getChatTools(tempDir);
+    expect(tools.map((t) => t.name)).toContain('read_role_file');
+  });
 });
 
 describe('audit-log commits on tool calls', () => {
@@ -710,6 +737,26 @@ describe('auto-emit activity for tool calls', () => {
     expect(lines[0]!['verb']).toBe('account-read');
     expect(lines[0]!['outcome']).toBe('success');
     expect(lines.some((l) => l['action'] === 'tool_call')).toBe(false);
+  });
+
+  it('read_role_file emits a tool_call entry without the file content', async () => {
+    await initRepoWithBaseline();
+    await fs.mkdir(path.join(tempDir, 'lib'), { recursive: true });
+    await fs.writeFile(
+      path.join(tempDir, 'lib', 'compliance.yaml'),
+      'rules: [do-not-log-me]\n',
+      'utf-8',
+    );
+    const r = await executeTool('read_role_file', { path: 'lib/compliance.yaml' }, tempDir);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.data['content']).toBe('rules: [do-not-log-me]\n');
+    const lines = await readTodayActivityLines();
+    const last = lines[lines.length - 1];
+    expect(last!['tool']).toBe('read_role_file');
+    expect(last!['headline']).toBe('read lib/compliance.yaml');
+    expect(last!['path']).toBe('lib/compliance.yaml');
+    expect(last).not.toHaveProperty('content');
+    expect(JSON.stringify(lines)).not.toContain('do-not-log-me');
   });
 
   it('a failed tool does NOT emit activity', async () => {
