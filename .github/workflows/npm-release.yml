@@ -55,7 +55,11 @@ jobs:
         run: npm ci
 
       - name: Upgrade npm for OIDC support
-        run: npm install -g npm@latest
+        # Pinned to the 11.x line, not @latest: npm 12 requires Node
+        # ^22.22.2 || ^24.15.0 || >=26 and fails EBADENGINE on the Node 20
+        # this job (and CI, and the packages' `engines`) targets. 11.x
+        # supports Node ^20.17.0 and is past the 11.5.1 OIDC floor.
+        run: npm install -g npm@11
 
       - name: Stamp version from the release tag
         # The repo carries a 0.0.0 placeholder; the tag is authoritative. Stamp
