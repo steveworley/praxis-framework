@@ -145,6 +145,9 @@
 html {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  /* The nav strip is sticky (see .nav-wrap). Keep in-page anchors from
+     landing underneath it. */
+  scroll-padding-top: 3.5rem;
 }
 
 body {
@@ -288,6 +291,12 @@ button {
   width: 100vw;
   margin-left: calc(50% - 50vw);
   margin-bottom: 3rem;
+  /* Keep the tabs on screen while the page scrolls. The brand strip above
+     scrolls away. Opaque background (above) so content never shows through;
+     z-index clears the page content, and the chat composer is z-index 2. */
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 .nav {
   max-width: 1180px;
