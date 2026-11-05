@@ -30,6 +30,9 @@ function escalation(overrides: Partial<EscalationEntry>): EscalationEntry {
     criterion: null,
     trend: null,
     runs: null,
+    decline_reason: null,
+    latest_operator_note: null,
+    modified_at: '2026-05-05T12:00:00.000Z',
     body: '',
     ...overrides,
   };

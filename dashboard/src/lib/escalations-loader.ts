@@ -25,6 +25,7 @@ const ESCALATION_FIELDS = new Set([
   'status',
   'agent_context',
   'proposed_skill',
+  'decline_reason',
   // criterion_drift-specific fields. Always parsed (the loader is shape-
   // agnostic); only meaningful when `kind === 'criterion_drift'`.
   'criterion',
@@ -45,6 +46,17 @@ const URGENCY_RANK: Record<string, number> = {
   low: 2,
 };
 
+/**
+ * An `## Operator note · <timestamp>[ · <kind>]` section appended by the
+ * dashboard triage actions (see `operatorNoteBlock` in `triage.ts`). `kind`
+ * is null for the bare heading written when accepting without a note.
+ */
+export interface OperatorNote {
+  timestamp: string;
+  kind: string | null;
+  text: string;
+}
+
 export interface EscalationEntry {
   slug: string;
   path: string;
@@ -64,6 +76,11 @@ export interface EscalationEntry {
   criterion: string | null;
   trend: string | null;
   runs: number | null;
+  decline_reason: string | null;
+  /** The last operator note in the file (notes are appended chronologically). */
+  latest_operator_note: OperatorNote | null;
+  /** File mtime as an ISO-8601 string. */
+  modified_at: string;
   body: string;
 }
 
@@ -124,8 +141,10 @@ export async function assembleEscalations(roleHome: string): Promise<Escalations
 
 async function parseEscalation(filePath: string, roleHome: string): Promise<EscalationEntry | null> {
   let text: string;
+  let modifiedAt: Date;
   try {
     text = await fs.readFile(filePath, 'utf-8');
+    modifiedAt = (await fs.stat(filePath)).mtime;
   } catch {
     return null;
   }
@@ -175,7 +194,42 @@ async function parseEscalation(filePath: string, roleHome: string): Promise<Esca
     criterion: fm['criterion'] ?? null,
     trend: fm['trend'] ?? null,
     runs,
+    decline_reason: fm['decline_reason'] ?? null,
+    latest_operator_note: latestOperatorNote(body),
+    modified_at: modifiedAt.toISOString(),
     body: body.trim(),
+  };
+}
+
+const OPERATOR_NOTE_HEADING_RE = /^##\s+Operator note\s+·\s+(\S+)(?:\s+·\s+(\S+))?\s*$/;
+
+/**
+ * Find the last `## Operator note` section in the body. The note text runs
+ * to the next `#`/`##` heading or EOF.
+ */
+function latestOperatorNote(body: string): OperatorNote | null {
+  const lines = body.split('\n');
+  let start = -1;
+  let match: RegExpExecArray | null = null;
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    match = OPERATOR_NOTE_HEADING_RE.exec(lines[i] ?? '');
+    if (match) {
+      start = i;
+      break;
+    }
+  }
+  if (start < 0 || !match) return null;
+  let end = lines.length;
+  for (let i = start + 1; i < lines.length; i += 1) {
+    if (/^#{1,2}\s+/.test(lines[i] ?? '')) {
+      end = i;
+      break;
+    }
+  }
+  return {
+    timestamp: match[1] ?? '',
+    kind: match[2] ?? null,
+    text: lines.slice(start + 1, end).join('\n').trim(),
   };
 }
 

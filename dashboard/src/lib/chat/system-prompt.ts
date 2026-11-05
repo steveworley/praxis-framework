@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 import { loadAutonomy, type AutonomySurface } from '@/lib/autonomy-loader.js';
+import { assembleEscalations, type EscalationEntry } from '@/lib/escalations-loader.js';
 import { parsePersona } from '@/lib/persona-parser.js';
 import { loadBusinessContext, SCALAR_KEYS, type BusinessContext } from '@/lib/role/business-context.js';
 import { loadVerbs, type VerbSummary } from '@/lib/verbs-loader.js';
@@ -19,6 +20,16 @@ const CONSTITUTIONAL_GATED: readonly string[] = [
   'CLAUDE.md',
 ];
 
+const DECIDED_STATUSES: ReadonlySet<string> = new Set(['accepted', 'declined', 'resolved']);
+const DECIDED_WINDOW_DAYS = 14;
+const DECIDED_MAX_ENTRIES = 10;
+const DECIDED_NOTE_MAX_CHARS = 500;
+
+export interface BuildSystemPromptOptions {
+  /** Reference time for time-windowed sections. Defaults to the current time. */
+  now?: Date;
+}
+
 /**
  * Assemble the system prompt for the chat surface. The prompt makes the model
  * embody the role: voice from persona, available verbs, hard rules from
@@ -28,7 +39,10 @@ const CONSTITUTIONAL_GATED: readonly string[] = [
  * the API surface upstream should render the missing-role UI. Every other
  * source file is optional; missing ones are quietly elided.
  */
-export async function buildSystemPrompt(roleHome: string): Promise<string> {
+export async function buildSystemPrompt(
+  roleHome: string,
+  { now = new Date() }: BuildSystemPromptOptions = {},
+): Promise<string> {
   const persona = await parsePersona(roleHome);
   const personaText = await readPersonaBody(roleHome);
   if (personaText === null) {
@@ -63,6 +77,9 @@ export async function buildSystemPrompt(roleHome: string): Promise<string> {
 
   const toolsBlock = await renderToolsSection(roleHome);
   if (toolsBlock) sections.push('', toolsBlock);
+
+  const decidedBlock = await renderDecidedEscalationsSection(roleHome, now);
+  if (decidedBlock) sections.push('', decidedBlock);
 
   sections.push('', '---', '');
   sections.push(
@@ -396,6 +413,52 @@ function renderBoundsSummary(s: AutonomySurface): string {
     parts.push(`${key} [${bound.min}–${bound.max}${stepPart}]`);
   }
   return parts.join(', ');
+}
+
+/**
+ * List escalations the operator has decided recently (accepted / declined /
+ * resolved) so a chat follow-up like "action that" can be tied back to the
+ * escalation file and the operator's note.
+ *
+ * Decision time is the timestamp of the latest `## Operator note` section
+ * (written by the dashboard triage actions). When there is no parseable note
+ * — e.g. the status was edited by hand — we fall back to the file's mtime.
+ */
+async function renderDecidedEscalationsSection(roleHome: string, now: Date): Promise<string | null> {
+  const { entries } = await assembleEscalations(roleHome);
+  const cutoff = now.getTime() - DECIDED_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+  const decided = entries
+    .filter((e) => DECIDED_STATUSES.has(e.status))
+    .map((e) => ({ entry: e, decidedAt: decisionTime(e) }))
+    .filter(({ decidedAt }) => decidedAt >= cutoff)
+    .sort((a, b) => b.decidedAt - a.decidedAt)
+    .slice(0, DECIDED_MAX_ENTRIES);
+  if (decided.length === 0) return null;
+
+  const lines: string[] = [
+    '## Recently decided escalations',
+    '',
+    `Your operator has decided these escalations in the last ${DECIDED_WINDOW_DAYS} days (most recent first). You may be asked to act on them; call \`read_role_file\` with the path for the full text.`,
+    '',
+  ];
+  for (const { entry, decidedAt } of decided) {
+    lines.push(`- \`${entry.slug}\` — ${entry.title}`);
+    lines.push(
+      `  path: \`${entry.path}\` · kind: ${entry.kind} · status: ${entry.status} · decided: ${new Date(decidedAt).toISOString()}`,
+    );
+    const note = entry.latest_operator_note?.text || entry.decline_reason;
+    if (note) lines.push(`  operator note: ${truncate(note.replace(/\s+/g, ' ').trim(), DECIDED_NOTE_MAX_CHARS)}`);
+  }
+  return lines.join('\n');
+}
+
+function decisionTime(entry: EscalationEntry): number {
+  const fromNote = entry.latest_operator_note ? Date.parse(entry.latest_operator_note.timestamp) : Number.NaN;
+  return Number.isNaN(fromNote) ? Date.parse(entry.modified_at) : fromNote;
+}
+
+function truncate(text: string, max: number): string {
+  return text.length > max ? `${text.slice(0, max)}…` : text;
 }
 
 async function renderToolsSection(roleHome: string): Promise<string | null> {
