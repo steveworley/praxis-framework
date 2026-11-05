@@ -123,6 +123,7 @@ The chat surface is where the non-technical operator's role *grows*. Every chat 
 | Work product | `write_output` | `output/<type>/<slug>.md` (records nest under `<entity_type>/<entity_id>/`); optional `extra_fields` adds role-defined frontmatter, see [output.md](output.md#extra-fields) |
 | Work product | `update_output_status` | status frontmatter on an existing `output/<type>/<slug>.md` |
 | Reference | `read_role_file` | nothing (read-only) — returns a role-home text file |
+| Reference | `list_role_files` | nothing (read-only) — lists one role-home directory |
 
 Every write tool call is gated by `lib/autonomy.yaml` *and* a hard-coded constitutional list. Constitutional surfaces — `persona.md`, `CLAUDE.md`, `lib/customers.yaml`, `lib/compliance.yaml`, `lib/autonomy.yaml`, `lib/tools.yaml`, plus direct `.md` children of `verbs/` (live playbooks, not `verbs/proposed/`) — are refused regardless of yaml. Other `lib/*` files are operator-opened: the role can write to them in whichever mode `lib/autonomy.yaml` declares.
 
@@ -134,6 +135,16 @@ Every write tool call is gated by `lib/autonomy.yaml` *and* a hard-coded constit
 - **Shape**: directories, missing files and binary files are refused. Text over 64 KiB is truncated, with `truncated: true` and a notice in the result.
 
 Each read lands in the activity log as a `tool_call` entry (`read <path>`) carrying the path and byte counts. The file content itself is not copied into the log.
+
+`list_role_files` lets the role find exact paths (escalation and output slugs carry a random segment and a truncated title, so they cannot be guessed). It lists one directory, one level deep, returning `name`, `type` (`file`/`dir`), `size` (files only) and ISO `mtime` per entry, under the same policy as `read_role_file`:
+
+- The directory itself must pass the deny, allow and containment rules above; refusals are worded the same way. Passing a file path is refused with a pointer to `read_role_file`.
+- `.` (or an empty / omitted path) lists the role-home root, showing only allow-listed entries.
+- Entries are checked as `<dir>/<name>`, including through their symlink target. Denied, escaping, broken or non-regular entries are omitted from the result rather than reported.
+- `filter` is a case-insensitive match on the entry name: a prefix when it has no wildcards, a whole-name glob when it contains `*` or `?`.
+- `sort` is `name` (A→Z, default) or `mtime` (newest first). At most 200 entries are returned after sorting; `total` gives the full count and `truncated: true` comes with a notice.
+
+Each listing lands in the activity log as `list <path>` with the counts; the entries themselves are not copied into the log.
 
 Tool calls persist on the assistant turn as an HTML-comment-fenced JSON block inside the thread markdown file; the dashboard renders them inline below the turn label. Refusals (gated surface, duplicate slug, malformed input) render in the warning colour and tell the model why — the model can adjust and try again.
 

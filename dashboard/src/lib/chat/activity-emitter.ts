@@ -179,6 +179,10 @@ export function headlineFor(
       const p = stringField(payload, 'path');
       return p ? `read ${p}` : toolName;
     }
+    case 'list_role_files': {
+      const p = stringField(payload, 'path');
+      return p ? `list ${p}` : toolName;
+    }
     case 'append_entry': {
       const p = stringField(payload, 'path');
       return p ? `append to ${stripExt(p)}` : toolName;

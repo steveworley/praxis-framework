@@ -19,6 +19,7 @@ import {
   executeUpdateOutputStatus,
   executeWriteOutput,
 } from './output-tools.js';
+import { executeListRoleFiles } from './list-role-files.js';
 import { executeReadRoleFile } from './read-role-file.js';
 import { executeRunVerb } from './run-verb.js';
 import { localDateString, localIsoString } from './time-helpers.js';
@@ -408,6 +409,7 @@ export type ToolName =
   | 'run_verb'
   | 'complete_verb'
   | 'read_role_file'
+  | 'list_role_files'
   | 'append_entry'
   | 'enrich_entry'
   | 'adjust_param'
@@ -424,6 +426,7 @@ const KNOWN_TOOLS: ReadonlySet<string> = new Set([
   'run_verb',
   'complete_verb',
   'read_role_file',
+  'list_role_files',
   'append_entry',
   'enrich_entry',
   'adjust_param',
@@ -449,10 +452,12 @@ const SELF_LOGGING_TOOLS: ReadonlySet<string> = new Set([
  * Result-data fields left out of the auto-emitted activity entry. The model
  * still receives them in its tool_result; they just don't land in
  * `logs/<date>.jsonl` or its audit commit. `read_role_file` returns whole
- * file bodies, which would otherwise be copied into the log on every read.
+ * file bodies and `list_role_files` up to 200 directory entries, which would
+ * otherwise be copied into the log on every call.
  */
 const ACTIVITY_OMITTED_FIELDS: Readonly<Record<string, readonly string[]>> = {
   read_role_file: ['content'],
+  list_role_files: ['entries'],
 };
 
 /**
@@ -568,6 +573,8 @@ async function dispatchTool(
       return executeCompleteVerb(roleHome, input);
     case 'read_role_file':
       return executeReadRoleFile(roleHome, input);
+    case 'list_role_files':
+      return executeListRoleFiles(roleHome, input);
     case 'append_entry':
       return executeAppendEntry(roleHome, input);
     case 'enrich_entry':

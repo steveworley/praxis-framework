@@ -106,7 +106,7 @@ The chat surface exposes fourteen typed tools, grouped by intent:
 - **Growth** — `write_memory`, `archive_memory`, `consolidate_memory`, `create_escalation`, `propose_verb`, `log_decision`, `run_verb`, `complete_verb`. The role's observational + verb-invocation surfaces.
 - **Lib surgery** — `append_entry`, `enrich_entry`, `adjust_param`. Operator-opened YAML under the modes declared in `lib/autonomy.yaml`.
 - **Work product** — `write_output`, `update_output_status`. The framework's typed `output/` taxonomy.
-- **Reference** — `read_role_file`. Read-only access to role-home files (`lib/*`, verbs, memory, outputs, escalations, logs, `persona.md`, `CLAUDE.md`) so the role resolves rules from the file, not from memory. Secrets are always refused.
+- **Reference** — `read_role_file`, `list_role_files`. Read-only access to role-home files (`lib/*`, verbs, memory, outputs, escalations, logs, `persona.md`, `CLAUDE.md`) so the role resolves rules from the file, not from memory, and can discover exact file paths before reading. Secrets are always refused.
 
 Constitutional surfaces stay gated regardless of yaml. The chat is never the place to mutate the role's constitution — that's what `/triage/draft/<id>` co-authoring is for (operator-driven, model-assisted).
 
