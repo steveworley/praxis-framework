@@ -446,6 +446,33 @@ describe('executeTool dispatch', () => {
     const tools = await getChatTools(tempDir);
     expect(tools.map((t) => t.name)).toContain('read_role_file');
   });
+
+  it('routes list_role_files through the dispatcher', async () => {
+    await fs.mkdir(path.join(tempDir, 'escalations'), { recursive: true });
+    await fs.writeFile(path.join(tempDir, 'escalations', '2026-11-05-6e1b-x.md'), 'x\n', 'utf-8');
+    const r = await executeTool('list_role_files', { path: 'escalations' }, tempDir);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      const entries = r.data['entries'] as { name: string }[];
+      expect(entries.map((e) => e.name)).toEqual(['2026-11-05-6e1b-x.md']);
+    }
+  });
+
+  it('list_role_files is not gated by autonomy.yaml write modes', async () => {
+    await fs.mkdir(path.join(tempDir, 'lib'), { recursive: true });
+    await fs.writeFile(
+      path.join(tempDir, 'lib', 'autonomy.yaml'),
+      'surfaces:\n  - path: lib/\n    mode: gated\n',
+      'utf-8',
+    );
+    const r = await executeTool('list_role_files', { path: 'lib' }, tempDir);
+    expect(r.ok).toBe(true);
+  });
+
+  it('exposes list_role_files in the chat tool list', async () => {
+    const tools = await getChatTools(tempDir);
+    expect(tools.map((t) => t.name)).toContain('list_role_files');
+  });
 });
 
 describe('audit-log commits on tool calls', () => {
@@ -756,6 +783,26 @@ describe('auto-emit activity for tool calls', () => {
     expect(last!['headline']).toBe('read lib/compliance.yaml');
     expect(last!['path']).toBe('lib/compliance.yaml');
     expect(last).not.toHaveProperty('content');
+    expect(JSON.stringify(lines)).not.toContain('do-not-log-me');
+  });
+
+  it('list_role_files emits a tool_call entry without the entries', async () => {
+    await initRepoWithBaseline();
+    await fs.mkdir(path.join(tempDir, 'escalations'), { recursive: true });
+    await fs.writeFile(
+      path.join(tempDir, 'escalations', 'do-not-log-me.md'),
+      'x\n',
+      'utf-8',
+    );
+    const r = await executeTool('list_role_files', { path: 'escalations' }, tempDir);
+    expect(r.ok).toBe(true);
+    const lines = await readTodayActivityLines();
+    const last = lines[lines.length - 1];
+    expect(last!['tool']).toBe('list_role_files');
+    expect(last!['headline']).toBe('list escalations');
+    expect(last!['path']).toBe('escalations');
+    expect(last!['total']).toBe(1);
+    expect(last).not.toHaveProperty('entries');
     expect(JSON.stringify(lines)).not.toContain('do-not-log-me');
   });
 

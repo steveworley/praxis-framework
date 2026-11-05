@@ -565,6 +565,47 @@ export const READ_ROLE_FILE_TOOL: Anthropic.Tool = {
   },
 };
 
+export const LIST_ROLE_FILES_TOOL: Anthropic.Tool = {
+  name: 'list_role_files',
+  description:
+    'List the files and subdirectories in one role-home directory (one level, ' +
+    'not recursive) — e.g. `escalations`, `output/draft`, `memory`, `lib`, or ' +
+    '`.` for the role-home root. Use it to find the exact path of an ' +
+    'escalation, draft or memory entry before calling `read_role_file`; ' +
+    'slugs carry a random segment and a truncated title, so do not guess ' +
+    'them. Returns name, type (file/dir), size (files) and mtime for each ' +
+    'entry. Same allow list as `read_role_file`; secret and credential ' +
+    'entries are left out of the listing. Read-only. At most 200 entries are ' +
+    'returned, with a notice when more exist.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      path: {
+        type: 'string',
+        description:
+          'Directory relative to the role home, e.g. `escalations` or ' +
+          '`output/draft`. Omit or pass `.` to list the role-home root. No ' +
+          'absolute paths or `..` segments.',
+      },
+      filter: {
+        type: 'string',
+        description:
+          'Optional case-insensitive match on the entry name. Without ' +
+          'wildcards it is a prefix (`2026-11-05` matches names starting ' +
+          'with it); with `*` or `?` it is a glob over the whole name ' +
+          '(`*bounty*`, `*.md`).',
+      },
+      sort: {
+        type: 'string',
+        enum: ['name', 'mtime'],
+        description:
+          "'name' (default) sorts A→Z; 'mtime' puts the most recently " +
+          'modified first — useful for finding the latest escalation or draft.',
+      },
+    },
+  },
+};
+
 export const COMPLETE_VERB_TOOL: Anthropic.Tool = {
   name: 'complete_verb',
   description:
@@ -660,9 +701,9 @@ export const UPDATE_OUTPUT_STATUS_TOOL: Anthropic.Tool = {
  * The full toolset, in the order the model sees them. Memory first — most
  * common action; logging last — least conversational. The verb-invocation
  * pair (`run_verb`, `complete_verb`) sits next to `propose_verb` because
- * they share the verb-as-delegation framing. `read_role_file` follows as the
- * only read-only built-in, just ahead of the lib-surgery tools that act on
- * the same files. The lib-surgery tools
+ * they share the verb-as-delegation framing. `read_role_file` and
+ * `list_role_files` follow as the read-only built-ins, just ahead of the
+ * lib-surgery tools that act on the same files. The lib-surgery tools
  * (`append_entry`, `enrich_entry`, `adjust_param`) sit together after the
  * verb tools and before the output tools. The output tools sit between the
  * role-growth tools and the audit tools — they're work product, not
@@ -677,6 +718,7 @@ export const CHAT_TOOLS: readonly Anthropic.Tool[] = [
   RUN_VERB_TOOL,
   COMPLETE_VERB_TOOL,
   READ_ROLE_FILE_TOOL,
+  LIST_ROLE_FILES_TOOL,
   APPEND_ENTRY_TOOL,
   ENRICH_ENTRY_TOOL,
   ADJUST_PARAM_TOOL,

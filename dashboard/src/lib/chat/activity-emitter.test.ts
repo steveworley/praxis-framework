@@ -241,6 +241,12 @@ describe('headlineFor', () => {
     ).toBe('propose qualify-deal');
   });
 
+  it('formats list_role_files with the listed directory', () => {
+    expect(headlineFor('list_role_files', { path: 'output/draft', total: 3 })).toBe(
+      'list output/draft',
+    );
+  });
+
   it('formats append_entry with the relative path (no extension)', () => {
     expect(
       headlineFor('append_entry', {
