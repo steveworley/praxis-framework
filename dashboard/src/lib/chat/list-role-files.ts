@@ -1,3 +1,4 @@
+import type { Stats } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
@@ -25,8 +26,8 @@ import type { ToolFailure, ToolResult } from './tools.js';
  *   - The role-home root (`.`, empty or omitted path) may be listed; it shows
  *     only allow-listed entries (`persona.md`, `CLAUDE.md`, the allowed dirs).
  *   - Each entry is checked as `<dir>/<name>` against the policy and through
- *     its realpath. Denied, escaping, aliasing, broken or non-regular entries
- *     are omitted, not reported — the listing never reveals a secret's name.
+ *     its realpath. Denied, escaping, aliasing, broken, vanished or
+ *     non-regular entries are omitted, not reported — the listing never reveals a secret's name.
  *   - `filter` is matched case-insensitively against the entry name. Without
  *     wildcards it is a prefix; with `*` (any run) or `?` (one character) it is
  *     a glob over the whole name. No other characters are special.
@@ -146,7 +147,13 @@ async function describeEntry(
   const resolved = await resolveRealRolePath(TOOL_NAME, roleHome, rel);
   if (!resolved.ok) return null;
 
-  const stat = await fs.stat(resolved.realAbs);
+  let stat: Stats;
+  try {
+    stat = await fs.stat(resolved.realAbs);
+  } catch {
+    // Vanished or unreadable between readdir and stat: omit, don't fail the listing.
+    return null;
+  }
   const mtime = stat.mtime.toISOString();
   if (stat.isFile()) return { name, type: 'file', size: stat.size, mtime };
   if (stat.isDirectory()) return { name, type: 'dir', mtime };
@@ -154,16 +161,40 @@ async function describeEntry(
 }
 
 function nameMatcher(filter: string): (name: string) => boolean {
-  if (!/[*?]/.test(filter)) {
-    const prefix = filter.toLowerCase();
-    return (name) => name.toLowerCase().startsWith(prefix);
+  const pattern = filter.toLowerCase();
+  if (!/[*?]/.test(pattern)) {
+    return (name) => name.toLowerCase().startsWith(pattern);
   }
-  const source = filter
-    .split('')
-    .map((c) => (c === '*' ? '.*' : c === '?' ? '.' : c.replace(/[.+^${}()|[\]\\]/g, '\\$&')))
-    .join('');
-  const re = new RegExp(`^${source}$`, 'is');
-  return (name) => re.test(name);
+  return (name) => globMatch(pattern, name.toLowerCase());
+}
+
+/**
+ * Whole-string glob match where `*` is any run and `?` is one character.
+ * Iterative with single-star backtracking, so it runs in O(pattern × name)
+ * worst case — the filter is model-controlled, and a compiled RegExp could
+ * backtrack catastrophically on patterns like `*a*a*a…b`.
+ */
+export function globMatch(pattern: string, text: string): boolean {
+  let p = 0;
+  let t = 0;
+  let starP = -1;
+  let starT = 0;
+  while (t < text.length) {
+    if (p < pattern.length && (pattern[p] === '?' || pattern[p] === text[t])) {
+      p++;
+      t++;
+    } else if (p < pattern.length && pattern[p] === '*') {
+      starP = p++;
+      starT = t;
+    } else if (starP !== -1) {
+      p = starP + 1;
+      t = ++starT;
+    } else {
+      return false;
+    }
+  }
+  while (p < pattern.length && pattern[p] === '*') p++;
+  return p === pattern.length;
 }
 
 function byName(a: RoleFileEntry, b: RoleFileEntry): number {

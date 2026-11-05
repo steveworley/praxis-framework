@@ -2,9 +2,9 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { executeListRoleFiles, LIST_ROLE_FILES_MAX_ENTRIES } from './list-role-files.ts';
+import { executeListRoleFiles, globMatch, LIST_ROLE_FILES_MAX_ENTRIES } from './list-role-files.ts';
 
 let tempDir: string;
 let roleHome: string;
@@ -19,6 +19,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await fs.rm(tempDir, { recursive: true, force: true });
 });
 
@@ -268,6 +269,17 @@ describe('executeListRoleFiles — filter', () => {
     expect(await names({ path: 'escalations', filter: '*.(md)' })).toEqual([]);
   });
 
+  it('returns quickly on a pathological backtracking pattern', async () => {
+    const name = 'a'.repeat(250);
+    await writeRoleFile(`escalations/${name}`);
+    const pattern = `${'*a'.repeat(50)}b`;
+
+    const started = performance.now();
+    expect(await names({ path: 'escalations', filter: pattern })).toEqual([]);
+    expect(globMatch(pattern, name)).toBe(false);
+    expect(performance.now() - started).toBeLessThan(500);
+  });
+
   it('reports total as the filtered count', async () => {
     const r = await executeListRoleFiles(roleHome, { path: 'escalations', filter: '*.md' });
     expect(r.ok).toBe(true);
@@ -334,5 +346,39 @@ describe('executeListRoleFiles — cap', () => {
       expect(r.data['truncated']).toBe(false);
       expect(r.data).not.toHaveProperty('notice');
     }
+  });
+});
+
+describe('globMatch', () => {
+  it.each([
+    ['*', '', true],
+    ['*', 'abc', true],
+    ['a*c', 'abc', true],
+    ['a*c', 'abcd', false],
+    ['a?c', 'abc', true],
+    ['a?c', 'ac', false],
+    ['*b*', 'abc', true],
+    ['**', 'x', true],
+    ['*x', 'abc', false],
+    ['a*b*c', 'aXbYbZc', true],
+    ['a*b*c', 'aXbYbZ', false],
+  ])('globMatch(%j, %j) is %s', (pattern, text, expected) => {
+    expect(globMatch(pattern, text)).toBe(expected);
+  });
+});
+
+describe('executeListRoleFiles — entries that vanish mid-listing', () => {
+  it('omits an entry whose stat fails between readdir and stat', async () => {
+    await writeRoleFile('escalations/a.md');
+    await writeRoleFile('escalations/b.md');
+    const realStat = fs.stat;
+    vi.spyOn(fs, 'stat').mockImplementation(async (p, ...rest) => {
+      if (String(p).endsWith(`${path.sep}b.md`)) {
+        throw Object.assign(new Error('ENOENT: gone'), { code: 'ENOENT' });
+      }
+      return realStat(p, ...rest);
+    });
+
+    expect(await names({ path: 'escalations' })).toEqual(['a.md']);
   });
 });
