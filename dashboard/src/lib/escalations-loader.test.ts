@@ -137,4 +137,66 @@ describe('assembleEscalations', () => {
     const result = await assembleEscalations(tempDir);
     expect(result.entries.map((e) => e.title)).toEqual(['B', 'A']);
   });
+  it('exposes the latest operator note, decline_reason and modified_at', async () => {
+    await fs.writeFile(
+      path.join(tempDir, 'escalations', '2026-05-03-noted.md'),
+      [
+        '---',
+        'kind: help',
+        'created: 2026-05-03',
+        'status: declined',
+        'decline_reason: Not now.',
+        '---',
+        '',
+        '# Noted',
+        '',
+        'body text',
+        '',
+        '## Operator note · 2026-05-04T09:00:00+10:00 · comment',
+        '',
+        'First thought.',
+        '',
+        '## Operator note · 2026-05-05T10:30:00+10:00 · declined',
+        '',
+        'Not now.',
+        'Second line.',
+        '',
+      ].join('\n'),
+      'utf-8',
+    );
+    const result = await assembleEscalations(tempDir);
+    const entry = result.entries[0];
+    expect(entry?.decline_reason).toBe('Not now.');
+    expect(entry?.latest_operator_note).toEqual({
+      timestamp: '2026-05-05T10:30:00+10:00',
+      kind: 'declined',
+      text: 'Not now.\nSecond line.',
+    });
+    expect(Number.isNaN(Date.parse(entry?.modified_at ?? ''))).toBe(false);
+  });
+
+  it('parses the bare accept heading (no kind) and stops the note at the next heading', async () => {
+    await fs.writeFile(
+      path.join(tempDir, 'escalations', '2026-05-03-bare.md'),
+      `---\nkind: help\nstatus: accepted\n---\n# Bare\n\n## Operator note · 2026-05-06T08:00:00+10:00\n\nAccepted.\n\n## Follow-up\n\nrole text\n`,
+      'utf-8',
+    );
+    const result = await assembleEscalations(tempDir);
+    expect(result.entries[0]?.latest_operator_note).toEqual({
+      timestamp: '2026-05-06T08:00:00+10:00',
+      kind: null,
+      text: 'Accepted.',
+    });
+  });
+
+  it('leaves latest_operator_note and decline_reason null when absent', async () => {
+    await fs.writeFile(
+      path.join(tempDir, 'escalations', '2026-05-03-plain.md'),
+      `---\nkind: help\nstatus: open\n---\n# Plain\n`,
+      'utf-8',
+    );
+    const result = await assembleEscalations(tempDir);
+    expect(result.entries[0]?.latest_operator_note).toBeNull();
+    expect(result.entries[0]?.decline_reason).toBeNull();
+  });
 });

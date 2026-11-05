@@ -338,6 +338,147 @@ describe('buildSystemPrompt', () => {
   });
 });
 
+describe('buildSystemPrompt — recently decided escalations', () => {
+  const NOW = new Date('2026-11-06T12:00:00+10:00');
+  const HEADING = '## Recently decided escalations';
+
+  async function seedEscalation(
+    id: string,
+    opts: { status: string; kind?: string; title?: string; notes?: string[]; declineReason?: string; mtime?: Date },
+  ): Promise<void> {
+    const dir = path.join(tempDir, 'escalations');
+    await fs.mkdir(dir, { recursive: true });
+    const fm = ['---', `kind: ${opts.kind ?? 'help'}`, 'urgency: normal', 'created: 2026-10-01', `status: ${opts.status}`];
+    if (opts.declineReason) fm.push(`decline_reason: ${opts.declineReason}`);
+    fm.push('---');
+    const body = ['', `# ${opts.title ?? id}`, '', 'Agent body.', '', ...(opts.notes ?? [])];
+    const file = path.join(dir, `${id}.md`);
+    await fs.writeFile(file, [...fm, ...body, ''].join('\n'), 'utf-8');
+    if (opts.mtime) await fs.utimes(file, opts.mtime, opts.mtime);
+  }
+
+  function note(ts: string, kind: string, text: string): string {
+    return `## Operator note · ${ts} · ${kind}\n\n${text}\n`;
+  }
+
+  it('lists an accepted escalation with id, path, kind, status, title and the operator note', async () => {
+    await seedPersona();
+    const id = '2026-11-05-6e1b-bounty-solicitation-from-sebastian-romeo-your-call-before-i-';
+    await seedEscalation(id, {
+      status: 'accepted',
+      title: 'Bounty solicitation from Sebastian Romeo',
+      notes: [
+        note(
+          '2026-11-05T14:00:00+10:00',
+          'accepted',
+          "Send an acknowledgement but as per VDP we don't have a bug bounty program and don't pay for reports.",
+        ),
+      ],
+    });
+    const prompt = await buildSystemPrompt(tempDir, { now: NOW });
+    expect(prompt).toContain(HEADING);
+    expect(prompt).toContain(`\`${id}\``);
+    expect(prompt).toContain(`\`escalations/${id}.md\``);
+    expect(prompt).toContain('kind: help');
+    expect(prompt).toContain('status: accepted');
+    expect(prompt).toContain('Bounty solicitation from Sebastian Romeo');
+    expect(prompt).toContain("we don't have a bug bounty program and don't pay for reports.");
+    expect(prompt).toContain('read_role_file');
+  });
+
+  it('excludes open escalations', async () => {
+    await seedPersona();
+    await seedEscalation('2026-11-05-open-one', { status: 'open' });
+    const prompt = await buildSystemPrompt(tempDir, { now: NOW });
+    expect(prompt).not.toContain(HEADING);
+    expect(prompt).not.toContain('2026-11-05-open-one');
+  });
+
+  it('excludes escalations decided outside the 14-day window', async () => {
+    await seedPersona();
+    await seedEscalation('2026-10-01-old', {
+      status: 'accepted',
+      notes: [note('2026-10-20T09:00:00+10:00', 'accepted', 'Old news.')],
+    });
+    await seedEscalation('2026-10-25-recent', {
+      status: 'accepted',
+      notes: [note('2026-10-25T09:00:00+10:00', 'accepted', 'Fresh.')],
+    });
+    const prompt = await buildSystemPrompt(tempDir, { now: NOW });
+    expect(prompt).toContain('2026-10-25-recent');
+    expect(prompt).not.toContain('2026-10-01-old');
+  });
+
+  it('shows the decline reason for a declined escalation', async () => {
+    await seedPersona();
+    await seedEscalation('2026-11-01-declined', {
+      status: 'declined',
+      declineReason: 'Out of scope for this quarter.',
+      notes: [note('2026-11-02T09:00:00+10:00', 'declined', 'Out of scope for this quarter.')],
+    });
+    const prompt = await buildSystemPrompt(tempDir, { now: NOW });
+    expect(prompt).toContain('status: declined');
+    expect(prompt).toContain('Out of scope for this quarter.');
+  });
+
+  it('falls back to decline_reason and file mtime when there is no operator note', async () => {
+    await seedPersona();
+    await seedEscalation('2026-11-01-hand-edited', {
+      status: 'declined',
+      declineReason: 'Duplicate of last week.',
+      mtime: new Date('2026-11-03T09:00:00+10:00'),
+    });
+    await seedEscalation('2026-09-01-stale', {
+      status: 'resolved',
+      mtime: new Date('2026-09-02T09:00:00+10:00'),
+    });
+    const prompt = await buildSystemPrompt(tempDir, { now: NOW });
+    expect(prompt).toContain('2026-11-01-hand-edited');
+    expect(prompt).toContain('Duplicate of last week.');
+    expect(prompt).not.toContain('2026-09-01-stale');
+  });
+
+  it('truncates long notes', async () => {
+    await seedPersona();
+    const long = 'x'.repeat(800);
+    await seedEscalation('2026-11-04-long', {
+      status: 'accepted',
+      notes: [note('2026-11-04T09:00:00+10:00', 'accepted', long)],
+    });
+    const prompt = await buildSystemPrompt(tempDir, { now: NOW });
+    expect(prompt).not.toContain(long);
+    expect(prompt).toContain(`${'x'.repeat(500)}…`);
+  });
+
+  it('orders most recent first and caps at 10 entries', async () => {
+    await seedPersona();
+    // Decision time runs opposite to filename order: esc-01 is the most recent.
+    for (let day = 1; day <= 12; day += 1) {
+      const dd = String(day).padStart(2, '0');
+      const hh = String(13 - day).padStart(2, '0');
+      await seedEscalation(`2026-10-${dd}-esc-${dd}`, {
+        status: 'accepted',
+        notes: [note(`2026-11-05T${hh}:00:00+10:00`, 'accepted', `note ${dd}`)],
+      });
+    }
+    const prompt = await buildSystemPrompt(tempDir, { now: NOW });
+    const section = prompt.slice(prompt.indexOf(HEADING));
+    const ids = [...section.matchAll(/^- `(2026-10-\d\d-esc-\d\d)`/gm)].map((m) => m[1]);
+    expect(ids).toEqual(
+      Array.from({ length: 10 }, (_, i) => {
+        const dd = String(i + 1).padStart(2, '0');
+        return `2026-10-${dd}-esc-${dd}`;
+      }),
+    );
+  });
+
+  it('omits the section entirely when there are no escalations', async () => {
+    await seedPersona();
+    const prompt = await buildSystemPrompt(tempDir, { now: NOW });
+    expect(prompt).not.toContain(HEADING);
+  });
+});
+
 describe('parseToolsYaml', () => {
   it('parses capability names and descriptions', () => {
     const text =
